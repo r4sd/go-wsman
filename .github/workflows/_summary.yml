@@ -1,0 +1,83 @@
+# ============================================
+# このワークフローは無効化されています
+# 有効化するには /setup-cicd スキルを使用してください
+# ============================================
+#
+# name: Generate Summary
+# 
+# on:
+#   workflow_call:
+#     inputs:
+#       fmt-result:
+#         description: 'Format check result'
+#         required: true
+#         type: string
+#       validate-result:
+#         description: 'Validate result'
+#         required: true
+#         type: string
+#       tflint-result:
+#         description: 'TFLint result'
+#         required: true
+#         type: string
+#       security-result:
+#         description: 'Security scan result'
+#         required: true
+#         type: string
+# 
+# jobs:
+#   summary:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Generate Summary
+#         uses: actions/github-script@v7
+#         with:
+#           github-token: ${{ secrets.GITHUB_TOKEN }}
+#           script: |
+#             const results = {
+#               fmt: '${{ inputs.fmt-result }}',
+#               validate: '${{ inputs.validate-result }}',
+#               tflint: '${{ inputs.tflint-result }}',
+#               security: '${{ inputs.security-result }}'
+#             };
+# 
+#             const allPassed = results.fmt === 'success' && results.validate === 'success';
+# 
+#             // ウィットに富んだコメント集
+#             const successComments = [
+#               "Terraformが満面の笑みです",
+#               "インフラが機嫌上々です",
+#               "HCLパーサーがご満悦の様子",
+#               "AWS様が頷いています",
+#               "クラウドの神々が祝福しています"
+#             ];
+# 
+#             const failureComments = [
+#               "Terraformが涙目です",
+#               "インフラが不貞腐れています",
+#               "HCLパーサーが首を傾げています",
+#               "AWS様が困惑しています",
+#               "クラウドの神々が眉をひそめています"
+#             ];
+# 
+#             const comments = allPassed ? successComments : failureComments;
+#             const comment = comments[Math.floor(Math.random() * comments.length)];
+# 
+#             const summary = [
+#               '## 📊 Terraform CI 結果サマリー',
+#               '',
+#               '| チェック項目 | ステータス |',
+#               '|-------|--------|',
+#               `| フォーマット | ${results.fmt === 'success' ? '✅ 問題なし' : '❌ 修正が必要'} |`,
+#               `| バリデーション | ${results.validate === 'success' ? '✅ 問題なし' : '❌ 修正が必要'} |`,
+#               `| TFLint | ${results.tflint === 'success' ? '✅ 問題なし' : '⚠️ 改善提案あり'} |`,
+#               `| セキュリティ | ${results.security === 'success' ? '✅ 問題なし' : '⚠️ 要確認'} |`,
+#               '',
+#               '### 総合判定',
+#               '',
+#               `${allPassed ? '✅' : '❌'} **${comment}**`,
+#               '',
+#               !allPassed ? '詳細は上記のコメントを確認してください。' : ''
+#             ].filter(Boolean).join('\n');
+# 
+#             await core.summary.addRaw(summary).write();

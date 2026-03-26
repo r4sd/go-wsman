@@ -1,0 +1,34 @@
+# ============================================
+# このワークフローは無効化されています
+# 有効化するには /setup-cicd スキルを使用してください
+# ============================================
+#
+# name: Setup Environment
+# 
+# on:
+#   workflow_call:
+#     outputs:
+#       terraform-version:
+#         description: "Terraform version from .terraform-version"
+#         value: ${{ jobs.setup.outputs.terraform-version }}
+# 
+# jobs:
+#   setup:
+#     runs-on: ubuntu-latest
+#     outputs:
+#       terraform-version: ${{ steps.get-version.outputs.version }}
+#     steps:
+#       - name: Checkout
+#         uses: actions/checkout@v4
+# 
+#       - name: Get Terraform version
+#         id: get-version
+#         run: |
+#           if [ -f .terraform-version ]; then
+#             VERSION=$(cat .terraform-version | tr -d '[:space:]')
+#             echo "version=$VERSION" >> $GITHUB_OUTPUT
+#             echo "✅ Terraform version: $VERSION"
+#           else
+#             echo "❌ .terraform-version file not found"
+#             exit 1
+#           fi

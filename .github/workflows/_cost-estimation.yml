@@ -1,0 +1,54 @@
+# ============================================
+# このワークフローは無効化されています
+# 有効化するには /setup-cicd スキルを使用してください
+# ============================================
+#
+# name: Cost Estimation
+# 
+# on:
+#   workflow_call:
+#     inputs:
+#       terraform-version:
+#         description: 'Terraform version'
+#         required: true
+#         type: string
+#     secrets:
+#       INFRACOST_API_KEY:
+#         required: false
+# 
+# env:
+#   AWS_REGION: ap-northeast-1
+#   TERRAFORM_DIR: clouds/aws/dev
+# 
+# jobs:
+#   cost:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Checkout
+#         uses: actions/checkout@v4
+# 
+#       - name: Setup Infracost
+#         uses: infracost/actions/setup@v3
+#         with:
+#           api-key: ${{ secrets.INFRACOST_API_KEY }}
+# 
+#       - name: Setup Terraform
+#         uses: hashicorp/setup-terraform@v3
+#         with:
+#           terraform_version: ${{ inputs.terraform-version }}
+#           terraform_wrapper: false
+# 
+#       - name: Generate cost estimate
+#         run: |
+#           cd ${{ env.TERRAFORM_DIR }}
+#           infracost breakdown --path=. \
+#             --format=json \
+#             --out-file=/tmp/infracost.json
+# 
+#       - name: Post comment
+#         run: |
+#           infracost comment github --path=/tmp/infracost.json \
+#             --repo=$GITHUB_REPOSITORY \
+#             --github-token=${{ secrets.GITHUB_TOKEN }} \
+#             --pull-request=${{ github.event.pull_request.number }} \
+#             --behavior=update
