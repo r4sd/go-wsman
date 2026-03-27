@@ -1,112 +1,32 @@
-# ============================================
-# このワークフローは無効化されています
-# 有効化するには /setup-cicd スキルを使用してください
-# ============================================
-#
-# name: Main CI/CD Pipeline
-# 
-# on:
-#   pull_request:
-#     branches: [main, develop]
-#     paths:
-#       - 'clouds/**/*.tf'
-#       - 'clouds/**/*.tfvars'
-#       - '.terraform-version'
-#   push:
-#     branches: [main]
-#     paths:
-#       - 'clouds/**/*.tf'
-#       - 'clouds/**/*.tfvars'
-# 
-# permissions:
-#   contents: read
-#   pull-requests: write
-#   issues: write
-#   security-events: write
-#   id-token: write
-# 
-# jobs:
-#   # ステップ1: Terraformバージョンを取得
-#   setup:
-#     name: Setup Environment
-#     uses: ./.github/workflows/_setup.yml
-# 
-#   # ステップ2: Terraformフォーマットチェック
-#   terraform-format:
-#     name: Format Check
-#     needs: setup
-#     uses: ./.github/workflows/_terraform-fmt.yml
-#     with:
-#       terraform-version: ${{ needs.setup.outputs.terraform-version }}
-# 
-#   # ステップ3: Terraform Validate
-#   terraform-validate:
-#     name: Validate
-#     needs: setup
-#     uses: ./.github/workflows/_terraform-validate.yml
-#     with:
-#       terraform-version: ${{ needs.setup.outputs.terraform-version }}
-# 
-#   # ステップ4: TFLint
-#   tflint:
-#     name: TFLint
-#     needs: setup
-#     uses: ./.github/workflows/_tflint.yml
-# 
-#   # ステップ5: セキュリティスキャン
-#   security-scan:
-#     name: Security Scan
-#     needs: setup
-#     uses: ./.github/workflows/_security-scan.yml
-# 
-#   # ステップ6: コスト見積もり（PRのみ）
-#   # cost-estimation:
-#   #   name: Cost Estimation
-#   #   needs: [setup, terraform-format, terraform-validate]
-#   #   if: github.event_name == 'pull_request'
-#   #   uses: ./.github/workflows/_cost-estimation.yml
-#   #   with:
-#   #     terraform-version: ${{ needs.setup.outputs.terraform-version }}
-#   #   secrets: inherit
-# 
-#   # ステップ7: Terraform Plan（PRのみ）
-#   terraform-plan:
-#     name: Plan
-#     needs: [setup, terraform-format, terraform-validate, tflint]
-#     if: github.event_name == 'pull_request'
-#     uses: ./.github/workflows/_terraform-plan.yml
-#     with:
-#       terraform-version: ${{ needs.setup.outputs.terraform-version }}
-#     secrets: inherit
-# 
-#   # ステップ8: tfcmtでPlan結果をコメント（PRのみ、人間レビュー用）
-#   tfcmt:
-#     name: tfcmt Plan Comment
-#     needs: [setup, terraform-plan]
-#     if: github.event_name == 'pull_request'
-#     uses: ./.github/workflows/_tfcmt.yml
-#     with:
-#       pr-number: ${{ github.event.pull_request.number }}
-#       terraform-version: ${{ needs.setup.outputs.terraform-version }}
-#     secrets: inherit
-# 
-#   # ステップ9: AI レビュー（PRのみ、AIレビュー用）
-#   ai-review:
-#     name: AI コードレビュー
-#     needs: terraform-plan
-#     if: github.event_name == 'pull_request'
-#     uses: ./.github/workflows/_ai-review.yml
-#     with:
-#       pr-number: ${{ github.event.pull_request.number }}
-# 
-#   # ステップ10: サマリー生成
-#   summary:
-#     name: Generate Summary
-#     needs: [terraform-format, terraform-validate, tflint, security-scan]
-#     if: always()
-#     uses: ./.github/workflows/_summary.yml
-#     with:
-#       fmt-result: ${{ needs.terraform-format.result }}
-#       validate-result: ${{ needs.terraform-validate.result }}
-#       tflint-result: ${{ needs.tflint.result }}
-#       security-result: ${{ needs.security-scan.result }}
+name: Main CI Pipeline
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  go-lint:
+    name: Lint
+    if: github.actor == github.repository_owner
+    uses: ./.github/workflows/_go-lint.yml
+
+  go-test:
+    name: Test
+    if: github.actor == github.repository_owner
+    uses: ./.github/workflows/_go-test.yml
+
+  go-build:
+    name: Build
+    if: github.actor == github.repository_owner
+    uses: ./.github/workflows/_go-build.yml
+
+  security-scan:
+    name: Security Scan
+    if: github.actor == github.repository_owner
+    uses: ./.github/workflows/_security-scan.yml

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd" xmlns:e="http://schemas.xmlsoap.org/ws/2004/09/enumeration" xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wmi/root/cimv2/Win32_Process">
+  <s:Header>
+    <a:Action>http://schemas.xmlsoap.org/ws/2004/09/enumeration/PullResponse</a:Action>
+    <a:MessageID>uuid:response-pull-001</a:MessageID>
+  </s:Header>
+  <s:Body>
+    <e:PullResponse>
+      <e:Items>
+        <p:Win32_Process>
+          <p:Name>System Idle Process</p:Name>
+          <p:ProcessId>0</p:ProcessId>
+          <p:HandleCount>0</p:HandleCount>
+        </p:Win32_Process>
+        <p:Win32_Process>
+          <p:Name>System</p:Name>
+          <p:ProcessId>4</p:ProcessId>
+          <p:HandleCount>2048</p:HandleCount>
+        </p:Win32_Process>
+      </e:Items>
+      <e:EnumerationContext>uuid:context-001</e:EnumerationContext>
+    </e:PullResponse>
+  </s:Body>
+</s:Envelope>

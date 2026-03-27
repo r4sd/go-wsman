@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd">
+  <s:Header>
+    <a:Action>http://schemas.dmtf.org/wbem/wsman/1/wsman/fault</a:Action>
+  </s:Header>
+  <s:Body>
+    <s:Fault>
+      <s:Code>
+        <s:Value>s:Sender</s:Value>
+        <s:Subcode>
+          <s:Value>w:AccessDenied</s:Value>
+        </s:Subcode>
+      </s:Code>
+      <s:Reason>
+        <s:Text xml:lang="en-US">Access is denied.</s:Text>
+      </s:Reason>
+      <s:Detail>
+        <f:WSManFault xmlns:f="http://schemas.microsoft.com/wbem/wsman/1/wsmanfault" Code="5" Machine="SERVER01">
+          <f:Message>Access is denied.</f:Message>
+        </f:WSManFault>
+      </s:Detail>
+    </s:Fault>
+  </s:Body>
+</s:Envelope>

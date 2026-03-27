@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd" xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wmi/root/cimv2/Win32_ComputerSystem">
+  <s:Header>
+    <a:Action>http://schemas.xmlsoap.org/ws/2004/09/transfer/GetResponse</a:Action>
+    <a:MessageID>uuid:response-001</a:MessageID>
+  </s:Header>
+  <s:Body>
+    <p:Win32_ComputerSystem>
+      <p:Name>SERVER01</p:Name>
+      <p:Domain>WORKGROUP</p:Domain>
+      <p:Manufacturer>HP</p:Manufacturer>
+      <p:Model>Z440 Workstation</p:Model>
+      <p:NumberOfProcessors>1</p:NumberOfProcessors>
+      <p:TotalPhysicalMemory>68719476736</p:TotalPhysicalMemory>
+    </p:Win32_ComputerSystem>
+  </s:Body>
+</s:Envelope>
