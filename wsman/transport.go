@@ -14,6 +14,15 @@ import (
 type HTTPTransport struct {
 	endpoint   string
 	httpClient *http.Client
+	username   string
+	password   string
+}
+
+// SetCredentials は NTLM/Basic 認証用の資格情報を設定する。
+// go-ntlmssp の Negotiator は BasicAuth から資格情報を取得して NTLM ハンドシェイクに使用する。
+func (t *HTTPTransport) SetCredentials(username, password string) {
+	t.username = username
+	t.password = password
 }
 
 // NewHTTPTransport は新しい HTTPTransport を作成する。
@@ -46,6 +55,10 @@ func (t *HTTPTransport) Send(ctx context.Context, requestData []byte) ([]byte, e
 	}
 
 	req.Header.Set("Content-Type", "application/soap+xml;charset=UTF-8")
+
+	if t.username != "" {
+		req.SetBasicAuth(t.username, t.password)
+	}
 
 	resp, err := t.httpClient.Do(req)
 	if err != nil {

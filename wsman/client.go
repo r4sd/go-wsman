@@ -2,9 +2,13 @@ package wsman
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net/http"
 	"net/url"
+	"time"
+
+	"github.com/Azure/go-ntlmssp"
 )
 
 // DefaultMaxPullIterations は Enumerate の Pull ループの最大反復回数。
@@ -56,13 +60,45 @@ func WithHTTPClient(httpClient *http.Client) ClientOption {
 	}
 }
 
-// WithNTLM は NTLM 認証を設定する（将来実装）
+// WithNTLM は NTLM 認証を設定する。
+// username は "DOMAIN\\user" 形式または単純なユーザー名を受け付ける。
+// go-ntlmssp の Negotiator が NTLM ハンドシェイクを透過的に処理する。
 func WithNTLM(username, password string) ClientOption {
 	return func(c *Client) {
-		// TODO: NTLM 認証トランスポートの実装
-		_ = username
-		_ = password
+		c.transport = newNTLMTransport(c.endpoint, username, password)
 	}
+}
+
+// WithNTLMAuth は NTLM 認証をドメイン指定付きで設定する。
+// domain が空でない場合、"DOMAIN\\username" 形式でハンドシェイクに使用する。
+func WithNTLMAuth(domain, username, password string) ClientOption {
+	return func(c *Client) {
+		user := username
+		if domain != "" {
+			user = domain + `\` + username
+		}
+		c.transport = newNTLMTransport(c.endpoint, user, password)
+	}
+}
+
+// newNTLMTransport は NTLM 認証付きの HTTPTransport を作成する。
+func newNTLMTransport(endpoint, username, password string) *HTTPTransport {
+	baseTransport := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true, //#nosec G402 -- WinRM は自己署名証明書が一般的
+		},
+	}
+
+	httpClient := &http.Client{
+		Timeout: 60 * time.Second,
+		Transport: &ntlmssp.Negotiator{
+			RoundTripper: baseTransport,
+		},
+	}
+
+	t := NewHTTPTransport(endpoint, httpClient)
+	t.SetCredentials(username, password)
+	return t
 }
 
 // Get は WS-Transfer Get 操作を実行する
