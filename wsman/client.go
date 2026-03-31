@@ -1,9 +1,15 @@
 package wsman
 
 import (
+	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 )
+
+// DefaultMaxPullIterations は Enumerate の Pull ループの最大反復回数。
+// 無限ループ防止のための安全策。
+const DefaultMaxPullIterations = 1000
 
 // Client は WS-Man クライアント
 type Client struct {
@@ -14,8 +20,20 @@ type Client struct {
 // ClientOption はクライアント構築時のオプション
 type ClientOption func(*Client)
 
-// NewClient は新しい WS-Man クライアントを作成する
-func NewClient(endpoint string, opts ...ClientOption) *Client {
+// NewClient は新しい WS-Man クライアントを作成する。
+// endpoint が有効な URL でない場合はエラーを返す。
+func NewClient(endpoint string, opts ...ClientOption) (*Client, error) {
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return nil, fmt.Errorf("invalid endpoint URL: %w", err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return nil, fmt.Errorf("invalid endpoint URL scheme %q: must be http or https", u.Scheme)
+	}
+	if u.Host == "" {
+		return nil, fmt.Errorf("invalid endpoint URL: missing host")
+	}
+
 	c := &Client{
 		endpoint: endpoint,
 	}
@@ -28,7 +46,7 @@ func NewClient(endpoint string, opts ...ClientOption) *Client {
 		c.transport = NewHTTPTransport(endpoint, nil)
 	}
 
-	return c
+	return c, nil
 }
 
 // WithHTTPClient はカスタム HTTP クライアントを設定する
@@ -48,15 +66,15 @@ func WithNTLM(username, password string) ClientOption {
 }
 
 // Get は WS-Transfer Get 操作を実行する
-func (c *Client) Get(resourceURI string, selectors ...Selector) (*GetResponse, error) {
+func (c *Client) Get(ctx context.Context, resourceURI string, selectors ...Selector) (*GetResponse, error) {
 	reqData, err := BuildGetRequest(resourceURI, c.endpoint, selectors...)
 	if err != nil {
-		return nil, fmt.Errorf("Get リクエストの構築に失敗: %w", err)
+		return nil, fmt.Errorf("failed to build Get request: %w", err)
 	}
 
-	respData, err := c.transport.Send(reqData)
+	respData, err := c.transport.Send(ctx, reqData)
 	if err != nil {
-		return nil, fmt.Errorf("Get リクエストの送信に失敗: %w", err)
+		return nil, fmt.Errorf("failed to send Get request: %w", err)
 	}
 
 	return ParseGetResponse(respData)
@@ -64,19 +82,19 @@ func (c *Client) Get(resourceURI string, selectors ...Selector) (*GetResponse, e
 
 // Enumerate は WS-Enumeration 操作を実行し、全インスタンスを返す。
 // Enumerate → Pull → EndOfSequence のサイクルを自動的に回す。
-func (c *Client) Enumerate(resourceURI string) ([]*Instance, error) {
+func (c *Client) Enumerate(ctx context.Context, resourceURI string) ([]*Instance, error) {
 	// Step 1: Enumerate リクエスト
 	enumReqData, err := BuildEnumerateRequest(resourceURI, c.endpoint)
 	if err != nil {
-		return nil, fmt.Errorf("Enumerate リクエストの構築に失敗: %w", err)
+		return nil, fmt.Errorf("failed to build Enumerate request: %w", err)
 	}
 
-	enumRespData, err := c.transport.Send(enumReqData)
+	enumRespData, err := c.transport.Send(ctx, enumReqData)
 	if err != nil {
-		return nil, fmt.Errorf("Enumerate リクエストの送信に失敗: %w", err)
+		return nil, fmt.Errorf("failed to send Enumerate request: %w", err)
 	}
 
-	ctx, err := ParseEnumerateResponse(enumRespData)
+	enumCtx, err := ParseEnumerateResponse(enumRespData)
 	if err != nil {
 		return nil, err
 	}
@@ -84,15 +102,15 @@ func (c *Client) Enumerate(resourceURI string) ([]*Instance, error) {
 	// Step 2: Pull ループ
 	var allInstances []*Instance
 
-	for {
-		pullReqData, err := BuildPullRequest(resourceURI, c.endpoint, ctx)
+	for i := 0; i < DefaultMaxPullIterations; i++ {
+		pullReqData, err := BuildPullRequest(resourceURI, c.endpoint, enumCtx)
 		if err != nil {
-			return nil, fmt.Errorf("Pull リクエストの構築に失敗: %w", err)
+			return nil, fmt.Errorf("failed to build Pull request: %w", err)
 		}
 
-		pullRespData, err := c.transport.Send(pullReqData)
+		pullRespData, err := c.transport.Send(ctx, pullReqData)
 		if err != nil {
-			return nil, fmt.Errorf("Pull リクエストの送信に失敗: %w", err)
+			return nil, fmt.Errorf("failed to send Pull request: %w", err)
 		}
 
 		pullResp, err := ParsePullResponse(pullRespData)
@@ -103,11 +121,11 @@ func (c *Client) Enumerate(resourceURI string) ([]*Instance, error) {
 		allInstances = append(allInstances, pullResp.Items...)
 
 		if pullResp.EndOfSequence {
-			break
+			return allInstances, nil
 		}
 
-		ctx = pullResp.EnumerationContext
+		enumCtx = pullResp.EnumerationContext
 	}
 
-	return allInstances, nil
+	return nil, fmt.Errorf("exceeded maximum Pull iterations (%d)", DefaultMaxPullIterations)
 }

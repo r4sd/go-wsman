@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/xml"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/google/uuid"
@@ -85,7 +86,7 @@ func ParseEnumerateResponse(data []byte) (string, error) {
 	if IsFault(data) {
 		fault, err := ParseFault(data)
 		if err != nil {
-			return "", fmt.Errorf("Fault のパースに失敗: %w", err)
+			return "", fmt.Errorf("failed to parse fault: %w", err)
 		}
 		return "", fault
 	}
@@ -102,12 +103,12 @@ func ParseEnumerateResponse(data []byte) (string, error) {
 
 	var resp enumResponse
 	if err := xml.Unmarshal(data, &resp); err != nil {
-		return "", fmt.Errorf("EnumerateResponse のパースに失敗: %w", err)
+		return "", fmt.Errorf("failed to parse EnumerateResponse: %w", err)
 	}
 
 	ctx := resp.Body.EnumerateResponse.EnumerationContext
 	if ctx == "" {
-		return "", fmt.Errorf("EnumerationContext が見つかりません")
+		return "", fmt.Errorf("EnumerationContext not found in response")
 	}
 
 	return ctx, nil
@@ -118,7 +119,7 @@ func ParsePullResponse(data []byte) (*PullResponse, error) {
 	if IsFault(data) {
 		fault, err := ParseFault(data)
 		if err != nil {
-			return nil, fmt.Errorf("Fault のパースに失敗: %w", err)
+			return nil, fmt.Errorf("failed to parse fault: %w", err)
 		}
 		return nil, fault
 	}
@@ -139,7 +140,7 @@ func ParsePullResponse(data []byte) (*PullResponse, error) {
 
 	var pr pullResp
 	if err := xml.Unmarshal(data, &pr); err != nil {
-		return nil, fmt.Errorf("PullResponse のパースに失敗: %w", err)
+		return nil, fmt.Errorf("failed to parse PullResponse: %w", err)
 	}
 
 	result := &PullResponse{
@@ -151,7 +152,7 @@ func ParsePullResponse(data []byte) (*PullResponse, error) {
 	if len(pr.Body.PullResponse.Items.Content) > 0 {
 		instances, err := parseInstances(pr.Body.PullResponse.Items.Content)
 		if err != nil {
-			return nil, fmt.Errorf("CIM インスタンスの抽出に失敗: %w", err)
+			return nil, fmt.Errorf("failed to extract CIM instances: %w", err)
 		}
 		result.Items = instances
 	}
@@ -171,7 +172,10 @@ func parseInstances(data []byte) ([]*Instance, error) {
 	for {
 		token, err := decoder.Token()
 		if err != nil {
-			break
+			if err == io.EOF {
+				break
+			}
+			return nil, fmt.Errorf("failed to parse XML token: %w", err)
 		}
 
 		switch t := token.(type) {

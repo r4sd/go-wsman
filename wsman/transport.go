@@ -2,6 +2,7 @@ package wsman
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"fmt"
 	"io"
@@ -38,23 +39,23 @@ func NewHTTPTransport(endpoint string, httpClient *http.Client) *HTTPTransport {
 // Send は SOAP リクエストを送信し、レスポンスボディを返す。
 // HTTP エラーの場合はエラーを返すが、SOAP Fault を含む HTTP 500 レスポンスは
 // ボディデータとして返す（Fault パースは呼び出し側の責任）。
-func (t *HTTPTransport) Send(requestData []byte) ([]byte, error) {
-	req, err := http.NewRequest(http.MethodPost, t.endpoint, bytes.NewReader(requestData))
+func (t *HTTPTransport) Send(ctx context.Context, requestData []byte) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, t.endpoint, bytes.NewReader(requestData))
 	if err != nil {
-		return nil, fmt.Errorf("HTTP リクエストの作成に失敗: %w", err)
+		return nil, fmt.Errorf("failed to create HTTP request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/soap+xml;charset=UTF-8")
 
 	resp, err := t.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("HTTP リクエストの送信に失敗: %w", err)
+		return nil, fmt.Errorf("failed to send HTTP request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("HTTP レスポンスの読み取りに失敗: %w", err)
+		return nil, fmt.Errorf("failed to read HTTP response: %w", err)
 	}
 
 	// SOAP Fault を含む 500 レスポンスはデータとして返す
@@ -63,7 +64,7 @@ func (t *HTTPTransport) Send(requestData []byte) ([]byte, error) {
 	}
 
 	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("HTTP エラー: ステータスコード %d", resp.StatusCode)
+		return nil, fmt.Errorf("HTTP error: status code %d", resp.StatusCode)
 	}
 
 	return body, nil
