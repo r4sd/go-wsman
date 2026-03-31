@@ -3,6 +3,7 @@ package wsman
 import (
 	"encoding/xml"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/google/uuid"
@@ -53,14 +54,14 @@ func ParseGetResponse(data []byte) (*GetResponse, error) {
 	if IsFault(data) {
 		fault, err := ParseFault(data)
 		if err != nil {
-			return nil, fmt.Errorf("Fault のパースに失敗: %w", err)
+			return nil, fmt.Errorf("failed to parse fault: %w", err)
 		}
 		return nil, fault
 	}
 
 	env, err := UnmarshalEnvelope(data)
 	if err != nil {
-		return nil, fmt.Errorf("Get レスポンスのパースに失敗: %w", err)
+		return nil, fmt.Errorf("failed to parse Get response: %w", err)
 	}
 
 	resp := &GetResponse{
@@ -69,7 +70,7 @@ func ParseGetResponse(data []byte) (*GetResponse, error) {
 
 	// Body の innerxml からプロパティを抽出
 	if err := extractProperties(env.Body.Content, resp.properties); err != nil {
-		return nil, fmt.Errorf("プロパティの抽出に失敗: %w", err)
+		return nil, fmt.Errorf("failed to extract properties: %w", err)
 	}
 
 	return resp, nil
@@ -87,7 +88,10 @@ func extractProperties(data []byte, props map[string]string) error {
 	for {
 		token, err := decoder.Token()
 		if err != nil {
-			break
+			if err == io.EOF {
+				break
+			}
+			return fmt.Errorf("failed to parse XML token: %w", err)
 		}
 
 		switch t := token.(type) {

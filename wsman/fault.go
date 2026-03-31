@@ -60,11 +60,11 @@ type soapFaultDetail struct {
 func ParseFault(data []byte) (*Fault, error) {
 	var env soapFaultEnvelope
 	if err := xml.Unmarshal(data, &env); err != nil {
-		return nil, fmt.Errorf("SOAP XML のパースに失敗: %w", err)
+		return nil, fmt.Errorf("failed to parse SOAP XML: %w", err)
 	}
 
 	if env.Body.Fault == nil {
-		return nil, fmt.Errorf("SOAP レスポンスに Fault が含まれていません")
+		return nil, fmt.Errorf("SOAP response does not contain a Fault")
 	}
 
 	f := &Fault{

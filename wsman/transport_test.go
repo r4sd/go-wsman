@@ -1,6 +1,7 @@
 package wsman
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -42,7 +43,7 @@ func TestTransport_SendReceive(t *testing.T) {
 			server.URL,
 		)
 
-		respData, err := transport.Send(requestXML)
+		respData, err := transport.Send(context.Background(), requestXML)
 		if err != nil {
 			t.Fatalf("Send に失敗: %v", err)
 		}
@@ -69,7 +70,7 @@ func TestTransport_SendReceive(t *testing.T) {
 		)
 
 		// Fault レスポンスでもデータは返す（Fault パースは呼び出し側の責任）
-		respData, err := transport.Send(requestXML)
+		respData, err := transport.Send(context.Background(), requestXML)
 		if err != nil {
 			t.Fatalf("Send に失敗: %v", err)
 		}
@@ -87,7 +88,7 @@ func TestTransport_SendReceive(t *testing.T) {
 			"http://192.0.2.1:5986/wsman",
 		)
 
-		_, err := transport.Send(requestXML)
+		_, err := transport.Send(context.Background(), requestXML)
 		if err == nil {
 			t.Fatal("到達不能なエンドポイントでエラーが返されなかった")
 		}

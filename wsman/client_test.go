@@ -1,12 +1,43 @@
 package wsman
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
 )
+
+func TestNewClient(t *testing.T) {
+	t.Run("valid endpoint", func(t *testing.T) {
+		_, err := NewClient("https://host:5986/wsman")
+		if err != nil {
+			t.Fatalf("NewClient failed: %v", err)
+		}
+	})
+
+	t.Run("invalid scheme", func(t *testing.T) {
+		_, err := NewClient("ftp://host:5986/wsman")
+		if err == nil {
+			t.Fatal("expected error for ftp scheme")
+		}
+	})
+
+	t.Run("missing host", func(t *testing.T) {
+		_, err := NewClient("https://")
+		if err == nil {
+			t.Fatal("expected error for missing host")
+		}
+	})
+
+	t.Run("empty string", func(t *testing.T) {
+		_, err := NewClient("")
+		if err == nil {
+			t.Fatal("expected error for empty endpoint")
+		}
+	})
+}
 
 func TestClient_Get(t *testing.T) {
 	t.Run("モックサーバーに対して Get が正しく動作", func(t *testing.T) {
@@ -18,9 +49,12 @@ func TestClient_Get(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewClient(server.URL, WithHTTPClient(server.Client()))
+		client, err := NewClient(server.URL, WithHTTPClient(server.Client()))
+		if err != nil {
+			t.Fatalf("NewClient failed: %v", err)
+		}
 
-		resp, err := client.Get("http://schemas.microsoft.com/wbem/wsman/1/wmi/root/cimv2/Win32_ComputerSystem")
+		resp, err := client.Get(context.Background(), "http://schemas.microsoft.com/wbem/wsman/1/wmi/root/cimv2/Win32_ComputerSystem")
 		if err != nil {
 			t.Fatalf("Client.Get に失敗: %v", err)
 		}
@@ -45,9 +79,12 @@ func TestClient_Get(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewClient(server.URL, WithHTTPClient(server.Client()))
+		client, err := NewClient(server.URL, WithHTTPClient(server.Client()))
+		if err != nil {
+			t.Fatalf("NewClient failed: %v", err)
+		}
 
-		resp, err := client.Get(
+		resp, err := client.Get(context.Background(),
 			"http://schemas.microsoft.com/wbem/wsman/1/wmi/root/cimv2/Win32_Service",
 			Selector{Name: "Name", Value: "WinRM"},
 		)
@@ -70,9 +107,12 @@ func TestClient_Get(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewClient(server.URL, WithHTTPClient(server.Client()))
+		client, err := NewClient(server.URL, WithHTTPClient(server.Client()))
+		if err != nil {
+			t.Fatalf("NewClient failed: %v", err)
+		}
 
-		_, err := client.Get("http://schemas.microsoft.com/wbem/wsman/1/wmi/root/cimv2/Win32_OperatingSystem")
+		_, err = client.Get(context.Background(), "http://schemas.microsoft.com/wbem/wsman/1/wmi/root/cimv2/Win32_OperatingSystem")
 		if err == nil {
 			t.Fatal("Fault レスポンスでエラーが返されなかった")
 		}
@@ -113,9 +153,12 @@ func TestClient_Enumerate(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewClient(server.URL, WithHTTPClient(server.Client()))
+		client, err := NewClient(server.URL, WithHTTPClient(server.Client()))
+		if err != nil {
+			t.Fatalf("NewClient failed: %v", err)
+		}
 
-		instances, err := client.Enumerate("http://schemas.microsoft.com/wbem/wsman/1/wmi/root/cimv2/Win32_Process")
+		instances, err := client.Enumerate(context.Background(), "http://schemas.microsoft.com/wbem/wsman/1/wmi/root/cimv2/Win32_Process")
 		if err != nil {
 			t.Fatalf("Client.Enumerate に失敗: %v", err)
 		}
@@ -152,9 +195,12 @@ func TestClient_Enumerate(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewClient(server.URL, WithHTTPClient(server.Client()))
+		client, err := NewClient(server.URL, WithHTTPClient(server.Client()))
+		if err != nil {
+			t.Fatalf("NewClient failed: %v", err)
+		}
 
-		_, err := client.Enumerate("http://schemas.microsoft.com/wbem/wsman/1/wmi/root/cimv2/Win32_Process")
+		_, err = client.Enumerate(context.Background(), "http://schemas.microsoft.com/wbem/wsman/1/wmi/root/cimv2/Win32_Process")
 		if err == nil {
 			t.Fatal("Fault レスポンスでエラーが返されなかった")
 		}

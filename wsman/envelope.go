@@ -46,7 +46,7 @@ func (env *Envelope) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 func (env *Envelope) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	var u unmarshalEnvelope
 	if err := d.DecodeElement(&u, &start); err != nil {
-		return fmt.Errorf("SOAP Envelope のパースに失敗: %w", err)
+		return fmt.Errorf("failed to parse SOAP envelope: %w", err)
 	}
 	env.Header = u.Header.toHeader()
 	env.Body = Body{Content: u.Body.Content}
