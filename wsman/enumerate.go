@@ -31,7 +31,7 @@ func (i *Instance) Properties() map[string]string {
 // PullResponse は WS-Enumeration Pull レスポンスを表す
 type PullResponse struct {
 	Items              []*Instance
-	EnumerationContext  string
+	EnumerationContext string
 	EndOfSequence      bool
 }
 
@@ -128,10 +128,10 @@ func ParsePullResponse(data []byte) (*PullResponse, error) {
 		XMLName xml.Name `xml:"http://www.w3.org/2003/05/soap-envelope Envelope"`
 		Body    struct {
 			PullResponse struct {
-				Items              struct {
+				Items struct {
 					Content []byte `xml:",innerxml"`
 				} `xml:"http://schemas.xmlsoap.org/ws/2004/09/enumeration Items"`
-				EnumerationContext string `xml:"http://schemas.xmlsoap.org/ws/2004/09/enumeration EnumerationContext"`
+				EnumerationContext string    `xml:"http://schemas.xmlsoap.org/ws/2004/09/enumeration EnumerationContext"`
 				EndOfSequence      *struct{} `xml:"http://schemas.xmlsoap.org/ws/2004/09/enumeration EndOfSequence"`
 			} `xml:"http://schemas.xmlsoap.org/ws/2004/09/enumeration PullResponse"`
 		} `xml:"http://www.w3.org/2003/05/soap-envelope Body"`

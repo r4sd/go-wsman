@@ -24,8 +24,8 @@ func (f *Fault) Error() string {
 
 // soapFaultEnvelope は SOAP Fault レスポンスのパース用構造体
 type soapFaultEnvelope struct {
-	XMLName xml.Name       `xml:"http://www.w3.org/2003/05/soap-envelope Envelope"`
-	Body    soapFaultBody  `xml:"http://www.w3.org/2003/05/soap-envelope Body"`
+	XMLName xml.Name      `xml:"http://www.w3.org/2003/05/soap-envelope Envelope"`
+	Body    soapFaultBody `xml:"http://www.w3.org/2003/05/soap-envelope Body"`
 }
 
 type soapFaultBody struct {
@@ -39,7 +39,7 @@ type soapFault struct {
 }
 
 type soapFaultCode struct {
-	Value   string          `xml:"http://www.w3.org/2003/05/soap-envelope Value"`
+	Value   string            `xml:"http://www.w3.org/2003/05/soap-envelope Value"`
 	Subcode *soapFaultSubcode `xml:"http://www.w3.org/2003/05/soap-envelope Subcode"`
 }
 
