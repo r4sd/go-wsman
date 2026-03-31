@@ -23,7 +23,7 @@ func NewHTTPTransport(endpoint string, httpClient *http.Client) *HTTPTransport {
 			Timeout: 60 * time.Second,
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{
-					InsecureSkipVerify: true, //nolint:gosec // WinRM は自己署名証明書が一般的
+					InsecureSkipVerify: true, //#nosec G402 -- WinRM は自己署名証明書が一般的
 				},
 			},
 		}
