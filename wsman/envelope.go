@@ -15,10 +15,10 @@ type Envelope struct {
 
 // marshalEnvelope は Marshal 用の内部構造体（プレフィックス付き XML タグ）
 type marshalEnvelope struct {
-	XMLName xml.Name `xml:"s:Envelope"`
-	NS      string   `xml:"xmlns:s,attr"`
-	NSAddr  string   `xml:"xmlns:a,attr"`
-	NSWsman string   `xml:"xmlns:w,attr"`
+	XMLName xml.Name      `xml:"s:Envelope"`
+	NS      string        `xml:"xmlns:s,attr"`
+	NSAddr  string        `xml:"xmlns:a,attr"`
+	NSWsman string        `xml:"xmlns:w,attr"`
 	Header  marshalHeader `xml:"s:Header"`
 	Body    marshalBody   `xml:"s:Body"`
 }
@@ -117,7 +117,7 @@ func (h *Header) toMarshal() marshalHeader {
 	if h.SelectorSet != nil {
 		ms := &marshalSelectorSet{}
 		for _, s := range h.SelectorSet.Selectors {
-			ms.Selectors = append(ms.Selectors, marshalSelector{Name: s.Name, Value: s.Value})
+			ms.Selectors = append(ms.Selectors, marshalSelector(s))
 		}
 		m.SelectorSet = ms
 	}
@@ -152,7 +152,7 @@ func (u *unmarshalHeader) toHeader() Header {
 	if u.SelectorSet != nil {
 		ss := &SelectorSet{}
 		for _, s := range u.SelectorSet.Selectors {
-			ss.Selectors = append(ss.Selectors, Selector{Name: s.Name, Value: s.Value})
+			ss.Selectors = append(ss.Selectors, Selector(s))
 		}
 		h.SelectorSet = ss
 	}

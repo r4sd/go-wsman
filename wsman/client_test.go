@@ -12,9 +12,9 @@ func TestClient_Get(t *testing.T) {
 	t.Run("モックサーバーに対して Get が正しく動作", func(t *testing.T) {
 		responseXML := loadGolden(t, "get_response_computersystem.xml")
 
-		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/soap+xml;charset=UTF-8")
-			w.Write(responseXML)
+			_, _ = w.Write(responseXML)
 		}))
 		defer server.Close()
 
@@ -41,7 +41,7 @@ func TestClient_Get(t *testing.T) {
 				t.Error("リクエストボディが空")
 			}
 			w.Header().Set("Content-Type", "application/soap+xml;charset=UTF-8")
-			w.Write(responseXML)
+			_, _ = w.Write(responseXML)
 		}))
 		defer server.Close()
 
@@ -63,10 +63,10 @@ func TestClient_Get(t *testing.T) {
 	t.Run("Fault レスポンスでエラーを返す", func(t *testing.T) {
 		faultXML := loadGolden(t, "fault_access_denied.xml")
 
-		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/soap+xml;charset=UTF-8")
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write(faultXML)
+			_, _ = w.Write(faultXML)
 		}))
 		defer server.Close()
 
@@ -95,20 +95,17 @@ func TestClient_Enumerate(t *testing.T) {
 
 		var requestCount atomic.Int32
 
-		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			count := requestCount.Add(1)
 			w.Header().Set("Content-Type", "application/soap+xml;charset=UTF-8")
 
 			switch count {
 			case 1:
-				// Enumerate リクエスト → EnumerateResponse
-				w.Write(enumResponseXML)
+				_, _ = w.Write(enumResponseXML)
 			case 2:
-				// 1回目の Pull → 2件のインスタンス
-				w.Write(pullResponseXML)
+				_, _ = w.Write(pullResponseXML)
 			case 3:
-				// 2回目の Pull → 1件 + EndOfSequence
-				w.Write(pullEndResponseXML)
+				_, _ = w.Write(pullEndResponseXML)
 			default:
 				t.Errorf("予期しないリクエスト (count=%d)", count)
 				w.WriteHeader(http.StatusInternalServerError)
@@ -148,10 +145,10 @@ func TestClient_Enumerate(t *testing.T) {
 	t.Run("Enumerate 時の Fault でエラーを返す", func(t *testing.T) {
 		faultXML := loadGolden(t, "fault_access_denied.xml")
 
-		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/soap+xml;charset=UTF-8")
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write(faultXML)
+			_, _ = w.Write(faultXML)
 		}))
 		defer server.Close()
 

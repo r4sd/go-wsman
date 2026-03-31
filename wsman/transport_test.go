@@ -32,7 +32,7 @@ func TestTransport_SendReceive(t *testing.T) {
 			}
 
 			w.Header().Set("Content-Type", "application/soap+xml;charset=UTF-8")
-			w.Write(responseXML)
+			_, _ = w.Write(responseXML)
 		}))
 		defer server.Close()
 
@@ -55,10 +55,10 @@ func TestTransport_SendReceive(t *testing.T) {
 	t.Run("SOAP Fault レスポンスのエラーハンドリング", func(t *testing.T) {
 		faultXML := loadGolden(t, "fault_access_denied.xml")
 
-		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/soap+xml;charset=UTF-8")
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write(faultXML)
+			_, _ = w.Write(faultXML)
 		}))
 		defer server.Close()
 
