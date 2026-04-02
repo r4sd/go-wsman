@@ -188,6 +188,23 @@ func newNTLMTransport(endpoint, username, password string) *HTTPTransport {
 	return t
 }
 
+// Put は WS-Transfer Put 操作を実行する。
+// resourceURI で CIM クラスを指定し、selectors でインスタンスを特定し、
+// properties で更新するプロパティを指定する。
+func (c *Client) Put(ctx context.Context, resourceURI string, properties map[string]string, selectors ...Selector) (*GetResponse, error) {
+	reqData, err := BuildPutRequest(resourceURI, c.endpoint, properties, selectors...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build Put request: %w", err)
+	}
+
+	respData, err := c.transport.Send(ctx, reqData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send Put request: %w", err)
+	}
+
+	return ParsePutResponse(respData)
+}
+
 // Get は WS-Transfer Get 操作を実行する
 func (c *Client) Get(ctx context.Context, resourceURI string, selectors ...Selector) (*GetResponse, error) {
 	reqData, err := BuildGetRequest(resourceURI, c.endpoint, selectors...)

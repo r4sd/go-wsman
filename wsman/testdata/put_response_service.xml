@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd" xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wmi/root/cimv2/Win32_Service">
+  <s:Header>
+    <a:Action>http://schemas.xmlsoap.org/ws/2004/09/transfer/PutResponse</a:Action>
+    <a:MessageID>uuid:response-put-001</a:MessageID>
+  </s:Header>
+  <s:Body>
+    <p:Win32_Service>
+      <p:Name>TestService</p:Name>
+      <p:DisplayName>Test Service</p:DisplayName>
+      <p:StartMode>Auto</p:StartMode>
+      <p:State>Running</p:State>
+    </p:Win32_Service>
+  </s:Body>
+</s:Envelope>
