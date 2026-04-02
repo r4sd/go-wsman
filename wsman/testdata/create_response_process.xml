@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:x="http://schemas.xmlsoap.org/ws/2004/09/transfer" xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd">
+  <s:Header>
+    <a:Action>http://schemas.xmlsoap.org/ws/2004/09/transfer/CreateResponse</a:Action>
+    <a:MessageID>uuid:response-create-001</a:MessageID>
+  </s:Header>
+  <s:Body>
+    <x:ResourceCreated>
+      <a:EndpointReference>
+        <a:Address>http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</a:Address>
+        <a:ReferenceParameters>
+          <w:ResourceURI>http://schemas.microsoft.com/wbem/wsman/1/wmi/root/cimv2/Win32_Process</w:ResourceURI>
+          <w:SelectorSet>
+            <w:Selector Name="Handle">12345</w:Selector>
+          </w:SelectorSet>
+        </a:ReferenceParameters>
+      </a:EndpointReference>
+    </x:ResourceCreated>
+  </s:Body>
+</s:Envelope>
