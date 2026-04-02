@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd">
+  <s:Header>
+    <a:Action s:mustUnderstand="true">http://schemas.xmlsoap.org/ws/2004/09/transfer/Put</a:Action>
+    <w:ResourceURI s:mustUnderstand="true">http://schemas.microsoft.com/wbem/wsman/1/wmi/root/cimv2/Win32_Service</w:ResourceURI>
+    <w:MaxEnvelopeSize s:mustUnderstand="true">153600</w:MaxEnvelopeSize>
+    <w:OperationTimeout>PT60S</w:OperationTimeout>
+    <a:MessageID>uuid:DYNAMIC-MESSAGE-ID</a:MessageID>
+    <a:ReplyTo>
+      <a:Address s:mustUnderstand="true">http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</a:Address>
+    </a:ReplyTo>
+    <a:To s:mustUnderstand="true">http://host:5986/wsman</a:To>
+    <w:SelectorSet>
+      <w:Selector Name="Name">TestService</w:Selector>
+    </w:SelectorSet>
+  </s:Header>
+  <s:Body>
+    <p:Win32_Service xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wmi/root/cimv2/Win32_Service"><p:StartMode>Auto</p:StartMode></p:Win32_Service>
+  </s:Body>
+</s:Envelope>
