@@ -3,9 +3,11 @@ package wsman
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"time"
 
 	"github.com/Azure/go-ntlmssp"
@@ -19,6 +21,7 @@ const DefaultMaxPullIterations = 1000
 type Client struct {
 	endpoint  string
 	transport *HTTPTransport
+	optErr    error // オプション適用時のエラー（遅延チェック用）
 }
 
 // ClientOption はクライアント構築時のオプション
@@ -44,6 +47,10 @@ func NewClient(endpoint string, opts ...ClientOption) (*Client, error) {
 
 	for _, opt := range opts {
 		opt(c)
+	}
+
+	if c.optErr != nil {
+		return nil, c.optErr
 	}
 
 	if c.transport == nil {
@@ -78,6 +85,86 @@ func WithNTLMAuth(domain, username, password string) ClientOption {
 			user = domain + `\` + username
 		}
 		c.transport = newNTLMTransport(c.endpoint, user, password)
+	}
+}
+
+// WithCertificate はファイルパスから TLS クライアント証明書認証を設定する。
+// certFile と keyFile は PEM エンコードされた証明書と秘密鍵のパス。
+func WithCertificate(certFile, keyFile string) ClientOption {
+	return func(c *Client) {
+		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+		if err != nil {
+			c.optErr = fmt.Errorf("failed to load client certificate: %w", err)
+			return
+		}
+		c.transport = newCertTransport(c.endpoint, &cert, nil)
+	}
+}
+
+// WithCertificateConfig は tls.Certificate を直接設定する。
+// テストやメモリ上の証明書を使用する場合に便利。
+func WithCertificateConfig(cert tls.Certificate) ClientOption {
+	return func(c *Client) {
+		c.transport = newCertTransport(c.endpoint, &cert, nil)
+	}
+}
+
+// WithCACert はカスタム CA 証明書を信頼リストに追加する。
+// 自己署名 CA を使用する場合に WithCertificate / WithCertificateConfig と組み合わせて使用する。
+// 既に transport が設定されている場合はその TLS 設定に CA を追加し、
+// 未設定の場合は新しい transport を作成する。
+func WithCACert(caFile string) ClientOption {
+	return func(c *Client) {
+		caPEM, err := os.ReadFile(caFile)
+		if err != nil {
+			c.optErr = fmt.Errorf("failed to read CA certificate file: %w", err)
+			return
+		}
+
+		caPool := x509.NewCertPool()
+		if !caPool.AppendCertsFromPEM(caPEM) {
+			c.optErr = fmt.Errorf("failed to parse CA certificate from %s", caFile)
+			return
+		}
+
+		if c.transport != nil {
+			// 既存の transport の TLS 設定に CA を追加
+			addCACertToTransport(c.transport, caPool)
+		} else {
+			// transport 未設定の場合は CA のみで新規作成
+			c.transport = newCertTransport(c.endpoint, nil, caPool)
+		}
+	}
+}
+
+// newCertTransport は TLS クライアント証明書認証付きの HTTPTransport を作成する。
+func newCertTransport(endpoint string, cert *tls.Certificate, rootCAs *x509.CertPool) *HTTPTransport {
+	tlsConfig := &tls.Config{}
+
+	if cert != nil {
+		tlsConfig.Certificates = []tls.Certificate{*cert}
+	}
+	if rootCAs != nil {
+		tlsConfig.RootCAs = rootCAs
+	}
+
+	httpClient := &http.Client{
+		Timeout: 60 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: tlsConfig,
+		},
+	}
+
+	return NewHTTPTransport(endpoint, httpClient)
+}
+
+// addCACertToTransport は既存の HTTPTransport の TLS 設定に CA 証明書プールを追加する。
+func addCACertToTransport(t *HTTPTransport, rootCAs *x509.CertPool) {
+	if transport, ok := t.httpClient.Transport.(*http.Transport); ok {
+		if transport.TLSClientConfig == nil {
+			transport.TLSClientConfig = &tls.Config{}
+		}
+		transport.TLSClientConfig.RootCAs = rootCAs
 	}
 }
 
