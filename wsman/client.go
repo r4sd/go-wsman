@@ -115,7 +115,7 @@ func WithCertificateConfig(cert tls.Certificate) ClientOption {
 // 未設定の場合は新しい transport を作成する。
 func WithCACert(caFile string) ClientOption {
 	return func(c *Client) {
-		caPEM, err := os.ReadFile(caFile)
+		caPEM, err := os.ReadFile(caFile) //#nosec G304 -- CA 証明書パスはユーザー指定のライブラリ API
 		if err != nil {
 			c.optErr = fmt.Errorf("failed to read CA certificate file: %w", err)
 			return
