@@ -269,3 +269,35 @@ func (c *Client) Enumerate(ctx context.Context, resourceURI string) ([]*Instance
 
 	return nil, fmt.Errorf("exceeded maximum Pull iterations (%d)", DefaultMaxPullIterations)
 }
+
+// Create は WS-Transfer Create 操作を実行する。
+// resourceURI で CIM クラスを指定し、properties で作成するインスタンスのプロパティを指定する。
+func (c *Client) Create(ctx context.Context, resourceURI string, properties map[string]string) (*CreateResponse, error) {
+	reqData, err := BuildCreateRequest(resourceURI, c.endpoint, properties)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build Create request: %w", err)
+	}
+
+	respData, err := c.transport.Send(ctx, reqData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send Create request: %w", err)
+	}
+
+	return ParseCreateResponse(respData)
+}
+
+// Delete は WS-Transfer Delete 操作を実行する。
+// resourceURI で CIM クラスを指定し、selectors でインスタンスを特定する。
+func (c *Client) Delete(ctx context.Context, resourceURI string, selectors ...Selector) error {
+	reqData, err := BuildDeleteRequest(resourceURI, c.endpoint, selectors...)
+	if err != nil {
+		return fmt.Errorf("failed to build Delete request: %w", err)
+	}
+
+	respData, err := c.transport.Send(ctx, reqData)
+	if err != nil {
+		return fmt.Errorf("failed to send Delete request: %w", err)
+	}
+
+	return ParseDeleteResponse(respData)
+}
