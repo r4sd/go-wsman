@@ -222,9 +222,10 @@ func (c *Client) Get(ctx context.Context, resourceURI string, selectors ...Selec
 
 // Enumerate は WS-Enumeration 操作を実行し、全インスタンスを返す。
 // Enumerate → Pull → EndOfSequence のサイクルを自動的に回す。
-func (c *Client) Enumerate(ctx context.Context, resourceURI string) ([]*Instance, error) {
+// opts で WQL フィルタ等を指定できる。
+func (c *Client) Enumerate(ctx context.Context, resourceURI string, opts ...EnumerateOption) ([]*Instance, error) {
 	// Step 1: Enumerate リクエスト
-	enumReqData, err := BuildEnumerateRequest(resourceURI, c.endpoint)
+	enumReqData, err := BuildEnumerateRequest(resourceURI, c.endpoint, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build Enumerate request: %w", err)
 	}
