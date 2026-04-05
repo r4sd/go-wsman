@@ -286,6 +286,24 @@ func (c *Client) Create(ctx context.Context, resourceURI string, properties map[
 	return ParseCreateResponse(respData)
 }
 
+// Invoke は CIM メソッド呼び出しを実行する。
+// resourceURI で CIM クラスの URI を指定し、methodName で呼び出すメソッド名を指定する。
+// params は入力パラメータ（nil または空の場合はパラメータなし）。
+// selectors はインスタンスメソッドの場合のインスタンス特定用 SelectorSet。
+func (c *Client) Invoke(ctx context.Context, resourceURI, methodName string, params map[string]string, selectors ...Selector) (*InvokeResponse, error) {
+	reqData, err := BuildInvokeRequest(resourceURI, c.endpoint, methodName, params, selectors...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build Invoke request: %w", err)
+	}
+
+	respData, err := c.transport.Send(ctx, reqData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send Invoke request: %w", err)
+	}
+
+	return ParseInvokeResponse(respData)
+}
+
 // Delete は WS-Transfer Delete 操作を実行する。
 // resourceURI で CIM クラスを指定し、selectors でインスタンスを特定する。
 func (c *Client) Delete(ctx context.Context, resourceURI string, selectors ...Selector) error {
