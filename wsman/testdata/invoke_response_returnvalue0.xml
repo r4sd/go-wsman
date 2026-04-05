@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wmi/root/cimv2/Win32_Service">
+  <s:Header>
+    <a:Action>http://schemas.microsoft.com/wbem/wsman/1/wmi/root/cimv2/Win32_Service/StartServiceResponse</a:Action>
+    <a:MessageID>uuid:response-invoke-001</a:MessageID>
+  </s:Header>
+  <s:Body>
+    <p:StartService_OUTPUT>
+      <p:ReturnValue>0</p:ReturnValue>
+    </p:StartService_OUTPUT>
+  </s:Body>
+</s:Envelope>
