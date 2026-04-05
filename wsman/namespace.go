@@ -28,6 +28,9 @@ const (
 
 	// NSCIMBinding は CIM Binding 名前空間
 	NSCIMBinding = "http://schemas.dmtf.org/wbem/wsman/1/cimbinding.xsd"
+
+	// DialectWQL は WQL (WMI Query Language) フィルタの Dialect URI
+	DialectWQL = "http://schemas.microsoft.com/wbem/wsman/1/WQL"
 )
 
 // WS-Transfer アクション URI

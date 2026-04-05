@@ -36,8 +36,36 @@ type PullResponse struct {
 	EndOfSequence      bool
 }
 
-// BuildEnumerateRequest は WS-Enumeration Enumerate リクエストの SOAP XML を生成する
-func BuildEnumerateRequest(resourceURI, endpoint string) ([]byte, error) {
+// EnumerateOption は Enumerate リクエストのオプション
+type EnumerateOption func(*enumerateConfig)
+
+// enumerateConfig は Enumerate リクエストの設定
+type enumerateConfig struct {
+	wqlFilter    string
+	wqlFilterSet bool // WithWQL が明示的に呼ばれたかどうか
+}
+
+// WithWQL は WQL (WMI Query Language) フィルタを設定する。
+// 例: WithWQL("SELECT * FROM Win32_Service WHERE State = 'Running'")
+func WithWQL(query string) EnumerateOption {
+	return func(cfg *enumerateConfig) {
+		cfg.wqlFilter = query
+		cfg.wqlFilterSet = true
+	}
+}
+
+// BuildEnumerateRequest は WS-Enumeration Enumerate リクエストの SOAP XML を生成する。
+// opts で WQL フィルタ等のオプションを指定できる。
+func BuildEnumerateRequest(resourceURI, endpoint string, opts ...EnumerateOption) ([]byte, error) {
+	var cfg enumerateConfig
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
+	if cfg.wqlFilterSet && cfg.wqlFilter == "" {
+		return nil, fmt.Errorf("WQL query must not be empty")
+	}
+
 	env := NewEnvelope(
 		WithAction(ActionEnumerate),
 		WithResourceURI(resourceURI),
@@ -49,10 +77,20 @@ func BuildEnumerateRequest(resourceURI, endpoint string) ([]byte, error) {
 	)
 
 	// Enumerate ボディ要素
-	body := fmt.Sprintf(
-		`<n:Enumerate xmlns:n="%s"></n:Enumerate>`,
-		NSEnumeration,
-	)
+	var body string
+	if cfg.wqlFilter != "" {
+		body = fmt.Sprintf(
+			`<n:Enumerate xmlns:n="%s"><w:Filter Dialect="%s">%s</w:Filter></n:Enumerate>`,
+			NSEnumeration,
+			DialectWQL,
+			cfg.wqlFilter,
+		)
+	} else {
+		body = fmt.Sprintf(
+			`<n:Enumerate xmlns:n="%s"></n:Enumerate>`,
+			NSEnumeration,
+		)
+	}
 	env.SetBody([]byte("\n    " + body + "\n  "))
 
 	return MarshalEnvelope(env)
