@@ -19,9 +19,12 @@ const DefaultMaxPullIterations = 1000
 
 // Client は WS-Man クライアント
 type Client struct {
-	endpoint  string
-	transport *HTTPTransport
-	optErr    error // オプション適用時のエラー（遅延チェック用）
+	endpoint    string
+	transport   *HTTPTransport
+	timeout     time.Duration // 0 の場合はデフォルト（60s）を使用、明示的に設定された場合は上書き
+	timeoutSet  bool          // WithTimeout が呼ばれたかどうか
+	retryConfig *retryConfig  // nil の場合はリトライなし
+	optErr      error         // オプション適用時のエラー（遅延チェック用）
 }
 
 // ClientOption はクライアント構築時のオプション
@@ -57,7 +60,47 @@ func NewClient(endpoint string, opts ...ClientOption) (*Client, error) {
 		c.transport = NewHTTPTransport(endpoint, nil)
 	}
 
+	// WithTimeout が呼ばれた場合、transport 確定後にタイムアウトを適用
+	if c.timeoutSet {
+		c.transport.httpClient.Timeout = c.timeout
+	}
+
+	// WithRetry が呼ばれた場合、transport 確定後にリトライ設定を適用
+	if c.retryConfig != nil {
+		c.transport.maxRetries = c.retryConfig.maxRetries
+		c.transport.retryBaseDelay = c.retryConfig.retryBaseDelay
+	}
+
 	return c, nil
+}
+
+// WithTimeout は HTTP リクエストのタイムアウトを設定する。
+// 0 を指定するとタイムアウト無制限になる。
+// WithNTLM や WithCertificate 等の他オプションと組み合わせ可能。
+// transport 確定後に適用されるため、オプションの順序に依存しない。
+func WithTimeout(d time.Duration) ClientOption {
+	return func(c *Client) {
+		c.timeout = d
+		c.timeoutSet = true
+	}
+}
+
+// WithRetry は接続エラー時のリトライ回数を設定する。
+// 指数バックオフ（1s, 2s, 4s, ...）でリトライする。
+// HTTP 4xx/5xx や SOAP Fault はリトライしない（接続エラーのみ対象）。
+func WithRetry(maxRetries int) ClientOption {
+	return func(c *Client) {
+		c.retryConfig = &retryConfig{
+			maxRetries:     maxRetries,
+			retryBaseDelay: 1 * time.Second,
+		}
+	}
+}
+
+// retryConfig はリトライ設定を保持する
+type retryConfig struct {
+	maxRetries     int
+	retryBaseDelay time.Duration
 }
 
 // WithHTTPClient はカスタム HTTP クライアントを設定する
@@ -149,10 +192,8 @@ func newCertTransport(endpoint string, cert *tls.Certificate, rootCAs *x509.Cert
 	}
 
 	httpClient := &http.Client{
-		Timeout: 60 * time.Second,
-		Transport: &http.Transport{
-			TLSClientConfig: tlsConfig,
-		},
+		Timeout:   60 * time.Second,
+		Transport: optimizedTransport(tlsConfig),
 	}
 
 	return NewHTTPTransport(endpoint, httpClient)
@@ -170,11 +211,9 @@ func addCACertToTransport(t *HTTPTransport, rootCAs *x509.CertPool) {
 
 // newNTLMTransport は NTLM 認証付きの HTTPTransport を作成する。
 func newNTLMTransport(endpoint, username, password string) *HTTPTransport {
-	baseTransport := &http.Transport{
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: true, //#nosec G402 -- WinRM は自己署名証明書が一般的
-		},
-	}
+	baseTransport := optimizedTransport(&tls.Config{
+		InsecureSkipVerify: true, //#nosec G402 -- WinRM は自己署名証明書が一般的
+	})
 
 	httpClient := &http.Client{
 		Timeout: 60 * time.Second,

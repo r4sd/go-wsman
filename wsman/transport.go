@@ -10,12 +10,25 @@ import (
 	"time"
 )
 
+// optimizedTransport は WS-Man に適したデフォルト設定の http.Transport を返す。
+// WS-Man は単一ホストに集中してリクエストするため、Go デフォルトの MaxIdleConnsPerHost=2 では不十分。
+func optimizedTransport(tlsConfig *tls.Config) *http.Transport {
+	return &http.Transport{
+		TLSClientConfig:     tlsConfig,
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 10,
+		IdleConnTimeout:     90 * time.Second,
+	}
+}
+
 // HTTPTransport は WS-Man SOAP メッセージの HTTP トランスポート
 type HTTPTransport struct {
-	endpoint   string
-	httpClient *http.Client
-	username   string
-	password   string
+	endpoint       string
+	httpClient     *http.Client
+	username       string
+	password       string
+	maxRetries     int
+	retryBaseDelay time.Duration
 }
 
 // SetCredentials は NTLM/Basic 認証用の資格情報を設定する。
@@ -31,11 +44,9 @@ func NewHTTPTransport(endpoint string, httpClient *http.Client) *HTTPTransport {
 	if httpClient == nil {
 		httpClient = &http.Client{
 			Timeout: 60 * time.Second,
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{
-					InsecureSkipVerify: true, //#nosec G402 -- WinRM は自己署名証明書が一般的
-				},
-			},
+			Transport: optimizedTransport(&tls.Config{
+				InsecureSkipVerify: true, //#nosec G402 -- WinRM は自己署名証明書が一般的
+			}),
 		}
 	}
 
@@ -48,7 +59,40 @@ func NewHTTPTransport(endpoint string, httpClient *http.Client) *HTTPTransport {
 // Send は SOAP リクエストを送信し、レスポンスボディを返す。
 // HTTP エラーの場合はエラーを返すが、SOAP Fault を含む HTTP 500 レスポンスは
 // ボディデータとして返す（Fault パースは呼び出し側の責任）。
+// maxRetries > 0 の場合、接続エラーに対して指数バックオフでリトライする。
+// HTTP 4xx/5xx やレスポンスボディ付きのエラーはリトライしない。
 func (t *HTTPTransport) Send(ctx context.Context, requestData []byte) ([]byte, error) {
+	var lastErr error
+
+	maxAttempts := 1 + t.maxRetries
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if attempt > 0 {
+			delay := t.retryBaseDelay * (1 << (attempt - 1))
+			select {
+			case <-ctx.Done():
+				return nil, fmt.Errorf("context canceled during retry: %w", ctx.Err())
+			case <-time.After(delay):
+			}
+		}
+
+		body, err := t.sendOnce(ctx, requestData)
+		if err == nil {
+			return body, nil
+		}
+
+		lastErr = err
+
+		// リトライ対象外のエラーは即座に返す
+		if !isRetryableError(err) {
+			return nil, err
+		}
+	}
+
+	return nil, lastErr
+}
+
+// sendOnce は単一の HTTP リクエストを送信する。
+func (t *HTTPTransport) sendOnce(ctx context.Context, requestData []byte) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, t.endpoint, bytes.NewReader(requestData))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create HTTP request: %w", err)
@@ -77,8 +121,28 @@ func (t *HTTPTransport) Send(ctx context.Context, requestData []byte) ([]byte, e
 	}
 
 	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("HTTP error: status code %d", resp.StatusCode)
+		return nil, &httpStatusError{statusCode: resp.StatusCode}
 	}
 
 	return body, nil
+}
+
+// httpStatusError はレスポンスボディなしの HTTP エラー（リトライ対象外）
+type httpStatusError struct {
+	statusCode int
+}
+
+func (e *httpStatusError) Error() string {
+	return fmt.Sprintf("HTTP error: status code %d", e.statusCode)
+}
+
+// isRetryableError は接続エラー等のリトライ可能なエラーかどうかを判定する。
+// HTTP ステータスエラー（4xx/5xx）はリトライしない。
+func isRetryableError(err error) bool {
+	// HTTP ステータスエラーはリトライしない
+	if _, ok := err.(*httpStatusError); ok {
+		return false
+	}
+	// それ以外の transport レベルのエラー（接続断、DNS、タイムアウト等）はリトライ対象
+	return true
 }
