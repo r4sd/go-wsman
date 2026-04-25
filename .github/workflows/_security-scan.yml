@@ -33,7 +33,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Run gosec
-        uses: securego/gosec@master
+      - name: Setup Go
+        uses: actions/setup-go@v5
         with:
-          args: ./...
+          go-version-file: go.mod
+
+      - name: Install gosec
+        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+
+      - name: Run gosec
+        run: gosec ./...
