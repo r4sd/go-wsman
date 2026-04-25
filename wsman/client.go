@@ -192,7 +192,7 @@ func newCertTransport(endpoint string, cert *tls.Certificate, rootCAs *x509.Cert
 	}
 
 	httpClient := &http.Client{
-		Timeout: 60 * time.Second,
+		Timeout:   60 * time.Second,
 		Transport: optimizedTransport(tlsConfig),
 	}
 
