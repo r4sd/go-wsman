@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd" xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_ComputerSystem">
+  <s:Header>
+    <a:Action>http://schemas.xmlsoap.org/ws/2004/09/transfer/GetResponse</a:Action>
+    <a:MessageID>uuid:response-001</a:MessageID>
+  </s:Header>
+  <s:Body>
+    <p:Msvm_ComputerSystem>
+      <p:Name>5C5E2D70-1111-2222-3333-444455556666</p:Name>
+      <p:ElementName>test-vm</p:ElementName>
+      <p:Caption>Virtual Machine</p:Caption>
+      <p:Description>Microsoft Hyper-V Virtual Machine</p:Description>
+      <p:EnabledState>2</p:EnabledState>
+      <p:HealthState>5</p:HealthState>
+      <p:InstallDate>20260101120000.000000+540</p:InstallDate>
+      <p:OnTimeInMilliseconds>3600000</p:OnTimeInMilliseconds>
+    </p:Msvm_ComputerSystem>
+  </s:Body>
+</s:Envelope>
