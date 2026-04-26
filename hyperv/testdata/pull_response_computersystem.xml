@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd" xmlns:e="http://schemas.xmlsoap.org/ws/2004/09/enumeration" xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_ComputerSystem">
+  <s:Header>
+    <a:Action>http://schemas.xmlsoap.org/ws/2004/09/enumeration/PullResponse</a:Action>
+    <a:MessageID>uuid:response-pull-001</a:MessageID>
+  </s:Header>
+  <s:Body>
+    <e:PullResponse>
+      <e:Items>
+        <p:Msvm_ComputerSystem>
+          <p:Name>11111111-aaaa-bbbb-cccc-000000000001</p:Name>
+          <p:ElementName>vm-1</p:ElementName>
+          <p:Caption>Virtual Machine</p:Caption>
+          <p:EnabledState>2</p:EnabledState>
+          <p:HealthState>5</p:HealthState>
+          <p:OnTimeInMilliseconds>3600000</p:OnTimeInMilliseconds>
+        </p:Msvm_ComputerSystem>
+        <p:Msvm_ComputerSystem>
+          <p:Name>22222222-aaaa-bbbb-cccc-000000000002</p:Name>
+          <p:ElementName>vm-2</p:ElementName>
+          <p:Caption>Virtual Machine</p:Caption>
+          <p:EnabledState>3</p:EnabledState>
+          <p:HealthState>5</p:HealthState>
+          <p:OnTimeInMilliseconds>0</p:OnTimeInMilliseconds>
+        </p:Msvm_ComputerSystem>
+      </e:Items>
+      <e:EndOfSequence/>
+    </e:PullResponse>
+  </s:Body>
+</s:Envelope>
