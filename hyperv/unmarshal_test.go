@@ -169,6 +169,45 @@ func TestUnmarshal_NilPointer(t *testing.T) {
 	}
 }
 
+// TestUnmarshal_VirtualHardDiskSettingData は VHD 設定の型変換を検証する。
+func TestUnmarshal_VirtualHardDiskSettingData(t *testing.T) {
+	props := map[string]string{
+		"InstanceID":         "Microsoft:Definition\\1\\Default",
+		"ElementName":        "vm-disk",
+		"VirtualDiskFormat":  "3",
+		"VirtualDiskType":    "3",
+		"BlockSize":          "33554432",
+		"LogicalSectorSize":  "512",
+		"PhysicalSectorSize": "4096",
+		"MaxInternalSize":    "10737418240",
+		"Path":               `C:\VMs\vm.vhdx`,
+		"ParentPath":         "",
+	}
+
+	var got Msvm_VirtualHardDiskSettingData
+	if err := Unmarshal(props, &got); err != nil {
+		t.Fatalf("Unmarshal returned error: %v", err)
+	}
+	if got.InstanceID != "Microsoft:Definition\\1\\Default" {
+		t.Errorf("InstanceID: got %q", got.InstanceID)
+	}
+	if got.ElementName != "vm-disk" {
+		t.Errorf("ElementName: got %q", got.ElementName)
+	}
+	if got.VirtualDiskFormat != VHDFormatVHDX {
+		t.Errorf("VirtualDiskFormat: got %d, want %d (VHDX)", got.VirtualDiskFormat, VHDFormatVHDX)
+	}
+	if got.VirtualDiskType != VHDTypeDynamic {
+		t.Errorf("VirtualDiskType: got %d, want %d (Dynamic)", got.VirtualDiskType, VHDTypeDynamic)
+	}
+	if got.MaxInternalSize != 10737418240 {
+		t.Errorf("MaxInternalSize: got %d", got.MaxInternalSize)
+	}
+	if got.Path != `C:\VMs\vm.vhdx` {
+		t.Errorf("Path: got %q", got.Path)
+	}
+}
+
 func contains(s, sub string) bool {
 	for i := 0; i+len(sub) <= len(s); i++ {
 		if s[i:i+len(sub)] == sub {
