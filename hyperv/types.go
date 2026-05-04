@@ -52,3 +52,74 @@ type Msvm_VirtualHardDiskSettingData struct {
 	Path               string `cim:"Path"`               // VHD ファイルパス
 	ParentPath         string `cim:"ParentPath"`         // 差分ディスクの親ファイル
 }
+
+// VirtualSystemType 定数（Msvm_VirtualSystemSettingData.VirtualSystemType）
+//
+// 同一 VM に対して複数の SettingData が存在する。VM の現在の構成を取得するには
+// Realized を使う（Snapshot/Planned はチェックポイント・予定設定の表現）。
+const (
+	VirtualSystemTypeRealized         = "Microsoft:Hyper-V:System:Realized"
+	VirtualSystemTypeSnapshotRealized = "Microsoft:Hyper-V:System:Snapshot:Realized"
+	VirtualSystemTypePlanned          = "Microsoft:Hyper-V:System:Planned"
+)
+
+// VirtualSystemSubType 定数（Msvm_VirtualSystemSettingData.VirtualSystemSubType）
+//
+// Hyper-V の世代を表す。Generation 2 は UEFI ブート対応。
+const (
+	VirtualSystemSubTypeGen1 = "Microsoft:Hyper-V:SubType:1"
+	VirtualSystemSubTypeGen2 = "Microsoft:Hyper-V:SubType:2"
+)
+
+// AutomaticStartupAction 定数（CIM 仕様）
+const (
+	AutomaticStartupActionNone                       uint16 = 2
+	AutomaticStartupActionRestartIfPreviouslyRunning uint16 = 3
+	AutomaticStartupActionAlways                     uint16 = 4
+)
+
+// AutomaticShutdownAction 定数（CIM 仕様）
+const (
+	AutomaticShutdownActionTurnOff   uint16 = 2
+	AutomaticShutdownActionSaveState uint16 = 3
+	AutomaticShutdownActionShutDown  uint16 = 4
+)
+
+// AutomaticRecoveryAction 定数（CIM 仕様）
+const (
+	AutomaticRecoveryActionNone             uint16 = 2
+	AutomaticRecoveryActionRestart          uint16 = 3
+	AutomaticRecoveryActionRevertToSnapshot uint16 = 4
+)
+
+// Msvm_VirtualSystemSettingData は VM の構成設定を表す CIM クラス。
+// 1 つの VM（Msvm_ComputerSystem）に対して、Realized / Snapshot:Realized 等
+// 複数の SettingData が紐づく。VM の現在構成は VirtualSystemType="Realized" のもの。
+//
+// 配列プロパティ（BootSourceOrder, Notes 等）は Phase 1 では未対応のため除外。
+type Msvm_VirtualSystemSettingData struct {
+	InstanceID                  string `cim:"InstanceID"`
+	ElementName                 string `cim:"ElementName"`             // VM 表示名
+	Caption                     string `cim:"Caption"`
+	Description                 string `cim:"Description"`
+	VirtualSystemIdentifier     string `cim:"VirtualSystemIdentifier"` // VM GUID（Msvm_ComputerSystem.Name と一致）
+	VirtualSystemType           string `cim:"VirtualSystemType"`       // "Microsoft:Hyper-V:System:Realized" 等
+	VirtualSystemSubType        string `cim:"VirtualSystemSubType"`    // "Microsoft:Hyper-V:SubType:1" or :2
+	ConfigurationID             string `cim:"ConfigurationID"`         // 永続的な構成 ID
+	ConfigurationDataRoot       string `cim:"ConfigurationDataRoot"`
+	ConfigurationFile           string `cim:"ConfigurationFile"`
+	SnapshotDataRoot            string `cim:"SnapshotDataRoot"`
+	SuspendDataRoot             string `cim:"SuspendDataRoot"`
+	SwapFileDataRoot            string `cim:"SwapFileDataRoot"`
+	LogDataRoot                 string `cim:"LogDataRoot"`
+	AutomaticStartupAction      uint16 `cim:"AutomaticStartupAction"`
+	AutomaticStartupActionDelay string `cim:"AutomaticStartupActionDelay"` // CIM Duration（文字列）
+	AutomaticShutdownAction     uint16 `cim:"AutomaticShutdownAction"`
+	AutomaticRecoveryAction     uint16 `cim:"AutomaticRecoveryAction"`
+	BIOSGUID                    string `cim:"BIOSGUID"`
+	BIOSNumLock                 bool   `cim:"BIOSNumLock"`
+	SecureBoot                  bool   `cim:"SecureBoot"`
+	SecureBootTemplateId        string `cim:"SecureBootTemplateId"`
+	Version                     string `cim:"Version"`      // 構成バージョン（例: "10.0"）
+	CreationTime                string `cim:"CreationTime"` // CIM DateTime（文字列）
+}

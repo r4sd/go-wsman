@@ -123,3 +123,59 @@ func TestIntegration_GetComputerSystem(t *testing.T) {
 		t.Errorf("ElementName mismatch: got %q, want %q", got.ElementName, target.ElementName)
 	}
 }
+
+// TestIntegration_ListSystemSettingData は実機から全 VM の Realized 構成を取得する。
+func TestIntegration_ListSystemSettingData(t *testing.T) {
+	client := getIntegrationClient(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	settings, err := client.ListSystemSettingData(ctx)
+	if err != nil {
+		t.Fatalf("ListSystemSettingData failed: %v", err)
+	}
+	if len(settings) == 0 {
+		t.Skip("Hyper-V ホストに VM が存在しない（テストの前提を満たさない）")
+	}
+
+	t.Logf("SettingData 件数: %d", len(settings))
+	for _, s := range settings {
+		t.Logf("  VM=%s SubType=%s StartupAction=%d Version=%s",
+			s.ElementName, s.VirtualSystemSubType, s.AutomaticStartupAction, s.Version)
+		if s.VirtualSystemType != VirtualSystemTypeRealized {
+			t.Errorf("VirtualSystemType=%q, want Realized only", s.VirtualSystemType)
+		}
+		if s.VirtualSystemIdentifier == "" {
+			t.Errorf("VirtualSystemIdentifier が空: %+v", s)
+		}
+	}
+}
+
+// TestIntegration_GetSystemSettingData は ListComputerSystems で取得した最初の VM の
+// SettingData を WQL ベースで取得する。
+func TestIntegration_GetSystemSettingData(t *testing.T) {
+	client := getIntegrationClient(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	vms, err := client.ListComputerSystems(ctx)
+	if err != nil {
+		t.Fatalf("ListComputerSystems failed: %v", err)
+	}
+	if len(vms) == 0 {
+		t.Skip("Hyper-V ホストに VM が存在しない")
+	}
+
+	target := vms[0]
+	got, err := client.GetSystemSettingData(ctx, target.Name)
+	if err != nil {
+		t.Fatalf("GetSystemSettingData(%s) failed: %v", target.Name, err)
+	}
+
+	if got.VirtualSystemIdentifier != target.Name {
+		t.Errorf("VirtualSystemIdentifier mismatch: got %s, want %s", got.VirtualSystemIdentifier, target.Name)
+	}
+	if got.VirtualSystemType != VirtualSystemTypeRealized {
+		t.Errorf("VirtualSystemType: got %q, want Realized", got.VirtualSystemType)
+	}
+}
