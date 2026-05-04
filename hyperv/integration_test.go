@@ -66,6 +66,36 @@ func TestIntegration_ListComputerSystems(t *testing.T) {
 	}
 }
 
+// TestIntegration_GetVirtualHardDisk は環境変数で指定された VHD ファイルの設定を取得する。
+//
+// 追加環境変数:
+//   - HYPERV_TEST_VHD_PATH: 既存 VHD ファイルのフルパス（例: "C:\\VMs\\test.vhdx"）
+func TestIntegration_GetVirtualHardDisk(t *testing.T) {
+	client := getIntegrationClient(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	path := os.Getenv("HYPERV_TEST_VHD_PATH")
+	if path == "" {
+		t.Skip("HYPERV_TEST_VHD_PATH 未設定（既存 VHD のフルパスを指定）")
+	}
+
+	settings, err := client.GetVirtualHardDisk(ctx, path)
+	if err != nil {
+		t.Fatalf("GetVirtualHardDisk(%s) failed: %v", path, err)
+	}
+
+	t.Logf("VHD %s: Format=%d Type=%d MaxSize=%d", settings.Path,
+		settings.VirtualDiskFormat, settings.VirtualDiskType, settings.MaxInternalSize)
+
+	if settings.Path != path {
+		t.Errorf("Path mismatch: got %q, want %q", settings.Path, path)
+	}
+	if settings.VirtualDiskFormat == VHDFormatUnknown {
+		t.Errorf("VirtualDiskFormat is Unknown")
+	}
+}
+
 // TestIntegration_GetComputerSystem は ListComputerSystems で取得した最初の VM を Get で再取得する。
 func TestIntegration_GetComputerSystem(t *testing.T) {
 	client := getIntegrationClient(t)
