@@ -99,7 +99,7 @@ const (
 // 配列プロパティ（BootSourceOrder, Notes 等）は Phase 1 では未対応のため除外。
 type Msvm_VirtualSystemSettingData struct {
 	InstanceID                  string `cim:"InstanceID"`
-	ElementName                 string `cim:"ElementName"`             // VM 表示名
+	ElementName                 string `cim:"ElementName"` // VM 表示名
 	Caption                     string `cim:"Caption"`
 	Description                 string `cim:"Description"`
 	VirtualSystemIdentifier     string `cim:"VirtualSystemIdentifier"` // VM GUID（Msvm_ComputerSystem.Name と一致）
