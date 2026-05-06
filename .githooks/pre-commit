@@ -1,0 +1,51 @@
+#!/bin/sh
+#
+# pre-commit hook: gofmt + go vet チェック
+#
+# 役割:
+#   - ステージされた .go ファイルが gofmt 整形済みか検証
+#   - 違反があればコミットを中断し、修正コマンドを提示
+#   - go vet で軽量な静的検査も実行
+#
+# 緊急時のスキップ:
+#   git commit --no-verify
+#
+# 仕組み:
+#   git diff --cached --name-only --diff-filter=ACMR
+#     ACMR = Added / Copied / Modified / Renamed (Deleted は除外)
+
+set -e
+
+RED=$(printf '\033[0;31m')
+GREEN=$(printf '\033[0;32m')
+YELLOW=$(printf '\033[0;33m')
+NC=$(printf '\033[0m')
+
+# ステージされた Go ファイルを抽出
+files=$(git diff --cached --name-only --diff-filter=ACMR | grep '\.go$' || true)
+
+if [ -z "$files" ]; then
+	exit 0
+fi
+
+# gofmt チェック
+unformatted=$(gofmt -l $files)
+if [ -n "$unformatted" ]; then
+	echo "${RED}✗ gofmt が必要なファイルがあります:${NC}"
+	echo "$unformatted" | sed 's/^/  /'
+	echo ""
+	echo "${YELLOW}修正コマンド:${NC}"
+	echo "  gofmt -w $unformatted"
+	echo ""
+	echo "${YELLOW}スキップする場合:${NC} git commit --no-verify"
+	exit 1
+fi
+
+# go vet (パッケージ単位で実行、軽量)
+if ! go vet ./... 2>&1; then
+	echo "${RED}✗ go vet が失敗しました${NC}"
+	exit 1
+fi
+
+echo "${GREEN}✓ pre-commit checks passed${NC}"
+exit 0
