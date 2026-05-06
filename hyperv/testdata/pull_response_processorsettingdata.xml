@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:e="http://schemas.xmlsoap.org/ws/2004/09/enumeration" xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_ProcessorSettingData">
+  <s:Header>
+    <a:Action>http://schemas.xmlsoap.org/ws/2004/09/enumeration/PullResponse</a:Action>
+    <a:MessageID>uuid:pull-cpu-001</a:MessageID>
+  </s:Header>
+  <s:Body>
+    <e:PullResponse>
+      <e:Items>
+        <p:Msvm_ProcessorSettingData>
+          <p:InstanceID>Microsoft:11111111-aaaa-bbbb-cccc-000000000001\509E3A23-242E-46B3-B7C5-9C2C82D0CE85</p:InstanceID>
+          <p:ElementName>Processor</p:ElementName>
+          <p:ResourceType>3</p:ResourceType>
+          <p:VirtualQuantity>2</p:VirtualQuantity>
+          <p:Reservation>0</p:Reservation>
+          <p:Limit>100000</p:Limit>
+          <p:Weight>100</p:Weight>
+          <p:LimitProcessorFeatures>FALSE</p:LimitProcessorFeatures>
+          <p:LimitCPUID>FALSE</p:LimitCPUID>
+          <p:ExposeVirtualizationExtensions>FALSE</p:ExposeVirtualizationExtensions>
+        </p:Msvm_ProcessorSettingData>
+      </e:Items>
+      <e:EndOfSequence/>
+    </e:PullResponse>
+  </s:Body>
+</s:Envelope>

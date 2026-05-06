@@ -97,6 +97,72 @@ func TestIntegration_GetVirtualHardDisk(t *testing.T) {
 	}
 }
 
+// TestIntegration_GetMemoryAndProcessorSettings は ListComputerSystems で取得した最初の
+// VM のメモリ・CPU 設定を読み取る (read-only)。
+func TestIntegration_GetMemoryAndProcessorSettings(t *testing.T) {
+	client := getIntegrationClient(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	vms, err := client.ListComputerSystems(ctx)
+	if err != nil {
+		t.Fatalf("ListComputerSystems: %v", err)
+	}
+	if len(vms) == 0 {
+		t.Skip("Hyper-V ホストに VM が存在しない")
+	}
+	target := vms[0]
+
+	mem, err := client.GetMemorySettings(ctx, target.Name)
+	if err != nil {
+		t.Fatalf("GetMemorySettings: %v", err)
+	}
+	cpu, err := client.GetProcessorSettings(ctx, target.Name)
+	if err != nil {
+		t.Fatalf("GetProcessorSettings: %v", err)
+	}
+	t.Logf("VM %q: Memory=%dMB DynamicEnabled=%v / vCPU=%d Limit=%d ExposeVirt=%v",
+		target.ElementName, mem.VirtualQuantity, mem.DynamicMemoryEnabled,
+		cpu.VirtualQuantity, cpu.Limit, cpu.ExposeVirtualizationExtensions)
+
+	if mem.ResourceType != ResourceTypeMemory {
+		t.Errorf("Memory.ResourceType: got %d, want %d", mem.ResourceType, ResourceTypeMemory)
+	}
+	if cpu.ResourceType != ResourceTypeProcessor {
+		t.Errorf("Processor.ResourceType: got %d, want %d", cpu.ResourceType, ResourceTypeProcessor)
+	}
+}
+
+// TestIntegration_SetMemorySettings は対象 VM のメモリ設定を読み取り、同じ値で
+// 書き戻す (no-op 相当)。CIM 経由の Modify が動作することを確認する。
+//
+// HYPERV_TEST_ALLOW_MUTATION + HYPERV_TEST_TARGET_VM_NAME が必要。
+func TestIntegration_SetMemorySettings(t *testing.T) {
+	if os.Getenv("HYPERV_TEST_ALLOW_MUTATION") == "" {
+		t.Skip("HYPERV_TEST_ALLOW_MUTATION 未設定")
+	}
+	target := os.Getenv("HYPERV_TEST_TARGET_VM_NAME")
+	if target == "" {
+		t.Skip("HYPERV_TEST_TARGET_VM_NAME 未設定")
+	}
+
+	client := getIntegrationClient(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	mem, err := client.GetMemorySettings(ctx, target)
+	if err != nil {
+		t.Fatalf("GetMemorySettings: %v", err)
+	}
+	t.Logf("Before: VirtualQuantity=%d Weight=%d", mem.VirtualQuantity, mem.Weight)
+
+	jobRef, err := client.SetMemorySettings(ctx, mem)
+	if err != nil {
+		t.Fatalf("SetMemorySettings: %v", err)
+	}
+	t.Logf("ModifyResourceSettings Job: %s", jobRef)
+}
+
 // TestIntegration_RequestStateChange は環境変数で指定された VM に対して
 // 状態遷移を要求する。
 //
