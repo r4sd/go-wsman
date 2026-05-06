@@ -96,6 +96,53 @@ func TestIntegration_GetVirtualHardDisk(t *testing.T) {
 	}
 }
 
+// TestIntegration_RequestStateChange は環境変数で指定された VM に対して
+// 状態遷移を要求する。
+//
+// HYPERV_TEST_TARGET_VM_NAME に対象 VM の Name (GUID) を指定する。
+// VM の現在の状態に応じて、安全な遷移先 (Stopped→Start→Save) を選んでテストする。
+//
+// HYPERV_TEST_ALLOW_MUTATION が未設定の場合はスキップ (実 VM の状態を変えるため)。
+func TestIntegration_RequestStateChange(t *testing.T) {
+	if os.Getenv("HYPERV_TEST_ALLOW_MUTATION") == "" {
+		t.Skip("HYPERV_TEST_ALLOW_MUTATION 未設定（VM の状態遷移を伴う破壊的テスト）")
+	}
+	target := os.Getenv("HYPERV_TEST_TARGET_VM_NAME")
+	if target == "" {
+		t.Skip("HYPERV_TEST_TARGET_VM_NAME 未設定（対象 VM の GUID を指定）")
+	}
+
+	client := getIntegrationClient(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	// 現状取得
+	vm, err := client.GetComputerSystem(ctx, target)
+	if err != nil {
+		t.Fatalf("GetComputerSystem: %v", err)
+	}
+	t.Logf("Target VM %q: 現在 EnabledState=%d", vm.ElementName, vm.EnabledState)
+
+	// 安全な遷移: Disabled (停止中) なら Start を要求
+	// それ以外は Save を要求 (Save なら復帰可能)
+	var jobRef string
+	switch vm.EnabledState {
+	case EnabledStateDisabled:
+		t.Log("Disabled → Start を要求")
+		jobRef, err = client.StartVM(ctx, target)
+	case EnabledStateEnabled:
+		t.Log("Enabled → Save を要求")
+		jobRef, err = client.SaveVM(ctx, target)
+	default:
+		t.Skipf("EnabledState=%d はテスト対象外 (Disabled/Enabled のみテスト)", vm.EnabledState)
+	}
+
+	if err != nil {
+		t.Fatalf("RequestStateChange failed: %v", err)
+	}
+	t.Logf("Job 開始: %s", jobRef)
+}
+
 // TestIntegration_GetComputerSystem は ListComputerSystems で取得した最初の VM を Get で再取得する。
 func TestIntegration_GetComputerSystem(t *testing.T) {
 	client := getIntegrationClient(t)
