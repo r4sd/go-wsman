@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd" xmlns:e="http://schemas.xmlsoap.org/ws/2004/09/enumeration" xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_VirtualSystemSettingData">
+  <s:Header>
+    <a:Action>http://schemas.xmlsoap.org/ws/2004/09/enumeration/PullResponse</a:Action>
+    <a:MessageID>uuid:response-pull-vssd-001</a:MessageID>
+  </s:Header>
+  <s:Body>
+    <e:PullResponse>
+      <e:Items>
+        <p:Msvm_VirtualSystemSettingData>
+          <p:InstanceID>Microsoft:11111111-aaaa-bbbb-cccc-000000000001</p:InstanceID>
+          <p:ElementName>vm-1</p:ElementName>
+          <p:VirtualSystemIdentifier>11111111-aaaa-bbbb-cccc-000000000001</p:VirtualSystemIdentifier>
+          <p:VirtualSystemType>Microsoft:Hyper-V:System:Realized</p:VirtualSystemType>
+          <p:VirtualSystemSubType>Microsoft:Hyper-V:SubType:2</p:VirtualSystemSubType>
+          <p:ConfigurationID>11111111-aaaa-bbbb-cccc-000000000001</p:ConfigurationID>
+          <p:AutomaticStartupAction>3</p:AutomaticStartupAction>
+          <p:AutomaticShutdownAction>3</p:AutomaticShutdownAction>
+          <p:AutomaticRecoveryAction>2</p:AutomaticRecoveryAction>
+          <p:SecureBoot>TRUE</p:SecureBoot>
+          <p:Version>10.0</p:Version>
+        </p:Msvm_VirtualSystemSettingData>
+        <p:Msvm_VirtualSystemSettingData>
+          <p:InstanceID>Microsoft:22222222-aaaa-bbbb-cccc-000000000002</p:InstanceID>
+          <p:ElementName>vm-2</p:ElementName>
+          <p:VirtualSystemIdentifier>22222222-aaaa-bbbb-cccc-000000000002</p:VirtualSystemIdentifier>
+          <p:VirtualSystemType>Microsoft:Hyper-V:System:Realized</p:VirtualSystemType>
+          <p:VirtualSystemSubType>Microsoft:Hyper-V:SubType:1</p:VirtualSystemSubType>
+          <p:ConfigurationID>22222222-aaaa-bbbb-cccc-000000000002</p:ConfigurationID>
+          <p:AutomaticStartupAction>2</p:AutomaticStartupAction>
+          <p:AutomaticShutdownAction>2</p:AutomaticShutdownAction>
+          <p:AutomaticRecoveryAction>2</p:AutomaticRecoveryAction>
+          <p:SecureBoot>FALSE</p:SecureBoot>
+          <p:Version>9.0</p:Version>
+        </p:Msvm_VirtualSystemSettingData>
+      </e:Items>
+      <e:EndOfSequence/>
+    </e:PullResponse>
+  </s:Body>
+</s:Envelope>
