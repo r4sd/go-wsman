@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:e="http://schemas.xmlsoap.org/ws/2004/09/enumeration">
+  <s:Header>
+    <a:Action>http://schemas.xmlsoap.org/ws/2004/09/enumeration/EnumerateResponse</a:Action>
+    <a:MessageID>uuid:enum-extnic-001</a:MessageID>
+  </s:Header>
+  <s:Body>
+    <e:EnumerateResponse>
+      <e:EnumerationContext>uuid:extnic-context-001</e:EnumerationContext>
+    </e:EnumerateResponse>
+  </s:Body>
+</s:Envelope>

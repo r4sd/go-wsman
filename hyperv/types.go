@@ -156,14 +156,33 @@ type Msvm_ProcessorSettingData struct {
 }
 
 // Msvm_VirtualEthernetSwitch は Hyper-V 仮想スイッチを表す CIM クラス。
-//
-// Phase 4 part 2 では NIC をスイッチに接続するための read-only 取得のみ実装。
-// スイッチ作成・削除は Phase 5 で扱う。
 type Msvm_VirtualEthernetSwitch struct {
 	Name        string `cim:"Name"`        // スイッチ GUID
 	ElementName string `cim:"ElementName"` // 表示名 (terraform でいう switch_name)
 	Description string `cim:"Description"`
 	HealthState uint16 `cim:"HealthState"` // 5=OK
+}
+
+// Msvm_VirtualEthernetSwitchSettingData は仮想スイッチの構成設定。
+//
+// CreateSwitch 時に Embedded Instance として送信する。
+type Msvm_VirtualEthernetSwitchSettingData struct {
+	InstanceID   string `cim:"InstanceID"`
+	ElementName  string `cim:"ElementName"`  // スイッチ表示名
+	Notes        string `cim:"Notes"`        // 配列だが Phase 5 では単一値で扱う
+	IOVPreferred bool   `cim:"IOVPreferred"` // SR-IOV 優先
+}
+
+// Msvm_ExternalEthernetPort は Hyper-V ホストの物理 NIC を表す。
+//
+// External Switch を作成するときに、接続先となる物理 NIC を識別するために使う。
+// read-only。
+type Msvm_ExternalEthernetPort struct {
+	Name             string `cim:"Name"`             // GUID
+	ElementName      string `cim:"ElementName"`      // 表示名 (例: "Realtek Gaming 2.5GbE")
+	DeviceID         string `cim:"DeviceID"`         // 物理デバイス ID
+	PermanentAddress string `cim:"PermanentAddress"` // 永続 MAC アドレス
+	IsBound          bool   `cim:"IsBound"`          // 既にスイッチに紐付け済みか
 }
 
 // Msvm_SyntheticEthernetPortSettingData は VM の合成 NIC 設定を表す CIM クラス。

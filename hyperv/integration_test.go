@@ -497,3 +497,67 @@ func TestIntegration_AttachDetachVHD(t *testing.T) {
 	}
 	t.Logf("Detach Job: %s", jobRef)
 }
+
+// TestIntegration_ListExternalEthernetPorts は実機ホストの物理 NIC 一覧を取得する。
+func TestIntegration_ListExternalEthernetPorts(t *testing.T) {
+	client := getIntegrationClient(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	ports, err := client.ListExternalEthernetPorts(ctx)
+	if err != nil {
+		t.Fatalf("ListExternalEthernetPorts: %v", err)
+	}
+	t.Logf("物理 NIC 件数: %d", len(ports))
+	for _, p := range ports {
+		t.Logf("  Name=%s Element=%q Bound=%v MAC=%s", p.Name, p.ElementName, p.IsBound, p.PermanentAddress)
+	}
+}
+
+// TestIntegration_CreateDestroyPrivateSwitch は Private Switch の作成→削除を検証する。
+//
+// HYPERV_TEST_ALLOW_MUTATION 必須。
+func TestIntegration_CreateDestroyPrivateSwitch(t *testing.T) {
+	if os.Getenv("HYPERV_TEST_ALLOW_MUTATION") == "" {
+		t.Skip("HYPERV_TEST_ALLOW_MUTATION 未設定")
+	}
+
+	client := getIntegrationClient(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	name := fmt.Sprintf("go-wsman-private-%d", time.Now().UnixNano())
+	t.Logf("Creating Private switch: %s", name)
+	result, err := client.CreateSwitch(ctx, CreateSwitchOptions{
+		Name: name,
+		Type: SwitchTypePrivate,
+	})
+	if err != nil {
+		t.Fatalf("CreateSwitch: %v", err)
+	}
+	t.Logf("Created: SwitchRef=%s", result.SwitchRef)
+
+	// 後始末
+	defer func() {
+		t.Logf("Destroying switch: %s", name)
+		if _, err := client.DestroySwitch(ctx, name); err != nil {
+			t.Logf("DestroySwitch (cleanup) failed: %v", err)
+		}
+	}()
+
+	// List で確認
+	switches, err := client.ListVirtualEthernetSwitches(ctx)
+	if err != nil {
+		t.Fatalf("ListVirtualEthernetSwitches: %v", err)
+	}
+	found := false
+	for _, sw := range switches {
+		if sw.ElementName == name {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("created switch %s not found", name)
+	}
+}

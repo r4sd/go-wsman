@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:e="http://schemas.xmlsoap.org/ws/2004/09/enumeration" xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_ExternalEthernetPort">
+  <s:Header>
+    <a:Action>http://schemas.xmlsoap.org/ws/2004/09/enumeration/PullResponse</a:Action>
+    <a:MessageID>uuid:pull-extnic-001</a:MessageID>
+  </s:Header>
+  <s:Body>
+    <e:PullResponse>
+      <e:Items>
+        <p:Msvm_ExternalEthernetPort>
+          <p:Name>CCCCCCCC-3333-3333-3333-CCCCCCCCCCCC</p:Name>
+          <p:ElementName>Realtek Gaming 2.5GbE</p:ElementName>
+          <p:DeviceID>Microsoft:CCCCCCCC-3333-3333-3333-CCCCCCCCCCCC</p:DeviceID>
+          <p:PermanentAddress>00155D000001</p:PermanentAddress>
+          <p:IsBound>FALSE</p:IsBound>
+        </p:Msvm_ExternalEthernetPort>
+        <p:Msvm_ExternalEthernetPort>
+          <p:Name>DDDDDDDD-4444-4444-4444-DDDDDDDDDDDD</p:Name>
+          <p:ElementName>Intel WiFi 6E AX211</p:ElementName>
+          <p:DeviceID>Microsoft:DDDDDDDD-4444-4444-4444-DDDDDDDDDDDD</p:DeviceID>
+          <p:PermanentAddress>00155D000002</p:PermanentAddress>
+          <p:IsBound>TRUE</p:IsBound>
+        </p:Msvm_ExternalEthernetPort>
+      </e:Items>
+      <e:EndOfSequence/>
+    </e:PullResponse>
+  </s:Body>
+</s:Envelope>
