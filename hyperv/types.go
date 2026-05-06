@@ -92,6 +92,49 @@ const (
 	AutomaticRecoveryActionRevertToSnapshot uint16 = 4
 )
 
+// ResourceType 定数（CIM_ResourceAllocationSettingData.ResourceType）
+//
+// VM に紐づくリソース種別を表す。Phase 4 で扱うリソースに対応する値のみ列挙する。
+const (
+	ResourceTypeProcessor       uint16 = 3  // CPU
+	ResourceTypeMemory          uint16 = 4  // メモリ
+	ResourceTypeEthernetAdapter uint16 = 10 // NIC (Synthetic Ethernet Port)
+	ResourceTypeDiskDrive       uint16 = 17 // ディスクドライブ
+	ResourceTypeDVDDrive        uint16 = 16 // DVD ドライブ (Virtual DVD)
+	ResourceTypeStorageExtent   uint16 = 31 // ストレージ (VHD アタッチ)
+)
+
+// Msvm_MemorySettingData は VM のメモリ設定を表す CIM クラス。
+//
+// VM 作成時に Hyper-V がデフォルト値で初期化する。変更は ModifyResourceSettings
+// 経由で行う (本パッケージの SetMemorySettings ヘルパーを利用)。
+type Msvm_MemorySettingData struct {
+	InstanceID           string `cim:"InstanceID"`
+	ElementName          string `cim:"ElementName"`
+	ResourceType         uint16 `cim:"ResourceType"`         // 4 = Memory
+	VirtualQuantity      uint64 `cim:"VirtualQuantity"`      // 割り当てメモリ (MB)
+	DynamicMemoryEnabled bool   `cim:"DynamicMemoryEnabled"` // 動的メモリ
+	Reservation          uint64 `cim:"Reservation"`          // 最小メモリ (MB)
+	Limit                uint64 `cim:"Limit"`                // 最大メモリ (MB)
+	Weight               uint32 `cim:"Weight"`               // メモリ重み (1〜10000、デフォルト 5000)
+}
+
+// Msvm_ProcessorSettingData は VM の CPU 設定を表す CIM クラス。
+//
+// VM 作成時に Hyper-V がデフォルト値 (1 vCPU 等) で初期化する。
+type Msvm_ProcessorSettingData struct {
+	InstanceID                     string `cim:"InstanceID"`
+	ElementName                    string `cim:"ElementName"`
+	ResourceType                   uint16 `cim:"ResourceType"`                   // 3 = Processor
+	VirtualQuantity                uint64 `cim:"VirtualQuantity"`                // vCPU 数
+	Reservation                    uint64 `cim:"Reservation"`                    // CPU 予約 (0〜100000、% × 1000)
+	Limit                          uint64 `cim:"Limit"`                          // CPU 上限 (0〜100000、デフォルト 100000)
+	Weight                         uint32 `cim:"Weight"`                         // CPU 重み (デフォルト 100)
+	LimitProcessorFeatures         bool   `cim:"LimitProcessorFeatures"`         // 機能制限 (移行時の互換性)
+	LimitCPUID                     bool   `cim:"LimitCPUID"`                     // CPUID 制限
+	ExposeVirtualizationExtensions bool   `cim:"ExposeVirtualizationExtensions"` // ネステッド仮想化
+}
+
 // Msvm_VirtualSystemSettingData は VM の構成設定を表す CIM クラス。
 // 1 つの VM（Msvm_ComputerSystem）に対して、Realized / Snapshot:Realized 等
 // 複数の SettingData が紐づく。VM の現在構成は VirtualSystemType="Realized" のもの。

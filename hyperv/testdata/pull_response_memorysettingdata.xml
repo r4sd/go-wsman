@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:e="http://schemas.xmlsoap.org/ws/2004/09/enumeration" xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_MemorySettingData">
+  <s:Header>
+    <a:Action>http://schemas.xmlsoap.org/ws/2004/09/enumeration/PullResponse</a:Action>
+    <a:MessageID>uuid:pull-mem-001</a:MessageID>
+  </s:Header>
+  <s:Body>
+    <e:PullResponse>
+      <e:Items>
+        <p:Msvm_MemorySettingData>
+          <p:InstanceID>Microsoft:11111111-aaaa-bbbb-cccc-000000000001\F4DA67D7-E2DB-4D3B-A3A8-7F8B0DF0AB21</p:InstanceID>
+          <p:ElementName>Memory</p:ElementName>
+          <p:ResourceType>4</p:ResourceType>
+          <p:VirtualQuantity>2048</p:VirtualQuantity>
+          <p:DynamicMemoryEnabled>FALSE</p:DynamicMemoryEnabled>
+          <p:Reservation>2048</p:Reservation>
+          <p:Limit>1048576</p:Limit>
+          <p:Weight>5000</p:Weight>
+        </p:Msvm_MemorySettingData>
+      </e:Items>
+      <e:EndOfSequence/>
+    </e:PullResponse>
+  </s:Body>
+</s:Envelope>

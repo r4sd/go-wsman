@@ -330,8 +330,28 @@ func (c *Client) Create(ctx context.Context, resourceURI string, properties map[
 // resourceURI で CIM クラスの URI を指定し、methodName で呼び出すメソッド名を指定する。
 // params は入力パラメータ（nil または空の場合はパラメータなし）。
 // selectors はインスタンスメソッドの場合のインスタンス特定用 SelectorSet。
+//
+// 同名要素を複数値で送る配列パラメータが必要な場合は InvokeMulti を使う。
 func (c *Client) Invoke(ctx context.Context, resourceURI, methodName string, params map[string]string, selectors ...Selector) (*InvokeResponse, error) {
 	reqData, err := BuildInvokeRequest(resourceURI, c.endpoint, methodName, params, selectors...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build Invoke request: %w", err)
+	}
+
+	respData, err := c.transport.Send(ctx, reqData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send Invoke request: %w", err)
+	}
+
+	return ParseInvokeResponse(respData)
+}
+
+// InvokeMulti は []Param を受け取る CIM メソッド呼び出しを実行する。
+//
+// 同名要素を複数値で送る配列パラメータ (例: AddResourceSettings の ResourceSettings[])
+// が必要な場合に使う。params の順序がそのまま XML の出現順になる。
+func (c *Client) InvokeMulti(ctx context.Context, resourceURI, methodName string, params []Param, selectors ...Selector) (*InvokeResponse, error) {
+	reqData, err := BuildInvokeRequestMulti(resourceURI, c.endpoint, methodName, params, selectors...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build Invoke request: %w", err)
 	}

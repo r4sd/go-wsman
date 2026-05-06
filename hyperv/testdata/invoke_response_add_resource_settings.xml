@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_VirtualSystemManagementService">
+  <s:Header>
+    <a:Action>http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_VirtualSystemManagementService/AddResourceSettingsResponse</a:Action>
+    <a:MessageID>uuid:response-add-rs-001</a:MessageID>
+  </s:Header>
+  <s:Body>
+    <p:AddResourceSettings_OUTPUT>
+      <p:ResultingResourceSettings>
+        <a:EndpointReference>
+          <a:Address>http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</a:Address>
+          <a:ReferenceParameters>
+            <w:ResourceURI xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd">http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_SyntheticEthernetPortSettingData</w:ResourceURI>
+            <w:SelectorSet xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd">
+              <w:Selector Name="InstanceID">Microsoft:11111111-aaaa-bbbb-cccc-000000000001\NEW-NIC-001</w:Selector>
+            </w:SelectorSet>
+          </a:ReferenceParameters>
+        </a:EndpointReference>
+      </p:ResultingResourceSettings>
+      <p:Job>
+        <a:EndpointReference>
+          <a:Address>http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</a:Address>
+          <a:ReferenceParameters>
+            <w:ResourceURI xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd">http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_ConcreteJob</w:ResourceURI>
+            <w:SelectorSet xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd">
+              <w:Selector Name="InstanceID">3A1B2C44-1111-2222-3333-AABBCCDDEEFF</w:Selector>
+            </w:SelectorSet>
+          </a:ReferenceParameters>
+        </a:EndpointReference>
+      </p:Job>
+      <p:ReturnValue>4096</p:ReturnValue>
+    </p:AddResourceSettings_OUTPUT>
+  </s:Body>
+</s:Envelope>

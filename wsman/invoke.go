@@ -29,18 +29,48 @@ func (r *InvokeResponse) Properties() map[string]string {
 	return result
 }
 
+// Param は Invoke の入力パラメータ 1 件を表す。
+//
+// 配列パラメータ (CIM の同名要素を複数値で送る) を表現するため、
+// 同じ Name の Param を複数個含む []Param を InvokeMulti に渡せる。
+// 例: AddResourceSettings の ResourceSettings[] を複数件送るケース。
+type Param struct {
+	Name  string
+	Value string
+}
+
 // BuildInvokeRequest は CIM Invoke リクエストの SOAP XML を生成する。
 // resourceURI: CIM クラスの URI
 // endpoint: WinRM エンドポイント URL
 // methodName: 呼び出すメソッド名（例: "DefineSystem"）
 // params: 入力パラメータ（map[string]string）。nil または空の場合はパラメータなし。
 // selectors: インスタンスメソッドの場合のインスタンス特定用 SelectorSet
+//
+// 配列パラメータ (同名要素を複数) が必要な場合は BuildInvokeRequestMulti を使う。
 func BuildInvokeRequest(resourceURI, endpoint, methodName string, params map[string]string, selectors ...Selector) ([]byte, error) {
+	// map → []Param に変換（キーソートで XML 出力の安定性を確保）
+	keys := make([]string, 0, len(params))
+	for k := range params {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	multi := make([]Param, 0, len(params))
+	for _, k := range keys {
+		multi = append(multi, Param{Name: k, Value: params[k]})
+	}
+	return BuildInvokeRequestMulti(resourceURI, endpoint, methodName, multi, selectors...)
+}
+
+// BuildInvokeRequestMulti は []Param を受け取る Invoke リクエストビルダ。
+//
+// params の順序がそのまま XML 要素の出現順になる。同じ Name を複数 Param に
+// 入れると、CIM が要求する配列パラメータ (同名要素の繰り返し) を表現できる。
+func BuildInvokeRequestMulti(resourceURI, endpoint, methodName string, params []Param, selectors ...Selector) ([]byte, error) {
 	if methodName == "" {
 		return nil, fmt.Errorf("methodName must not be empty")
 	}
 
-	// Action URI: resourceURI/methodName
 	actionURI := resourceURI + "/" + methodName
 
 	opts := []Option{
@@ -59,23 +89,11 @@ func BuildInvokeRequest(resourceURI, endpoint, methodName string, params map[str
 
 	env := NewEnvelope(opts...)
 
-	// Body: MethodName_INPUT 要素を構築
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf(`<p:%s_INPUT xmlns:p="%s">`, methodName, resourceURI))
-
-	if len(params) > 0 {
-		// パラメータキーをソートしてテストの安定性を確保
-		keys := make([]string, 0, len(params))
-		for k := range params {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-
-		for _, k := range keys {
-			sb.WriteString(fmt.Sprintf(`<p:%s>%s</p:%s>`, k, params[k], k))
-		}
+	for _, p := range params {
+		sb.WriteString(fmt.Sprintf(`<p:%s>%s</p:%s>`, p.Name, p.Value, p.Name))
 	}
-
 	sb.WriteString(fmt.Sprintf(`</p:%s_INPUT>`, methodName))
 
 	env.SetBody([]byte("\n    " + sb.String() + "\n  "))
