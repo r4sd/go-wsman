@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:e="http://schemas.xmlsoap.org/ws/2004/09/enumeration" xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_SyntheticEthernetPortSettingData">
+  <s:Header>
+    <a:Action>http://schemas.xmlsoap.org/ws/2004/09/enumeration/PullResponse</a:Action>
+    <a:MessageID>uuid:pull-nic-001</a:MessageID>
+  </s:Header>
+  <s:Body>
+    <e:PullResponse>
+      <e:Items>
+        <p:Msvm_SyntheticEthernetPortSettingData>
+          <p:InstanceID>Microsoft:11111111-aaaa-bbbb-cccc-000000000001\NIC-001</p:InstanceID>
+          <p:ElementName>Network Adapter</p:ElementName>
+          <p:ResourceType>10</p:ResourceType>
+          <p:ResourceSubType>Microsoft:Hyper-V:Synthetic Ethernet Port</p:ResourceSubType>
+          <p:StaticMacAddress>FALSE</p:StaticMacAddress>
+          <p:Address>00155D012345</p:Address>
+          <p:AllowPacketDirect>FALSE</p:AllowPacketDirect>
+          <p:ClusterMonitored>FALSE</p:ClusterMonitored>
+        </p:Msvm_SyntheticEthernetPortSettingData>
+      </e:Items>
+      <e:EndOfSequence/>
+    </e:PullResponse>
+  </s:Body>
+</s:Envelope>

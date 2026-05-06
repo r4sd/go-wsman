@@ -360,3 +360,64 @@ func TestIntegration_DefineAndDestroySystem(t *testing.T) {
 		t.Errorf("created VM %s not found in list", result.ResultingSystem)
 	}
 }
+
+// TestIntegration_ListVirtualEthernetSwitches は実機の仮想スイッチ一覧を取得する (read-only)。
+func TestIntegration_ListVirtualEthernetSwitches(t *testing.T) {
+	client := getIntegrationClient(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	switches, err := client.ListVirtualEthernetSwitches(ctx)
+	if err != nil {
+		t.Fatalf("ListVirtualEthernetSwitches: %v", err)
+	}
+	t.Logf("仮想スイッチ件数: %d", len(switches))
+	for _, sw := range switches {
+		t.Logf("  Name=%s ElementName=%q Health=%d", sw.Name, sw.ElementName, sw.HealthState)
+	}
+}
+
+// TestIntegration_AddRemoveNetworkAdapter は HYPERV_TEST_TARGET_VM_NAME に
+// NIC を追加→削除するテスト。HYPERV_TEST_SWITCH_NAME が指定されていれば
+// そのスイッチに接続する。
+//
+// 必要な環境変数:
+//   - HYPERV_TEST_ALLOW_MUTATION=1
+//   - HYPERV_TEST_TARGET_VM_NAME=<VM_GUID>
+//   - HYPERV_TEST_SWITCH_NAME=<スイッチ表示名> (オプション)
+func TestIntegration_AddRemoveNetworkAdapter(t *testing.T) {
+	if os.Getenv("HYPERV_TEST_ALLOW_MUTATION") == "" {
+		t.Skip("HYPERV_TEST_ALLOW_MUTATION 未設定")
+	}
+	target := os.Getenv("HYPERV_TEST_TARGET_VM_NAME")
+	if target == "" {
+		t.Skip("HYPERV_TEST_TARGET_VM_NAME 未設定")
+	}
+
+	client := getIntegrationClient(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	opts := NetworkAdapterOptions{
+		ElementName: fmt.Sprintf("test-nic-%d", time.Now().UnixNano()),
+		SwitchName:  os.Getenv("HYPERV_TEST_SWITCH_NAME"),
+	}
+	t.Logf("Adding NIC: name=%s switch=%q", opts.ElementName, opts.SwitchName)
+
+	result, err := client.AddNetworkAdapter(ctx, target, opts)
+	if err != nil {
+		t.Fatalf("AddNetworkAdapter: %v", err)
+	}
+	t.Logf("Added: PortRef=%s AllocationRef=%s", result.PortRef, result.AllocationRef)
+
+	// 後始末: PortRef を InstanceID として削除
+	if result.PortRef == "" {
+		t.Fatal("PortRef is empty, cannot cleanup")
+	}
+	t.Logf("Removing NIC: %s", result.PortRef)
+	jobRef, err := client.RemoveNetworkAdapter(ctx, result.PortRef)
+	if err != nil {
+		t.Fatalf("RemoveNetworkAdapter: %v", err)
+	}
+	t.Logf("Remove Job: %s", jobRef)
+}
