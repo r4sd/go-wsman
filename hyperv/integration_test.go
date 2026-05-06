@@ -4,6 +4,7 @@ package hyperv
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -224,5 +225,72 @@ func TestIntegration_GetSystemSettingData(t *testing.T) {
 	}
 	if got.VirtualSystemType != VirtualSystemTypeRealized {
 		t.Errorf("VirtualSystemType: got %q, want Realized", got.VirtualSystemType)
+	}
+}
+
+// TestIntegration_DefineAndDestroySystem は VM の作成→削除をエンドツーエンドで検証する。
+//
+// VM 名にはタイムスタンプを含めてテスト同士の衝突を避ける。
+// 作成失敗・削除失敗いずれの場合も、後続テストに残骸を残さないよう
+// defer で削除を試みる (ベストエフォート)。
+//
+// 注: Phase 3 part 2 の段階では VM は ResourceSettings (CPU/Memory/NIC 等) を持たない
+// 「シェル」状態で作成される。実用には Phase 4 のリソース追加が必要。
+func TestIntegration_DefineAndDestroySystem(t *testing.T) {
+	if os.Getenv("HYPERV_TEST_ALLOW_MUTATION") == "" {
+		t.Skip("HYPERV_TEST_ALLOW_MUTATION 未設定（VM 作成・削除を伴う破壊的テスト）")
+	}
+
+	client := getIntegrationClient(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	vmName := fmt.Sprintf("go-wsman-test-%d", time.Now().UnixNano())
+
+	settings := &Msvm_VirtualSystemSettingData{
+		ElementName:          vmName,
+		VirtualSystemSubType: VirtualSystemSubTypeGen2,
+	}
+
+	t.Logf("Creating VM: %s", vmName)
+	result, err := client.DefineSystem(ctx, settings)
+	if err != nil {
+		t.Fatalf("DefineSystem failed: %v", err)
+	}
+	t.Logf("DefineSystem result: ReturnValue=%s ResultingSystem=%s JobRef=%s",
+		result.ReturnValue, result.ResultingSystem, result.JobRef)
+
+	if result.ResultingSystem == "" {
+		t.Errorf("ResultingSystem is empty")
+	}
+
+	// ベストエフォートのクリーンアップ
+	defer func() {
+		if result.ResultingSystem == "" {
+			return
+		}
+		t.Logf("Cleaning up VM: %s", result.ResultingSystem)
+		if _, err := client.DestroySystem(ctx, result.ResultingSystem); err != nil {
+			t.Logf("DestroySystem cleanup failed (may be already deleted): %v", err)
+		}
+	}()
+
+	// VM が一覧に現れることを確認
+	vms, err := client.ListComputerSystems(ctx)
+	if err != nil {
+		t.Fatalf("ListComputerSystems failed: %v", err)
+	}
+	found := false
+	for _, vm := range vms {
+		if vm.Name == result.ResultingSystem {
+			found = true
+			if vm.ElementName != vmName {
+				t.Errorf("ElementName mismatch: got %q, want %q", vm.ElementName, vmName)
+			}
+			break
+		}
+	}
+	if !found {
+		t.Errorf("created VM %s not found in list", result.ResultingSystem)
 	}
 }

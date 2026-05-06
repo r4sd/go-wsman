@@ -8,7 +8,8 @@ import (
 )
 
 const (
-	msvmVirtualSystemSettingDataURI = nsVirtV2 + "/Msvm_VirtualSystemSettingData"
+	msvmVirtualSystemSettingDataURI       = nsVirtV2 + "/Msvm_VirtualSystemSettingData"
+	msvmVirtualSystemManagementServiceURI = nsVirtV2 + "/Msvm_VirtualSystemManagementService"
 )
 
 // GetSystemSettingData は VM GUID から Realized 構成の SettingData を 1 件取得する。
@@ -65,4 +66,98 @@ func (c *Client) ListSystemSettingData(ctx context.Context) ([]*Msvm_VirtualSyst
 		result = append(result, &settings)
 	}
 	return result, nil
+}
+
+// DefineSystemResult は DefineSystem の戻り値を表す。
+//
+// ResultingSystem は作成された VM の参照を表す。EPR の Selector "Name" の値
+// (= VM GUID) が抽出されて格納される。同期成功時は即取得可能、非同期 Job 完了後は
+// Job が完了してから VM が確定する。
+type DefineSystemResult struct {
+	JobRef          string // 非同期 Job 参照 (Msvm_ConcreteJob の InstanceID)。同期成功時は空。
+	ResultingSystem string // 作成された VM の識別子 (Msvm_ComputerSystem.Name = VM GUID)
+	ReturnValue     string // "0"=同期成功, "4096"=非同期 Job 開始
+}
+
+// DefineSystem は新規 VM を作成する。
+//
+// settings には少なくとも以下を設定すること:
+//   - ElementName: VM 表示名
+//   - VirtualSystemSubType: Generation (VirtualSystemSubTypeGen1 or :Gen2)
+//   - 必要に応じて ConfigurationDataRoot, AutomaticStartupAction 等
+//
+// VirtualSystemType / SystemType は Hyper-V 側で自動的に Realized が割り当てられる
+// ため、settings に明示する必要はない。
+//
+// ResourceSettings (NIC/Disk/Memory/CPU 等) は Phase 4 で対応するため、ここでは
+// 受け付けない。VM 作成後に AddResourceSettings 等で追加する設計。
+//
+// 戻り値の ReturnValue: "0"=同期成功, "4096"=非同期 Job 開始。
+// 4096 の場合、Job 完了まで VM の準備は未完了。
+func (c *Client) DefineSystem(ctx context.Context, settings *Msvm_VirtualSystemSettingData) (*DefineSystemResult, error) {
+	if settings == nil {
+		return nil, fmt.Errorf("DefineSystem: settings must not be nil")
+	}
+	if settings.ElementName == "" {
+		return nil, fmt.Errorf("DefineSystem: settings.ElementName must not be empty")
+	}
+
+	embedded, err := marshalEmbeddedInstance(settings, "Msvm_VirtualSystemSettingData", msvmVirtualSystemSettingDataURI)
+	if err != nil {
+		return nil, fmt.Errorf("DefineSystem: marshal failed: %w", err)
+	}
+
+	resp, err := c.wsman.Invoke(ctx, msvmVirtualSystemManagementServiceURI, "DefineSystem",
+		map[string]string{"SystemSettings": embedded})
+	if err != nil {
+		return nil, err
+	}
+
+	rv := resp.ReturnValue
+	if rv != "0" && rv != "4096" {
+		return nil, fmt.Errorf("DefineSystem: unexpected ReturnValue=%s", rv)
+	}
+
+	result := &DefineSystemResult{
+		JobRef:          resp.Property("Job"),
+		ResultingSystem: resp.Property("ResultingSystem"),
+		ReturnValue:     rv,
+	}
+	if rv == "4096" && result.JobRef == "" {
+		return nil, fmt.Errorf("DefineSystem: ReturnValue=4096 but no Job reference")
+	}
+	return result, nil
+}
+
+// DestroySystem は VM を削除する。
+//
+// vmName は Msvm_ComputerSystem.Name (VM GUID)。VM が起動中の場合、削除は失敗する
+// (事前に RequestStateChange で停止する必要がある。Phase 3 part 3 で対応)。
+//
+// 戻り値は非同期 Job 参照。ReturnValue=4096 の場合は Job 完了まで削除は未完了。
+func (c *Client) DestroySystem(ctx context.Context, vmName string) (string, error) {
+	if vmName == "" {
+		return "", fmt.Errorf("DestroySystem: vmName must not be empty")
+	}
+
+	affected := buildEndpointReference(msvmComputerSystemURI, map[string]string{
+		"Name": vmName,
+	})
+
+	resp, err := c.wsman.Invoke(ctx, msvmVirtualSystemManagementServiceURI, "DestroySystem",
+		map[string]string{"AffectedSystem": affected})
+	if err != nil {
+		return "", err
+	}
+
+	rv := resp.ReturnValue
+	if rv != "0" && rv != "4096" {
+		return "", fmt.Errorf("DestroySystem: unexpected ReturnValue=%s", rv)
+	}
+
+	jobRef := resp.Property("Job")
+	if rv == "4096" && jobRef == "" {
+		return "", fmt.Errorf("DestroySystem: ReturnValue=4096 but no Job reference")
+	}
+	return jobRef, nil
 }
