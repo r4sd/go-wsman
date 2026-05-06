@@ -96,12 +96,14 @@ const (
 //
 // VM に紐づくリソース種別を表す。Phase 4 で扱うリソースに対応する値のみ列挙する。
 const (
+	ResourceTypeIDEController      uint16 = 5  // IDE Controller
 	ResourceTypeProcessor          uint16 = 3  // CPU
 	ResourceTypeMemory             uint16 = 4  // メモリ
+	ResourceTypeParallelSCSI       uint16 = 6  // SCSI Controller (Parallel SCSI HBA)
 	ResourceTypeEthernetAdapter    uint16 = 10 // NIC (Synthetic Ethernet Port)
-	ResourceTypeDVDDrive           uint16 = 16 // DVD ドライブ (Virtual DVD)
+	ResourceTypeDVDDrive           uint16 = 16 // DVD ドライブ
 	ResourceTypeDiskDrive          uint16 = 17 // ディスクドライブ
-	ResourceTypeStorageExtent      uint16 = 31 // ストレージ (VHD アタッチ)
+	ResourceTypeStorageExtent      uint16 = 31 // ストレージ (VHD/ISO ファイル)
 	ResourceTypeEthernetConnection uint16 = 33 // NIC とスイッチの接続 (Ethernet Port Allocation)
 )
 
@@ -112,6 +114,14 @@ const (
 const (
 	ResourceSubTypeSyntheticEthernetPort = "Microsoft:Hyper-V:Synthetic Ethernet Port"
 	ResourceSubTypeEthernetConnection    = "Microsoft:Hyper-V:Ethernet Connection"
+
+	// ストレージ系
+	ResourceSubTypeIDEController      = "Microsoft:Hyper-V:Emulated IDE Controller"
+	ResourceSubTypeSCSIController     = "Microsoft:Hyper-V:Synthetic SCSI Controller"
+	ResourceSubTypeSyntheticDiskDrive = "Microsoft:Hyper-V:Synthetic Disk Drive"
+	ResourceSubTypeSyntheticDVDDrive  = "Microsoft:Hyper-V:Synthetic DVD Drive"
+	ResourceSubTypeVirtualHardDisk    = "Microsoft:Hyper-V:Virtual Hard Disk"
+	ResourceSubTypeVirtualCDDVDDisk   = "Microsoft:Hyper-V:Virtual CD/DVD Disk"
 )
 
 // Msvm_MemorySettingData は VM のメモリ設定を表す CIM クラス。
@@ -187,6 +197,44 @@ type Msvm_EthernetPortAllocationSettingData struct {
 	HostResource    string `cim:"HostResource"`    // 接続先スイッチ EPR
 	Parent          string `cim:"Parent"`          // 親 NIC の EPR
 	EnabledState    uint16 `cim:"EnabledState"`    // 2=Enabled, 3=Disabled
+}
+
+// Msvm_ResourceAllocationSettingData は VM に割り当てられた汎用リソースを表す。
+//
+// Hyper-V では Controller (IDE/SCSI) と Drive (Disk/DVD) を同じクラスで表現する。
+// ResourceType + ResourceSubType の組み合わせで具体的な種別を識別する。
+//
+// Drive (Disk/DVD) を Controller に接続する場合:
+//   - Parent: 親 Controller の EPR
+//   - AddressOnParent: Controller 内の位置 ("0", "1" など)
+type Msvm_ResourceAllocationSettingData struct {
+	InstanceID      string `cim:"InstanceID"`
+	ElementName     string `cim:"ElementName"`
+	ResourceType    uint16 `cim:"ResourceType"`
+	ResourceSubType string `cim:"ResourceSubType"`
+	Address         string `cim:"Address"`
+	AddressOnParent string `cim:"AddressOnParent"` // Controller 内の location (Drive の場合)
+	Parent          string `cim:"Parent"`          // 親 Controller/Drive の EPR
+	HostResource    string `cim:"HostResource"`
+	VirtualQuantity uint64 `cim:"VirtualQuantity"`
+}
+
+// Msvm_StorageAllocationSettingData は VHD/ISO ファイルの Drive へのマッピングを表す。
+//
+// Hyper-V では VHD と ISO の両方をこのクラスで扱い、ResourceSubType で区別する:
+//   - "Microsoft:Hyper-V:Virtual Hard Disk" → VHD
+//   - "Microsoft:Hyper-V:Virtual CD/DVD Disk" → ISO
+//
+// Parent: Drive (Msvm_ResourceAllocationSettingData) の EPR
+// HostResource: ファイルパス (string[1] だが 1 要素のみ扱う)
+type Msvm_StorageAllocationSettingData struct {
+	InstanceID      string `cim:"InstanceID"`
+	ElementName     string `cim:"ElementName"`
+	ResourceType    uint16 `cim:"ResourceType"`    // 31 (StorageExtent)
+	ResourceSubType string `cim:"ResourceSubType"` // VirtualHardDisk or VirtualCDDVDDisk
+	HostResource    string `cim:"HostResource"`    // ファイルパス
+	Parent          string `cim:"Parent"`          // Drive の EPR
+	Address         string `cim:"Address"`
 }
 
 // Msvm_VirtualSystemSettingData は VM の構成設定を表す CIM クラス。
