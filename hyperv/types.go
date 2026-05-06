@@ -96,12 +96,22 @@ const (
 //
 // VM に紐づくリソース種別を表す。Phase 4 で扱うリソースに対応する値のみ列挙する。
 const (
-	ResourceTypeProcessor       uint16 = 3  // CPU
-	ResourceTypeMemory          uint16 = 4  // メモリ
-	ResourceTypeEthernetAdapter uint16 = 10 // NIC (Synthetic Ethernet Port)
-	ResourceTypeDiskDrive       uint16 = 17 // ディスクドライブ
-	ResourceTypeDVDDrive        uint16 = 16 // DVD ドライブ (Virtual DVD)
-	ResourceTypeStorageExtent   uint16 = 31 // ストレージ (VHD アタッチ)
+	ResourceTypeProcessor          uint16 = 3  // CPU
+	ResourceTypeMemory             uint16 = 4  // メモリ
+	ResourceTypeEthernetAdapter    uint16 = 10 // NIC (Synthetic Ethernet Port)
+	ResourceTypeDVDDrive           uint16 = 16 // DVD ドライブ (Virtual DVD)
+	ResourceTypeDiskDrive          uint16 = 17 // ディスクドライブ
+	ResourceTypeStorageExtent      uint16 = 31 // ストレージ (VHD アタッチ)
+	ResourceTypeEthernetConnection uint16 = 33 // NIC とスイッチの接続 (Ethernet Port Allocation)
+)
+
+// ResourceSubType 定数（Msvm_*SettingData.ResourceSubType）
+//
+// CIM の ResourceType だけでは Hyper-V のリソース種別が一意に決まらないため、
+// Hyper-V 独自のサブタイプ文字列で区別する。Embedded Instance 作成時に必須。
+const (
+	ResourceSubTypeSyntheticEthernetPort = "Microsoft:Hyper-V:Synthetic Ethernet Port"
+	ResourceSubTypeEthernetConnection    = "Microsoft:Hyper-V:Ethernet Connection"
 )
 
 // Msvm_MemorySettingData は VM のメモリ設定を表す CIM クラス。
@@ -133,6 +143,50 @@ type Msvm_ProcessorSettingData struct {
 	LimitProcessorFeatures         bool   `cim:"LimitProcessorFeatures"`         // 機能制限 (移行時の互換性)
 	LimitCPUID                     bool   `cim:"LimitCPUID"`                     // CPUID 制限
 	ExposeVirtualizationExtensions bool   `cim:"ExposeVirtualizationExtensions"` // ネステッド仮想化
+}
+
+// Msvm_VirtualEthernetSwitch は Hyper-V 仮想スイッチを表す CIM クラス。
+//
+// Phase 4 part 2 では NIC をスイッチに接続するための read-only 取得のみ実装。
+// スイッチ作成・削除は Phase 5 で扱う。
+type Msvm_VirtualEthernetSwitch struct {
+	Name        string `cim:"Name"`        // スイッチ GUID
+	ElementName string `cim:"ElementName"` // 表示名 (terraform でいう switch_name)
+	Description string `cim:"Description"`
+	HealthState uint16 `cim:"HealthState"` // 5=OK
+}
+
+// Msvm_SyntheticEthernetPortSettingData は VM の合成 NIC 設定を表す CIM クラス。
+//
+// 単独で AddResourceSettings すると VM に NIC 本体だけ追加される (スイッチに
+// 接続されていない無効状態)。スイッチへの接続には Msvm_EthernetPortAllocationSettingData
+// を別途 Add する必要がある。
+type Msvm_SyntheticEthernetPortSettingData struct {
+	InstanceID        string `cim:"InstanceID"`
+	ElementName       string `cim:"ElementName"`      // NIC 表示名 (任意)
+	ResourceType      uint16 `cim:"ResourceType"`     // 10
+	ResourceSubType   string `cim:"ResourceSubType"`  // ResourceSubTypeSyntheticEthernetPort
+	StaticMacAddress  bool   `cim:"StaticMacAddress"` // false なら動的 MAC
+	Address           string `cim:"Address"`          // MAC アドレス (12 桁 hex、区切り文字なし)
+	AllowPacketDirect bool   `cim:"AllowPacketDirect"`
+	ClusterMonitored  bool   `cim:"ClusterMonitored"`
+}
+
+// Msvm_EthernetPortAllocationSettingData は NIC と仮想スイッチの接続を表す CIM クラス。
+//
+// Parent: 親 NIC (Msvm_SyntheticEthernetPortSettingData) の EPR
+// HostResource: 接続先スイッチ (Msvm_VirtualEthernetSwitch) の EPR
+//
+// HostResource は CIM 仕様では string[] だが、Phase 4 では 1 要素のみのケースで
+// 単一文字列として扱う (実機の Hyper-V も 1 要素送信を受理する)。
+type Msvm_EthernetPortAllocationSettingData struct {
+	InstanceID      string `cim:"InstanceID"`
+	ElementName     string `cim:"ElementName"`
+	ResourceType    uint16 `cim:"ResourceType"`    // 33
+	ResourceSubType string `cim:"ResourceSubType"` // ResourceSubTypeEthernetConnection
+	HostResource    string `cim:"HostResource"`    // 接続先スイッチ EPR
+	Parent          string `cim:"Parent"`          // 親 NIC の EPR
+	EnabledState    uint16 `cim:"EnabledState"`    // 2=Enabled, 3=Disabled
 }
 
 // Msvm_VirtualSystemSettingData は VM の構成設定を表す CIM クラス。
