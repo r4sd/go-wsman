@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:e="http://schemas.xmlsoap.org/ws/2004/09/enumeration" xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_ResourceAllocationSettingData">
+  <s:Header>
+    <a:Action>http://schemas.xmlsoap.org/ws/2004/09/enumeration/PullResponse</a:Action>
+    <a:MessageID>uuid:pull-ide-001</a:MessageID>
+  </s:Header>
+  <s:Body>
+    <e:PullResponse>
+      <e:Items>
+        <p:Msvm_ResourceAllocationSettingData>
+          <p:InstanceID>Microsoft:11111111-aaaa-bbbb-cccc-000000000001\IDE-CTRL-0</p:InstanceID>
+          <p:ElementName>Primary IDE Channel</p:ElementName>
+          <p:ResourceType>5</p:ResourceType>
+          <p:ResourceSubType>Microsoft:Hyper-V:Emulated IDE Controller</p:ResourceSubType>
+          <p:Address>0</p:Address>
+          <p:VirtualQuantity>1</p:VirtualQuantity>
+        </p:Msvm_ResourceAllocationSettingData>
+        <p:Msvm_ResourceAllocationSettingData>
+          <p:InstanceID>Microsoft:11111111-aaaa-bbbb-cccc-000000000001\IDE-CTRL-1</p:InstanceID>
+          <p:ElementName>Secondary IDE Channel</p:ElementName>
+          <p:ResourceType>5</p:ResourceType>
+          <p:ResourceSubType>Microsoft:Hyper-V:Emulated IDE Controller</p:ResourceSubType>
+          <p:Address>1</p:Address>
+          <p:VirtualQuantity>1</p:VirtualQuantity>
+        </p:Msvm_ResourceAllocationSettingData>
+      </e:Items>
+      <e:EndOfSequence/>
+    </e:PullResponse>
+  </s:Body>
+</s:Envelope>

@@ -421,3 +421,79 @@ func TestIntegration_AddRemoveNetworkAdapter(t *testing.T) {
 	}
 	t.Logf("Remove Job: %s", jobRef)
 }
+
+// TestIntegration_ListIDEControllers は VM の IDE Controller 一覧を取得する (read-only)。
+func TestIntegration_ListIDEControllers(t *testing.T) {
+	client := getIntegrationClient(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	vms, err := client.ListComputerSystems(ctx)
+	if err != nil {
+		t.Fatalf("ListComputerSystems: %v", err)
+	}
+	if len(vms) == 0 {
+		t.Skip("Hyper-V ホストに VM が存在しない")
+	}
+	target := vms[0]
+
+	controllers, err := client.ListIDEControllers(ctx, target.Name)
+	if err != nil {
+		t.Fatalf("ListIDEControllers: %v", err)
+	}
+	t.Logf("VM %q: IDE Controllers = %d", target.ElementName, len(controllers))
+	for i, ctrl := range controllers {
+		t.Logf("  [%d] %s (%s)", i, ctrl.ElementName, ctrl.InstanceID)
+	}
+	if len(controllers) == 0 {
+		t.Errorf("VM should have at least one IDE controller")
+	}
+}
+
+// TestIntegration_AttachDetachVHD は VHD ファイルのアタッチ→デタッチを検証する。
+//
+// 必要な環境変数:
+//   - HYPERV_TEST_ALLOW_MUTATION=1
+//   - HYPERV_TEST_TARGET_VM_NAME=<停止中の VM GUID>
+//   - HYPERV_TEST_VHD_PATH=<アタッチする VHD ファイルのパス>
+//
+// 注意: VM が稼働中だと IDE への動的アタッチが失敗するため、停止中 VM を指定すること。
+func TestIntegration_AttachDetachVHD(t *testing.T) {
+	if os.Getenv("HYPERV_TEST_ALLOW_MUTATION") == "" {
+		t.Skip("HYPERV_TEST_ALLOW_MUTATION 未設定")
+	}
+	target := os.Getenv("HYPERV_TEST_TARGET_VM_NAME")
+	if target == "" {
+		t.Skip("HYPERV_TEST_TARGET_VM_NAME 未設定")
+	}
+	vhdPath := os.Getenv("HYPERV_TEST_VHD_PATH")
+	if vhdPath == "" {
+		t.Skip("HYPERV_TEST_VHD_PATH 未設定")
+	}
+
+	client := getIntegrationClient(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	t.Logf("Attaching VHD %q to VM %s", vhdPath, target)
+	result, err := client.AttachVHD(ctx, target, AttachVHDOptions{
+		ControllerType:     ControllerTypeIDE,
+		ControllerNumber:   0,
+		ControllerLocation: 0,
+		Path:               vhdPath,
+	})
+	if err != nil {
+		t.Fatalf("AttachVHD: %v", err)
+	}
+	t.Logf("Attached: DriveRef=%s StorageRef=%s", result.DriveRef, result.StorageRef)
+
+	if result.DriveRef == "" {
+		t.Fatal("DriveRef empty, cannot cleanup")
+	}
+	t.Logf("Detaching: %s", result.DriveRef)
+	jobRef, err := client.DetachStorage(ctx, result.DriveRef)
+	if err != nil {
+		t.Fatalf("DetachStorage: %v", err)
+	}
+	t.Logf("Detach Job: %s", jobRef)
+}
