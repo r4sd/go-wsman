@@ -64,6 +64,18 @@ go build ./...
 golangci-lint run ./...
 ```
 
+### Git hooks のセットアップ（初回 clone 時）
+
+`gofmt` 違反などを CI 待ちせずローカルで検出するため、pre-commit フックを用意しています。
+clone 後に 1 回だけ以下を実行してください。
+
+```bash
+./scripts/install-hooks.sh
+```
+
+`core.hooksPath` が `.githooks/` に設定され、コミット時に `.githooks/pre-commit` が自動実行されます。
+緊急回避は `git commit --no-verify`（CI で結局落ちるので例外的な場合のみ）。
+
 ## ライセンス
 
 MIT License
