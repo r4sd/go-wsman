@@ -1,0 +1,30 @@
+version: 2
+updates:
+  # GitHub Actions の依存更新 (週次)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+
+  # Go module 依存更新 (週次)
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "go"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    # メジャーバージョンアップは PR を作らず、minor/patch のみ自動 PR
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
