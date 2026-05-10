@@ -51,8 +51,8 @@ func TestWithNTLM_NonAuthServer(t *testing.T) {
 		}))
 		defer server.Close()
 
-		// InsecureSkipVerify: true なのでテストサーバーの自己署名証明書でもOK
-		client, err := NewClient(server.URL, WithNTLM("testuser", "testpass"))
+		// テストサーバーの自己署名証明書を許容するため WithInsecureSkipVerify を併用
+		client, err := NewClient(server.URL, WithNTLM("testuser", "testpass"), WithInsecureSkipVerify())
 		if err != nil {
 			t.Fatalf("NewClient failed: %v", err)
 		}
