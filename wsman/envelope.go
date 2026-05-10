@@ -1,6 +1,7 @@
 package wsman
 
 import (
+	"bytes"
 	"encoding/xml"
 	"fmt"
 )
@@ -430,17 +431,21 @@ func (env *Envelope) SetBody(content []byte) {
 	env.Body.Content = content
 }
 
-// MarshalEnvelope は Envelope を SOAP XML バイト列にシリアライズする
+// MarshalEnvelope は Envelope を SOAP XML バイト列にシリアライズする。
+//
+// bytes.Buffer を用いることで、サイズ計算でのオーバーフロー検出
+// (CodeQL go/allocation-size-overflow) を回避する。
 func MarshalEnvelope(env *Envelope) ([]byte, error) {
 	data, err := xml.MarshalIndent(env, "", "  ")
 	if err != nil {
 		return nil, err
 	}
-	result := make([]byte, 0, len(xml.Header)+len(data)+1)
-	result = append(result, []byte(xml.Header)...)
-	result = append(result, data...)
-	result = append(result, '\n')
-	return result, nil
+	var buf bytes.Buffer
+	buf.Grow(len(xml.Header) + len(data) + 1) // 容量ヒント (動的拡張可)
+	buf.WriteString(xml.Header)
+	buf.Write(data)
+	buf.WriteByte('\n')
+	return buf.Bytes(), nil
 }
 
 // UnmarshalEnvelope は SOAP XML バイト列を Envelope にデシリアライズする

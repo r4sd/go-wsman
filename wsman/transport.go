@@ -39,13 +39,16 @@ func (t *HTTPTransport) SetCredentials(username, password string) {
 }
 
 // NewHTTPTransport は新しい HTTPTransport を作成する。
-// httpClient が nil の場合、TLS 証明書検証をスキップするデフォルトクライアントを使用する。
+//
+// httpClient が nil の場合、TLS 証明書検証を有効にしたデフォルトクライアントを使用する。
+// 自己署名証明書を許容する場合は Client 構築時に WithInsecureSkipVerify() を併用する
+// (HTTPTransport 単体での insecure オプションは提供しない)。
 func NewHTTPTransport(endpoint string, httpClient *http.Client) *HTTPTransport {
 	if httpClient == nil {
 		httpClient = &http.Client{
 			Timeout: 60 * time.Second,
 			Transport: optimizedTransport(&tls.Config{
-				InsecureSkipVerify: true, //#nosec G402 -- WinRM は自己署名証明書が一般的
+				MinVersion: tls.VersionTLS12,
 			}),
 		}
 	}

@@ -19,12 +19,13 @@ const DefaultMaxPullIterations = 1000
 
 // Client は WS-Man クライアント
 type Client struct {
-	endpoint    string
-	transport   *HTTPTransport
-	timeout     time.Duration // 0 の場合はデフォルト（60s）を使用、明示的に設定された場合は上書き
-	timeoutSet  bool          // WithTimeout が呼ばれたかどうか
-	retryConfig *retryConfig  // nil の場合はリトライなし
-	optErr      error         // オプション適用時のエラー（遅延チェック用）
+	endpoint           string
+	transport          *HTTPTransport
+	timeout            time.Duration // 0 の場合はデフォルト（60s）を使用、明示的に設定された場合は上書き
+	timeoutSet         bool          // WithTimeout が呼ばれたかどうか
+	retryConfig        *retryConfig  // nil の場合はリトライなし
+	insecureSkipVerify bool          // WithInsecureSkipVerify で true に。デフォルト false。
+	optErr             error         // オプション適用時のエラー（遅延チェック用）
 }
 
 // ClientOption はクライアント構築時のオプション
@@ -71,7 +72,39 @@ func NewClient(endpoint string, opts ...ClientOption) (*Client, error) {
 		c.transport.retryBaseDelay = c.retryConfig.retryBaseDelay
 	}
 
+	// WithInsecureSkipVerify が呼ばれた場合、transport 確定後に TLS 設定を上書き。
+	// オプションの順序 (WithNTLM などより前後どちらでも) に依存しないように
+	// このタイミングで適用する。
+	if c.insecureSkipVerify {
+		applyInsecureSkipVerify(c.transport)
+	}
+
 	return c, nil
+}
+
+// applyInsecureSkipVerify は HTTPTransport の TLS 設定で InsecureSkipVerify を有効化する。
+//
+// 利用側が WithInsecureSkipVerify() を明示的に呼んだ場合のみ呼ばれる。
+// デフォルトでは TLS 証明書検証は有効 (InsecureSkipVerify=false)。
+func applyInsecureSkipVerify(t *HTTPTransport) {
+	httpTransport, ok := t.httpClient.Transport.(*http.Transport)
+	if !ok {
+		// NTLM 認証時は ntlmssp.Negotiator が RoundTripper になっているため
+		// 内部の baseTransport (http.Transport) を取り出す
+		if neg, ok := t.httpClient.Transport.(*ntlmssp.Negotiator); ok {
+			if inner, ok := neg.RoundTripper.(*http.Transport); ok {
+				httpTransport = inner
+			} else {
+				return // unknown wrapping、安全側で何もしない
+			}
+		} else {
+			return
+		}
+	}
+	if httpTransport.TLSClientConfig == nil {
+		httpTransport.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12} //#nosec G402 -- 明示的な insecure 指定時のみ呼ばれる
+	}
+	httpTransport.TLSClientConfig.InsecureSkipVerify = true //#nosec G402 -- ユーザーが WithInsecureSkipVerify() を明示的に呼んだ場合のみ
 }
 
 // WithTimeout は HTTP リクエストのタイムアウトを設定する。
@@ -152,6 +185,19 @@ func WithCertificateConfig(cert tls.Certificate) ClientOption {
 	}
 }
 
+// WithInsecureSkipVerify は TLS 証明書検証をスキップする。
+//
+// WinRM の自己署名証明書を使用するホスト (homelab 等) で利用する。
+// 本番環境では WithCACert で適切な CA 証明書を指定すべき。
+//
+// オプションの順序に依存しない: NewClient の最後で transport の TLS 設定を
+// 上書きするため、WithNTLM や WithCertificate との組み合わせ順序は問わない。
+func WithInsecureSkipVerify() ClientOption {
+	return func(c *Client) {
+		c.insecureSkipVerify = true
+	}
+}
+
 // WithCACert はカスタム CA 証明書を信頼リストに追加する。
 // 自己署名 CA を使用する場合に WithCertificate / WithCertificateConfig と組み合わせて使用する。
 // 既に transport が設定されている場合はその TLS 設定に CA を追加し、
@@ -210,9 +256,13 @@ func addCACertToTransport(t *HTTPTransport, rootCAs *x509.CertPool) {
 }
 
 // newNTLMTransport は NTLM 認証付きの HTTPTransport を作成する。
+//
+// TLS 証明書検証はデフォルト有効 (InsecureSkipVerify=false)。
+// WinRM の自己署名証明書を許容する場合は Client 構築時に
+// WithInsecureSkipVerify() を併用する。
 func newNTLMTransport(endpoint, username, password string) *HTTPTransport {
 	baseTransport := optimizedTransport(&tls.Config{
-		InsecureSkipVerify: true, //#nosec G402 -- WinRM は自己署名証明書が一般的
+		MinVersion: tls.VersionTLS12,
 	})
 
 	httpClient := &http.Client{
