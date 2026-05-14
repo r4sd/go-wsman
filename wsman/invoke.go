@@ -12,19 +12,40 @@ import (
 type InvokeResponse struct {
 	// ReturnValue はメソッドの戻り値。"0" は成功、"4096" は非同期ジョブを示す。
 	ReturnValue string
-	properties  map[string]string
+	properties  map[string][]string
 }
 
 // Property は指定された出力パラメータの値を返す。存在しない場合は空文字列を返す。
+// 配列出力の場合は最後の値を返す (後方互換)。配列を扱うには PropertiesList を使うこと。
 func (r *InvokeResponse) Property(name string) string {
-	return r.properties[name]
+	vs := r.properties[name]
+	if len(vs) == 0 {
+		return ""
+	}
+	return vs[len(vs)-1]
 }
 
 // Properties は全出力パラメータを map として返す。
+// 配列出力は最後の値のみが含まれる (後方互換)。配列を扱うには PropertiesList を使うこと。
 func (r *InvokeResponse) Properties() map[string]string {
 	result := make(map[string]string, len(r.properties))
-	for k, v := range r.properties {
-		result[k] = v
+	for k, vs := range r.properties {
+		if len(vs) == 0 {
+			continue
+		}
+		result[k] = vs[len(vs)-1]
+	}
+	return result
+}
+
+// PropertiesList は全出力パラメータを map[string][]string として返す。
+// 同名要素の繰り返し (配列出力パラメータ) を保持する。
+func (r *InvokeResponse) PropertiesList() map[string][]string {
+	result := make(map[string][]string, len(r.properties))
+	for k, vs := range r.properties {
+		dup := make([]string, len(vs))
+		copy(dup, vs)
+		result[k] = dup
 	}
 	return result
 }
@@ -118,7 +139,7 @@ func ParseInvokeResponse(data []byte) (*InvokeResponse, error) {
 	}
 
 	resp := &InvokeResponse{
-		properties: make(map[string]string),
+		properties: make(map[string][]string),
 	}
 
 	// extractProperties は depth==2 の子要素のテキストを抽出する。
@@ -129,8 +150,9 @@ func ParseInvokeResponse(data []byte) (*InvokeResponse, error) {
 	}
 
 	// ReturnValue を特別扱い: properties から取り出して専用フィールドに格納
-	if rv, ok := resp.properties["ReturnValue"]; ok {
-		resp.ReturnValue = rv
+	// (ReturnValue は scalar なので最後の値を使う)
+	if rv, ok := resp.properties["ReturnValue"]; ok && len(rv) > 0 {
+		resp.ReturnValue = rv[len(rv)-1]
 		delete(resp.properties, "ReturnValue")
 	}
 

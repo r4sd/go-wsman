@@ -136,4 +136,49 @@ func TestParseGetResponse(t *testing.T) {
 			t.Errorf("Fault.Subcode = %q, want %q", fault.Subcode, "w:AccessDenied")
 		}
 	})
+
+	// 配列プロパティ (同名要素の繰り返し) を扱えること。
+	// CIM の string[] / uint16[] 等はレスポンス XML で同じ要素名が複数回出現する。
+	t.Run("PropertiesList で配列プロパティを取得", func(t *testing.T) {
+		data := loadGolden(t, "get_response_vsetting_array.xml")
+
+		resp, err := ParseGetResponse(data)
+		if err != nil {
+			t.Fatalf("ParseGetResponse に失敗: %v", err)
+		}
+
+		list := resp.PropertiesList()
+		if got := len(list["Notes"]); got != 3 {
+			t.Errorf("Notes 要素数 = %d, want 3 (%v)", got, list["Notes"])
+		}
+		for i, want := range []string{"created by terraform", "managed", "line3"} {
+			if list["Notes"][i] != want {
+				t.Errorf("Notes[%d] = %q, want %q", i, list["Notes"][i], want)
+			}
+		}
+		if got := len(list["BootSourceOrder"]); got != 2 {
+			t.Errorf("BootSourceOrder 要素数 = %d, want 2", got)
+		}
+		if list["ElementName"][0] != "my-vm" {
+			t.Errorf("ElementName = %v", list["ElementName"])
+		}
+	})
+
+	// Properties() (scalar map) は最後の値を返す (既存挙動を維持)。
+	t.Run("Properties は配列の最後の値を返す (後方互換)", func(t *testing.T) {
+		data := loadGolden(t, "get_response_vsetting_array.xml")
+
+		resp, err := ParseGetResponse(data)
+		if err != nil {
+			t.Fatalf("ParseGetResponse に失敗: %v", err)
+		}
+
+		props := resp.Properties()
+		if props["Notes"] != "line3" {
+			t.Errorf("Notes (scalar) = %q, want %q (last value)", props["Notes"], "line3")
+		}
+		if props["ElementName"] != "my-vm" {
+			t.Errorf("ElementName = %q", props["ElementName"])
+		}
+	})
 }

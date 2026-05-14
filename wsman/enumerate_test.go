@@ -147,4 +147,33 @@ func TestParsePullResponse(t *testing.T) {
 			t.Fatal("Fault レスポンスでエラーが返されなかった")
 		}
 	})
+
+	// 配列プロパティ (同名要素の繰り返し) を Instance.PropertiesList で取得できること。
+	t.Run("PropertiesList で配列プロパティを取得", func(t *testing.T) {
+		data := loadGolden(t, "pull_response_array.xml")
+		resp, err := ParsePullResponse(data)
+		if err != nil {
+			t.Fatalf("ParsePullResponse に失敗: %v", err)
+		}
+		if len(resp.Items) != 2 {
+			t.Fatalf("Items 数 = %d, want 2", len(resp.Items))
+		}
+
+		list0 := resp.Items[0].PropertiesList()
+		if got := len(list0["Notes"]); got != 2 {
+			t.Errorf("Items[0].Notes 要素数 = %d, want 2 (%v)", got, list0["Notes"])
+		}
+		if list0["Notes"][0] != "note-a1" || list0["Notes"][1] != "note-a2" {
+			t.Errorf("Items[0].Notes = %v", list0["Notes"])
+		}
+		if list0["ElementName"][0] != "vm-a" {
+			t.Errorf("Items[0].ElementName = %v", list0["ElementName"])
+		}
+
+		// Properties() (scalar) は最後の値 (後方互換)
+		props0 := resp.Items[0].Properties()
+		if props0["Notes"] != "note-a2" {
+			t.Errorf("Items[0].Properties()[Notes] = %q, want last value %q", props0["Notes"], "note-a2")
+		}
+	})
 }

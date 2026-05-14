@@ -81,6 +81,90 @@ func TestMarshalEmbeddedInstance(t *testing.T) {
 	}
 }
 
+// TestMarshalEmbeddedInstance_StringSlice は []string フィールドが
+// 同名要素の繰り返しに展開されることを検証する。
+// 例: Notes: []string{"a","b"} → <p:Notes>a</p:Notes><p:Notes>b</p:Notes>
+func TestMarshalEmbeddedInstance_StringSlice(t *testing.T) {
+	type settings struct {
+		ElementName string   `cim:"ElementName"`
+		Notes       []string `cim:"Notes"`
+	}
+	s := settings{
+		ElementName: "my-vm",
+		Notes:       []string{"line1", "line2", "line3"},
+	}
+
+	got, err := marshalEmbeddedInstance(&s, "Msvm_VirtualSystemSettingData", nsVirtV2+"/Msvm_VirtualSystemSettingData")
+	if err != nil {
+		t.Fatalf("marshalEmbeddedInstance: %v", err)
+	}
+
+	// 出力 XML 内に <p:Notes> が3つ含まれていることを確認
+	cnt := 0
+	for i := 0; i+len("<p:Notes>") <= len(got); i++ {
+		if got[i:i+len("<p:Notes>")] == "<p:Notes>" {
+			cnt++
+		}
+	}
+	if cnt != 3 {
+		t.Errorf("expected 3 <p:Notes> elements, got %d. XML: %s", cnt, got)
+	}
+
+	// 個別の値が含まれていることを確認
+	for _, want := range []string{">line1<", ">line2<", ">line3<"} {
+		if !contains(got, want) {
+			t.Errorf("XML should contain %q, got: %s", want, got)
+		}
+	}
+	if !contains(got, ">my-vm<") {
+		t.Errorf("ElementName missing in XML: %s", got)
+	}
+}
+
+// TestMarshalEmbeddedInstance_Uint16Slice は []uint16 フィールドの展開を検証する。
+func TestMarshalEmbeddedInstance_Uint16Slice(t *testing.T) {
+	type settings struct {
+		Ports []uint16 `cim:"Ports"`
+	}
+	s := settings{Ports: []uint16{22, 80, 443}}
+
+	got, err := marshalEmbeddedInstance(&s, "Msvm_Test", "ns")
+	if err != nil {
+		t.Fatalf("marshalEmbeddedInstance: %v", err)
+	}
+	for _, want := range []string{">22<", ">80<", ">443<"} {
+		if !contains(got, want) {
+			t.Errorf("XML should contain %q, got: %s", want, got)
+		}
+	}
+}
+
+// TestMarshalEmbeddedInstance_OmitsEmptySlice は nil/空 slice が出力されないことを検証する。
+// CIM SettingData ではゼロ値 = デフォルトの慣習を slice にも適用する。
+func TestMarshalEmbeddedInstance_OmitsEmptySlice(t *testing.T) {
+	type settings struct {
+		ElementName string   `cim:"ElementName"`
+		Notes       []string `cim:"Notes"`
+		Empty       []string `cim:"Empty"`
+	}
+	s := settings{
+		ElementName: "vm",
+		Notes:       nil, // nil slice
+		Empty:       []string{},
+	}
+
+	got, err := marshalEmbeddedInstance(&s, "Msvm_Test", "ns")
+	if err != nil {
+		t.Fatalf("marshalEmbeddedInstance: %v", err)
+	}
+	if contains(got, "<p:Notes>") {
+		t.Errorf("nil slice should be omitted, got: %s", got)
+	}
+	if contains(got, "<p:Empty>") {
+		t.Errorf("empty slice should be omitted, got: %s", got)
+	}
+}
+
 // TestMarshalEmbeddedInstance_OmitsZeroValues はゼロ値フィールドが出力されないことを検証する。
 // CIM の SettingData では未指定 = デフォルト適用なので、ゼロ値を送ると意図しない上書きになる。
 func TestMarshalEmbeddedInstance_OmitsZeroValues(t *testing.T) {
