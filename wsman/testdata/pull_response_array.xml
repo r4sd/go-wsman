@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd" xmlns:e="http://schemas.xmlsoap.org/ws/2004/09/enumeration" xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_VirtualSystemSettingData">
+  <s:Header>
+    <a:Action>http://schemas.xmlsoap.org/ws/2004/09/enumeration/PullResponse</a:Action>
+    <a:MessageID>uuid:response-pull-array-001</a:MessageID>
+  </s:Header>
+  <s:Body>
+    <e:PullResponse>
+      <e:Items>
+        <p:Msvm_VirtualSystemSettingData>
+          <p:ElementName>vm-a</p:ElementName>
+          <p:Notes>note-a1</p:Notes>
+          <p:Notes>note-a2</p:Notes>
+        </p:Msvm_VirtualSystemSettingData>
+        <p:Msvm_VirtualSystemSettingData>
+          <p:ElementName>vm-b</p:ElementName>
+          <p:Notes>note-b1</p:Notes>
+        </p:Msvm_VirtualSystemSettingData>
+      </e:Items>
+      <e:EnumerationContext>uuid:context-002</e:EnumerationContext>
+    </e:PullResponse>
+  </s:Body>
+</s:Envelope>

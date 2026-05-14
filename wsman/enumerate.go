@@ -12,19 +12,41 @@ import (
 
 // Instance は CIM インスタンスを表す（プロパティの map）
 type Instance struct {
-	properties map[string]string
+	properties map[string][]string
 }
 
 // Property は指定されたプロパティの値を返す。存在しない場合は空文字列を返す。
+// 配列プロパティの場合は最後の値を返す (後方互換)。配列を扱うには PropertiesList を使うこと。
 func (i *Instance) Property(name string) string {
-	return i.properties[name]
+	vs := i.properties[name]
+	if len(vs) == 0 {
+		return ""
+	}
+	return vs[len(vs)-1]
 }
 
-// Properties は全プロパティを map として返す
+// Properties は全プロパティを map として返す。
+// 配列プロパティは最後の値のみが含まれる (後方互換)。配列を扱うには PropertiesList を使うこと。
 func (i *Instance) Properties() map[string]string {
 	result := make(map[string]string, len(i.properties))
-	for k, v := range i.properties {
-		result[k] = v
+	for k, vs := range i.properties {
+		if len(vs) == 0 {
+			continue
+		}
+		result[k] = vs[len(vs)-1]
+	}
+	return result
+}
+
+// PropertiesList は全プロパティを map[string][]string として返す。
+// 同名要素の繰り返し (CIM の string[] / uint16[] 等) を保持する。
+// hyperv.UnmarshalList と組み合わせて配列フィールド対応の構造体にマッピングできる。
+func (i *Instance) PropertiesList() map[string][]string {
+	result := make(map[string][]string, len(i.properties))
+	for k, vs := range i.properties {
+		dup := make([]string, len(vs))
+		copy(dup, vs)
+		result[k] = dup
 	}
 	return result
 }
@@ -198,13 +220,16 @@ func ParsePullResponse(data []byte) (*PullResponse, error) {
 	return result, nil
 }
 
-// parseInstances は Items の innerxml から個別の CIM インスタンスを抽出する
+// parseInstances は Items の innerxml から個別の CIM インスタンスを抽出する。
+// 同名要素 (CIM 配列プロパティ) は順序を保ったまま slice に追加する。
+// プロパティが入れ子 XML を含む場合は入れ子内の最後の非空テキストを値とする (extractProperties と同じ後方互換挙動)。
 func parseInstances(data []byte) ([]*Instance, error) {
 	decoder := xml.NewDecoder(bytes.NewReader(data))
 
 	var instances []*Instance
 	var currentInstance *Instance
 	var currentProp string
+	var lastNonEmpty string
 	depth := 0
 
 	for {
@@ -222,22 +247,26 @@ func parseInstances(data []byte) ([]*Instance, error) {
 			if depth == 1 {
 				// CIM インスタンスの開始
 				currentInstance = &Instance{
-					properties: make(map[string]string),
+					properties: make(map[string][]string),
 				}
 			} else if depth == 2 && currentInstance != nil {
 				// プロパティ要素の開始
 				currentProp = t.Name.Local
+				lastNonEmpty = ""
 			}
 		case xml.CharData:
 			if currentProp != "" && currentInstance != nil {
-				value := strings.TrimSpace(string(t))
-				if value != "" {
-					currentInstance.properties[currentProp] = value
+				if v := strings.TrimSpace(string(t)); v != "" {
+					lastNonEmpty = v
 				}
 			}
 		case xml.EndElement:
-			if depth == 2 {
+			if depth == 2 && currentInstance != nil && currentProp != "" {
+				if lastNonEmpty != "" {
+					currentInstance.properties[currentProp] = append(currentInstance.properties[currentProp], lastNonEmpty)
+				}
 				currentProp = ""
+				lastNonEmpty = ""
 			} else if depth == 1 && currentInstance != nil {
 				instances = append(instances, currentInstance)
 				currentInstance = nil

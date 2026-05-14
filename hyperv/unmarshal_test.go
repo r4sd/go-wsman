@@ -216,3 +216,160 @@ func contains(s, sub string) bool {
 	}
 	return false
 }
+
+// TestUnmarshalList_StringSlice は []string フィールドへの配列マッピングを検証する。
+// CIM の Msvm_VirtualSystemSettingData.Notes は string[] で返るので、
+// PropertiesList() の値が複数要素の場合に slice にマッピングできる必要がある。
+func TestUnmarshalList_StringSlice(t *testing.T) {
+	type target struct {
+		Notes           []string `cim:"Notes"`
+		BootSourceOrder []string `cim:"BootSourceOrder"`
+	}
+
+	props := map[string][]string{
+		"Notes":           {"line1", "line2", "line3"},
+		"BootSourceOrder": {"\\\\HV\\Path1", "\\\\HV\\Path2"},
+	}
+
+	var got target
+	if err := UnmarshalList(props, &got); err != nil {
+		t.Fatalf("UnmarshalList returned error: %v", err)
+	}
+
+	if len(got.Notes) != 3 {
+		t.Fatalf("Notes len: got %d, want 3 (%v)", len(got.Notes), got.Notes)
+	}
+	for i, want := range []string{"line1", "line2", "line3"} {
+		if got.Notes[i] != want {
+			t.Errorf("Notes[%d]: got %q, want %q", i, got.Notes[i], want)
+		}
+	}
+	if len(got.BootSourceOrder) != 2 {
+		t.Fatalf("BootSourceOrder len: got %d, want 2", len(got.BootSourceOrder))
+	}
+	if got.BootSourceOrder[1] != `\\HV\Path2` {
+		t.Errorf("BootSourceOrder[1]: got %q", got.BootSourceOrder[1])
+	}
+}
+
+// TestUnmarshalList_Uint16Slice は []uint16 フィールドへの配列マッピングを検証する。
+func TestUnmarshalList_Uint16Slice(t *testing.T) {
+	type target struct {
+		Ports []uint16 `cim:"Ports"`
+	}
+
+	props := map[string][]string{
+		"Ports": {"22", "80", "443"},
+	}
+
+	var got target
+	if err := UnmarshalList(props, &got); err != nil {
+		t.Fatalf("UnmarshalList returned error: %v", err)
+	}
+	if len(got.Ports) != 3 {
+		t.Fatalf("Ports len: got %d, want 3", len(got.Ports))
+	}
+	for i, want := range []uint16{22, 80, 443} {
+		if got.Ports[i] != want {
+			t.Errorf("Ports[%d]: got %d, want %d", i, got.Ports[i], want)
+		}
+	}
+}
+
+// TestUnmarshalList_ScalarBackCompat は scalar フィールドが
+// 単一要素 slice からも正しく取り出されることを検証する (後方互換)。
+func TestUnmarshalList_ScalarBackCompat(t *testing.T) {
+	type target struct {
+		Name         string `cim:"Name"`
+		EnabledState uint16 `cim:"EnabledState"`
+		Enabled      bool   `cim:"Enabled"`
+	}
+
+	props := map[string][]string{
+		"Name":         {"vm-guid-1"},
+		"EnabledState": {"2"},
+		"Enabled":      {"TRUE"},
+	}
+
+	var got target
+	if err := UnmarshalList(props, &got); err != nil {
+		t.Fatalf("UnmarshalList returned error: %v", err)
+	}
+	if got.Name != "vm-guid-1" {
+		t.Errorf("Name: got %q", got.Name)
+	}
+	if got.EnabledState != 2 {
+		t.Errorf("EnabledState: got %d", got.EnabledState)
+	}
+	if !got.Enabled {
+		t.Errorf("Enabled: got %v, want true", got.Enabled)
+	}
+}
+
+// TestUnmarshalList_EmptySlice は値が空 slice の場合スキップされることを検証する。
+func TestUnmarshalList_EmptySlice(t *testing.T) {
+	type target struct {
+		Notes []string `cim:"Notes"`
+		Name  string   `cim:"Name"`
+	}
+
+	props := map[string][]string{
+		"Notes": {},
+		"Name":  {"vm-1"},
+	}
+
+	var got target
+	if err := UnmarshalList(props, &got); err != nil {
+		t.Fatalf("UnmarshalList returned error: %v", err)
+	}
+	if got.Notes != nil {
+		t.Errorf("Notes: got %v, want nil (empty slice → zero value)", got.Notes)
+	}
+	if got.Name != "vm-1" {
+		t.Errorf("Name: got %q", got.Name)
+	}
+}
+
+// TestUnmarshalList_MixedSliceAndScalar は scalar と slice の混在を検証する。
+// 実際の Msvm_VirtualSystemSettingData では多数の scalar に加えて
+// Notes/BootSourceOrder 等の slice が混在する。
+func TestUnmarshalList_MixedSliceAndScalar(t *testing.T) {
+	type target struct {
+		ElementName string   `cim:"ElementName"`
+		Notes       []string `cim:"Notes"`
+	}
+
+	props := map[string][]string{
+		"ElementName": {"my-vm"},
+		"Notes":       {"created by terraform", "managed"},
+	}
+
+	var got target
+	if err := UnmarshalList(props, &got); err != nil {
+		t.Fatalf("UnmarshalList returned error: %v", err)
+	}
+	if got.ElementName != "my-vm" {
+		t.Errorf("ElementName: got %q", got.ElementName)
+	}
+	if len(got.Notes) != 2 || got.Notes[0] != "created by terraform" {
+		t.Errorf("Notes: got %v", got.Notes)
+	}
+}
+
+// TestUnmarshalList_InvalidUintInSlice は slice 要素の型変換失敗を検証する。
+func TestUnmarshalList_InvalidUintInSlice(t *testing.T) {
+	type target struct {
+		Ports []uint16 `cim:"Ports"`
+	}
+	props := map[string][]string{
+		"Ports": {"22", "abc", "443"},
+	}
+	var got target
+	err := UnmarshalList(props, &got)
+	if err == nil {
+		t.Fatal("expected error for invalid uint in slice")
+	}
+	if !contains(err.Error(), "Ports") {
+		t.Errorf("error should mention field name: %v", err)
+	}
+}

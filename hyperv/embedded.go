@@ -87,6 +87,21 @@ func marshalEmbeddedInstance(v interface{}, className, namespace string) (string
 			continue
 		}
 		fv := rv.Field(i)
+		// slice は同名要素の繰り返しに展開 (CIM 配列の慣習)。
+		// nil/空 slice はゼロ値扱いで出力しない。
+		if fv.Kind() == reflect.Slice {
+			if fv.Len() == 0 {
+				continue
+			}
+			for j := 0; j < fv.Len(); j++ {
+				val, err := stringify(fv.Index(j))
+				if err != nil {
+					return "", fmt.Errorf("field %q [%d]: %w", field.Name, j, err)
+				}
+				fmt.Fprintf(&sb, "<p:%s>%s</p:%s>", tag, xmlEscape(val), tag)
+			}
+			continue
+		}
 		if fv.IsZero() {
 			continue
 		}

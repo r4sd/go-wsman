@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd" xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_VirtualSystemSettingData">
+  <s:Header>
+    <a:Action>http://schemas.xmlsoap.org/ws/2004/09/transfer/GetResponse</a:Action>
+    <a:MessageID>uuid:response-002</a:MessageID>
+  </s:Header>
+  <s:Body>
+    <p:Msvm_VirtualSystemSettingData>
+      <p:ElementName>my-vm</p:ElementName>
+      <p:Notes>created by terraform</p:Notes>
+      <p:Notes>managed</p:Notes>
+      <p:Notes>line3</p:Notes>
+      <p:BootSourceOrder>\\HV\Path1</p:BootSourceOrder>
+      <p:BootSourceOrder>\\HV\Path2</p:BootSourceOrder>
+    </p:Msvm_VirtualSystemSettingData>
+  </s:Body>
+</s:Envelope>
