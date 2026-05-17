@@ -3,6 +3,7 @@ package hyperv
 import (
 	"context"
 	"fmt"
+	"strconv"
 )
 
 const (
@@ -78,6 +79,42 @@ func (c *Client) CreateVirtualHardDisk(ctx context.Context, settings *Msvm_Virtu
 	jobRef := resp.Property("Job")
 	if jobRef == "" && rv == "4096" {
 		return "", fmt.Errorf("CreateVirtualHardDisk: ReturnValue=4096 but no Job reference")
+	}
+	return jobRef, nil
+}
+
+// ResizeVirtualHardDisk は既存の VHD/VHDX ファイルのサイズを変更する。
+//
+// 内部では Msvm_ImageManagementService.ResizeVirtualHardDisk を呼び出す。
+// Hyper-V の制約:
+//   - Fixed VHD は拡大のみ可能（縮小不可）
+//   - Dynamic/Differencing は MaxInternalSize の縮小も可（実データ末尾までに限る）
+//   - VM へアタッチ中の VHD はオフライン状態のみ縮小可
+//
+// 戻り値は非同期 Job 参照 (Msvm_ConcreteJob)。
+// ReturnValue=0 (同期完了) の場合は空文字列、4096 (非同期開始) の場合は Job 参照を返す。
+func (c *Client) ResizeVirtualHardDisk(ctx context.Context, path string, maxInternalSize uint64) (string, error) {
+	if path == "" {
+		return "", fmt.Errorf("ResizeVirtualHardDisk: path must not be empty")
+	}
+
+	resp, err := c.wsman.Invoke(ctx, msvmImageManagementServiceURI, "ResizeVirtualHardDisk",
+		map[string]string{
+			"Path":            path,
+			"MaxInternalSize": strconv.FormatUint(maxInternalSize, 10),
+		})
+	if err != nil {
+		return "", err
+	}
+
+	rv := resp.ReturnValue
+	if rv != "0" && rv != "4096" {
+		return "", fmt.Errorf("ResizeVirtualHardDisk: unexpected ReturnValue=%s", rv)
+	}
+
+	jobRef := resp.Property("Job")
+	if rv == "4096" && jobRef == "" {
+		return "", fmt.Errorf("ResizeVirtualHardDisk: ReturnValue=4096 but no Job reference")
 	}
 	return jobRef, nil
 }
