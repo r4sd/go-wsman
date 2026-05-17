@@ -37,7 +37,7 @@ func (c *Client) GetSystemSettingData(ctx context.Context, vmName string) (*Msvm
 	}
 
 	var settings Msvm_VirtualSystemSettingData
-	if err := Unmarshal(instances[0].Properties(), &settings); err != nil {
+	if err := UnmarshalList(instances[0].PropertiesList(), &settings); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal Msvm_VirtualSystemSettingData: %w", err)
 	}
 	return &settings, nil
@@ -60,7 +60,7 @@ func (c *Client) ListSystemSettingData(ctx context.Context) ([]*Msvm_VirtualSyst
 	result := make([]*Msvm_VirtualSystemSettingData, 0, len(instances))
 	for _, inst := range instances {
 		var settings Msvm_VirtualSystemSettingData
-		if err := Unmarshal(inst.Properties(), &settings); err != nil {
+		if err := UnmarshalList(inst.PropertiesList(), &settings); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal Msvm_VirtualSystemSettingData: %w", err)
 		}
 		result = append(result, &settings)
