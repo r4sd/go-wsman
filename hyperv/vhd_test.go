@@ -95,3 +95,67 @@ func TestClient_CreateVirtualHardDisk(t *testing.T) {
 		t.Errorf("request body should contain method name")
 	}
 }
+
+// TestClient_ResizeVirtualHardDisk は既存 VHD/VHDX のサイズ変更リクエストが
+// 正しく組み立てられ、非同期 Job 参照が返ることを検証する。
+func TestClient_ResizeVirtualHardDisk(t *testing.T) {
+	respXML := loadGolden(t, "invoke_response_resize_vhd.xml")
+
+	var capturedBody string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read body: %v", err)
+		}
+		capturedBody = string(body)
+		w.Header().Set("Content-Type", "application/soap+xml; charset=utf-8")
+		_, _ = w.Write([]byte(respXML))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(server.URL)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	const (
+		path    = `C:\VMs\resize.vhdx`
+		newSize = uint64(21474836480) // 20 GiB
+	)
+
+	jobRef, err := client.ResizeVirtualHardDisk(context.Background(), path, newSize)
+	if err != nil {
+		t.Fatalf("ResizeVirtualHardDisk: %v", err)
+	}
+
+	if jobRef == "" {
+		t.Errorf("expected job reference, got empty string")
+	}
+
+	if !strings.Contains(capturedBody, "ResizeVirtualHardDisk") {
+		t.Errorf("request body should contain method name")
+	}
+	if !strings.Contains(capturedBody, path) {
+		t.Errorf("request body should contain Path %q", path)
+	}
+	if !strings.Contains(capturedBody, "21474836480") {
+		t.Errorf("request body should contain MaxInternalSize value")
+	}
+}
+
+// TestClient_ResizeVirtualHardDisk_EmptyPath は Path 未指定時に
+// パラメータ検証エラーになることを確認する。
+func TestClient_ResizeVirtualHardDisk_EmptyPath(t *testing.T) {
+	client, err := NewClient("http://example.invalid")
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	_, err = client.ResizeVirtualHardDisk(context.Background(), "", 1024)
+	if err == nil {
+		t.Fatal("expected error for empty path, got nil")
+	}
+	if !strings.Contains(err.Error(), "path") {
+		t.Errorf("error should mention path, got: %v", err)
+	}
+}
