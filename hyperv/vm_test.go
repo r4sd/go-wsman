@@ -319,3 +319,97 @@ func TestClient_ListSystemSettingData(t *testing.T) {
 		t.Errorf("got[1].SecureBoot: want false (Gen1 では SecureBoot 無効)")
 	}
 }
+
+// TestClient_GetSystemSettingData_FullFields は #50 で追加した詳細フィールド
+// (BootSourceOrder, Notes, AutomaticCriticalErrorAction 等) が正しく Unmarshal
+// されることを検証する。
+//
+// 既存テスト用の簡易 golden file ではなく、新フィールド全てを含む
+// pull_response_systemsettingdata_full.xml を使用する。
+func TestClient_GetSystemSettingData_FullFields(t *testing.T) {
+	enumXML := loadGolden(t, "enumerate_response_systemsettingdata.xml")
+	pullXML := loadGolden(t, "pull_response_systemsettingdata_full.xml")
+
+	callCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		w.Header().Set("Content-Type", "application/soap+xml; charset=utf-8")
+		if callCount == 1 {
+			_, _ = w.Write([]byte(enumXML))
+		} else {
+			_, _ = w.Write([]byte(pullXML))
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(server.URL)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	got, err := client.GetSystemSettingData(context.Background(), "99999999-aaaa-bbbb-cccc-000000000099")
+	if err != nil {
+		t.Fatalf("GetSystemSettingData: %v", err)
+	}
+
+	// 配列フィールド
+	if want := []string{
+		`Microsoft:99999999-aaaa-bbbb-cccc-000000000099\BootSource\0`,
+		`Microsoft:99999999-aaaa-bbbb-cccc-000000000099\BootSource\1`,
+		`Microsoft:99999999-aaaa-bbbb-cccc-000000000099\BootSource\2`,
+	}; !stringSlicesEqual(got.BootSourceOrder, want) {
+		t.Errorf("BootSourceOrder: got %v, want %v", got.BootSourceOrder, want)
+	}
+	if want := []string{"line1", "line2 with & symbol"}; !stringSlicesEqual(got.Notes, want) {
+		t.Errorf("Notes: got %v, want %v", got.Notes, want)
+	}
+
+	// 数値フィールド
+	if got.AutomaticCriticalErrorAction != AutomaticCriticalErrorActionPause {
+		t.Errorf("AutomaticCriticalErrorAction: got %d, want %d",
+			got.AutomaticCriticalErrorAction, AutomaticCriticalErrorActionPause)
+	}
+	if got.AutomaticCriticalErrorActionTimeout != 30 {
+		t.Errorf("AutomaticCriticalErrorActionTimeout: got %d", got.AutomaticCriticalErrorActionTimeout)
+	}
+	if got.HighMemoryMappedIoSpace != 536870912 {
+		t.Errorf("HighMemoryMappedIoSpace: got %d", got.HighMemoryMappedIoSpace)
+	}
+	if got.LowMemoryMappedIoSpace != 268435456 {
+		t.Errorf("LowMemoryMappedIoSpace: got %d", got.LowMemoryMappedIoSpace)
+	}
+	if got.CheckpointType != CheckpointTypeProduction {
+		t.Errorf("CheckpointType: got %d, want %d", got.CheckpointType, CheckpointTypeProduction)
+	}
+
+	// bool フィールド
+	if !got.LockOnDisconnect {
+		t.Errorf("LockOnDisconnect: want true")
+	}
+	if got.GuestControlledCacheTypes {
+		t.Errorf("GuestControlledCacheTypes: want false")
+	}
+	if !got.AutomaticCheckpointsEnabled {
+		t.Errorf("AutomaticCheckpointsEnabled: want true")
+	}
+
+	// string フィールド
+	if got.SnapshotDataRoot != `C:\VMs\Snapshots\vm-full` {
+		t.Errorf("SnapshotDataRoot: got %q", got.SnapshotDataRoot)
+	}
+	if got.SmartPagingFilePath != `C:\VMs\SmartPaging\vm-full` {
+		t.Errorf("SmartPagingFilePath: got %q", got.SmartPagingFilePath)
+	}
+}
+
+func stringSlicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}

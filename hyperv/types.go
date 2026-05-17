@@ -92,6 +92,24 @@ const (
 	AutomaticRecoveryActionRevertToSnapshot uint16 = 4
 )
 
+// AutomaticCriticalErrorAction 定数（Msvm_VirtualSystemSettingData.AutomaticCriticalErrorAction）
+//
+// クリティカルエラー（例: ストレージ切断）発生時の VM の動作。
+const (
+	AutomaticCriticalErrorActionNone  uint16 = 0
+	AutomaticCriticalErrorActionPause uint16 = 1
+)
+
+// CheckpointType 定数（Msvm_VirtualSystemSettingData.CheckpointType）
+//
+// VM のチェックポイント種別。Production はアプリ整合性、Standard はクラッシュ整合性。
+const (
+	CheckpointTypeDisabled       uint16 = 2
+	CheckpointTypeProduction     uint16 = 3
+	CheckpointTypeProductionOnly uint16 = 4
+	CheckpointTypeStandard       uint16 = 5
+)
+
 // ResourceType 定数（CIM_ResourceAllocationSettingData.ResourceType）
 //
 // VM に紐づくリソース種別を表す。Phase 4 で扱うリソースに対応する値のみ列挙する。
@@ -260,30 +278,41 @@ type Msvm_StorageAllocationSettingData struct {
 // 1 つの VM（Msvm_ComputerSystem）に対して、Realized / Snapshot:Realized 等
 // 複数の SettingData が紐づく。VM の現在構成は VirtualSystemType="Realized" のもの。
 //
-// 配列プロパティ（BootSourceOrder, Notes 等）は Phase 1 では未対応のため除外。
+// 配列プロパティ (BootSourceOrder / Notes) は #48 配列対応基盤 + UnmarshalList で対応済。
 type Msvm_VirtualSystemSettingData struct {
-	InstanceID                  string `cim:"InstanceID"`
-	ElementName                 string `cim:"ElementName"` // VM 表示名
-	Caption                     string `cim:"Caption"`
-	Description                 string `cim:"Description"`
-	VirtualSystemIdentifier     string `cim:"VirtualSystemIdentifier"` // VM GUID（Msvm_ComputerSystem.Name と一致）
-	VirtualSystemType           string `cim:"VirtualSystemType"`       // "Microsoft:Hyper-V:System:Realized" 等
-	VirtualSystemSubType        string `cim:"VirtualSystemSubType"`    // "Microsoft:Hyper-V:SubType:1" or :2
-	ConfigurationID             string `cim:"ConfigurationID"`         // 永続的な構成 ID
-	ConfigurationDataRoot       string `cim:"ConfigurationDataRoot"`
-	ConfigurationFile           string `cim:"ConfigurationFile"`
-	SnapshotDataRoot            string `cim:"SnapshotDataRoot"`
-	SuspendDataRoot             string `cim:"SuspendDataRoot"`
-	SwapFileDataRoot            string `cim:"SwapFileDataRoot"`
-	LogDataRoot                 string `cim:"LogDataRoot"`
-	AutomaticStartupAction      uint16 `cim:"AutomaticStartupAction"`
-	AutomaticStartupActionDelay string `cim:"AutomaticStartupActionDelay"` // CIM Duration（文字列）
-	AutomaticShutdownAction     uint16 `cim:"AutomaticShutdownAction"`
-	AutomaticRecoveryAction     uint16 `cim:"AutomaticRecoveryAction"`
-	BIOSGUID                    string `cim:"BIOSGUID"`
-	BIOSNumLock                 bool   `cim:"BIOSNumLock"`
-	SecureBoot                  bool   `cim:"SecureBoot"`
-	SecureBootTemplateId        string `cim:"SecureBootTemplateId"`
-	Version                     string `cim:"Version"`      // 構成バージョン（例: "10.0"）
-	CreationTime                string `cim:"CreationTime"` // CIM DateTime（文字列）
+	InstanceID                          string   `cim:"InstanceID"`
+	ElementName                         string   `cim:"ElementName"` // VM 表示名
+	Caption                             string   `cim:"Caption"`
+	Description                         string   `cim:"Description"`
+	VirtualSystemIdentifier             string   `cim:"VirtualSystemIdentifier"` // VM GUID（Msvm_ComputerSystem.Name と一致）
+	VirtualSystemType                   string   `cim:"VirtualSystemType"`       // "Microsoft:Hyper-V:System:Realized" 等
+	VirtualSystemSubType                string   `cim:"VirtualSystemSubType"`    // "Microsoft:Hyper-V:SubType:1" or :2
+	ConfigurationID                     string   `cim:"ConfigurationID"`         // 永続的な構成 ID
+	ConfigurationDataRoot               string   `cim:"ConfigurationDataRoot"`
+	ConfigurationFile                   string   `cim:"ConfigurationFile"`
+	SnapshotDataRoot                    string   `cim:"SnapshotDataRoot"`
+	SuspendDataRoot                     string   `cim:"SuspendDataRoot"`
+	SwapFileDataRoot                    string   `cim:"SwapFileDataRoot"`
+	LogDataRoot                         string   `cim:"LogDataRoot"`
+	SmartPagingFilePath                 string   `cim:"SmartPagingFilePath"` // スマートページングファイル位置
+	AutomaticStartupAction              uint16   `cim:"AutomaticStartupAction"`
+	AutomaticStartupActionDelay         string   `cim:"AutomaticStartupActionDelay"` // CIM Duration（文字列）
+	AutomaticShutdownAction             uint16   `cim:"AutomaticShutdownAction"`
+	AutomaticRecoveryAction             uint16   `cim:"AutomaticRecoveryAction"`
+	AutomaticCriticalErrorAction        uint16   `cim:"AutomaticCriticalErrorAction"`        // 0=None, 1=Pause
+	AutomaticCriticalErrorActionTimeout uint16   `cim:"AutomaticCriticalErrorActionTimeout"` // Pause 継続時間 (分)
+	BIOSGUID                            string   `cim:"BIOSGUID"`
+	BIOSNumLock                         bool     `cim:"BIOSNumLock"`
+	SecureBoot                          bool     `cim:"SecureBoot"`
+	SecureBootTemplateId                string   `cim:"SecureBootTemplateId"`
+	BootSourceOrder                     []string `cim:"BootSourceOrder"` // Gen2 ブート順序 (EPR/Drive 参照の配列)
+	Notes                               []string `cim:"Notes"`           // VM 備考 (複数行を配列で保持)
+	LockOnDisconnect                    bool     `cim:"LockOnDisconnect"`
+	GuestControlledCacheTypes           bool     `cim:"GuestControlledCacheTypes"`
+	HighMemoryMappedIoSpace             uint64   `cim:"HighMemoryMappedIoSpace"`
+	LowMemoryMappedIoSpace              uint32   `cim:"LowMemoryMappedIoSpace"`
+	CheckpointType                      uint16   `cim:"CheckpointType"`              // 2=Disabled, 3=Production, 4=ProductionOnly, 5=Standard
+	AutomaticCheckpointsEnabled         bool     `cim:"AutomaticCheckpointsEnabled"` // 自動チェックポイント (Win10+ ホスト)
+	Version                             string   `cim:"Version"`                     // 構成バージョン（例: "10.0"）
+	CreationTime                        string   `cim:"CreationTime"`                // CIM DateTime（文字列）
 }
