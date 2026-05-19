@@ -8,7 +8,7 @@ import (
 // map[string]string に変換できることを検証する。
 func TestParseEmbeddedInstance(t *testing.T) {
 	t.Run("単純な要素のパース", func(t *testing.T) {
-		xml := `<p:Msvm_VirtualHardDiskSettingData xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_VirtualHardDiskSettingData"><p:Path>C:\vm.vhdx</p:Path><p:MaxInternalSize>10737418240</p:MaxInternalSize><p:VirtualDiskFormat>3</p:VirtualDiskFormat></p:Msvm_VirtualHardDiskSettingData>`
+		xml := `<p:Msvm_VirtualHardDiskSettingData xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_VirtualHardDiskSettingData"><p:Path>C:\vm.vhdx</p:Path><p:MaxInternalSize>10737418240</p:MaxInternalSize><p:Format>3</p:Format></p:Msvm_VirtualHardDiskSettingData>`
 
 		got, err := parseEmbeddedInstance(xml)
 		if err != nil {
@@ -20,8 +20,8 @@ func TestParseEmbeddedInstance(t *testing.T) {
 		if got["MaxInternalSize"] != "10737418240" {
 			t.Errorf("MaxInternalSize: got %q", got["MaxInternalSize"])
 		}
-		if got["VirtualDiskFormat"] != "3" {
-			t.Errorf("VirtualDiskFormat: got %q", got["VirtualDiskFormat"])
+		if got["Format"] != "3" {
+			t.Errorf("Format: got %q", got["Format"])
 		}
 	})
 
@@ -73,11 +73,11 @@ func TestMarshalEmbeddedInstance(t *testing.T) {
 	if parsed["MaxInternalSize"] != "10737418240" {
 		t.Errorf("MaxInternalSize round-trip: got %q", parsed["MaxInternalSize"])
 	}
-	if parsed["VirtualDiskFormat"] != "3" {
-		t.Errorf("VirtualDiskFormat round-trip: got %q", parsed["VirtualDiskFormat"])
+	if parsed["Format"] != "3" {
+		t.Errorf("Format round-trip: got %q", parsed["Format"])
 	}
-	if parsed["VirtualDiskType"] != "3" {
-		t.Errorf("VirtualDiskType round-trip: got %q", parsed["VirtualDiskType"])
+	if parsed["Type"] != "3" {
+		t.Errorf("Type round-trip: got %q", parsed["Type"])
 	}
 }
 
