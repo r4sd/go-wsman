@@ -6,7 +6,7 @@
   </s:Header>
   <s:Body>
     <p:GetVirtualHardDiskSettingData_OUTPUT>
-      <p:SettingData>&lt;p:Msvm_VirtualHardDiskSettingData xmlns:p=&quot;http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_VirtualHardDiskSettingData&quot;&gt;&lt;p:Path&gt;C:\VMs\test.vhdx&lt;/p:Path&gt;&lt;p:VirtualDiskFormat&gt;3&lt;/p:VirtualDiskFormat&gt;&lt;p:VirtualDiskType&gt;3&lt;/p:VirtualDiskType&gt;&lt;p:MaxInternalSize&gt;10737418240&lt;/p:MaxInternalSize&gt;&lt;p:BlockSize&gt;33554432&lt;/p:BlockSize&gt;&lt;p:LogicalSectorSize&gt;512&lt;/p:LogicalSectorSize&gt;&lt;p:PhysicalSectorSize&gt;4096&lt;/p:PhysicalSectorSize&gt;&lt;/p:Msvm_VirtualHardDiskSettingData&gt;</p:SettingData>
+      <p:SettingData>&lt;p:Msvm_VirtualHardDiskSettingData xmlns:p=&quot;http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_VirtualHardDiskSettingData&quot;&gt;&lt;p:Path&gt;C:\VMs\test.vhdx&lt;/p:Path&gt;&lt;p:Format&gt;3&lt;/p:Format&gt;&lt;p:Type&gt;3&lt;/p:Type&gt;&lt;p:MaxInternalSize&gt;10737418240&lt;/p:MaxInternalSize&gt;&lt;p:BlockSize&gt;33554432&lt;/p:BlockSize&gt;&lt;p:LogicalSectorSize&gt;512&lt;/p:LogicalSectorSize&gt;&lt;p:PhysicalSectorSize&gt;4096&lt;/p:PhysicalSectorSize&gt;&lt;/p:Msvm_VirtualHardDiskSettingData&gt;</p:SettingData>
       <p:ReturnValue>0</p:ReturnValue>
     </p:GetVirtualHardDiskSettingData_OUTPUT>
   </s:Body>

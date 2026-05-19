@@ -43,8 +43,8 @@ const (
 type Msvm_VirtualHardDiskSettingData struct {
 	InstanceID         string `cim:"InstanceID"`
 	ElementName        string `cim:"ElementName"`
-	VirtualDiskFormat  uint16 `cim:"VirtualDiskFormat"`  // 2=VHD, 3=VHDX, 4=VHDSet
-	VirtualDiskType    uint16 `cim:"VirtualDiskType"`    // 2=Fixed, 3=Dynamic, 4=Differencing
+	VirtualDiskFormat  uint16 `cim:"Format"`             // 2=VHD, 3=VHDX, 4=VHDSet (CIM 正名: Format)
+	VirtualDiskType    uint16 `cim:"Type"`               // 2=Fixed, 3=Dynamic, 4=Differencing (CIM 正名: Type)
 	BlockSize          uint32 `cim:"BlockSize"`          // バイト単位
 	LogicalSectorSize  uint32 `cim:"LogicalSectorSize"`  // バイト単位
 	PhysicalSectorSize uint32 `cim:"PhysicalSectorSize"` // バイト単位
@@ -282,7 +282,7 @@ type Msvm_VirtualSystemSettingData struct {
 	AutomaticRecoveryAction     uint16 `cim:"AutomaticRecoveryAction"`
 	BIOSGUID                    string `cim:"BIOSGUID"`
 	BIOSNumLock                 bool   `cim:"BIOSNumLock"`
-	SecureBoot                  bool   `cim:"SecureBoot"`
+	SecureBoot                  bool   `cim:"SecureBootEnabled"` // CIM 正名: SecureBootEnabled
 	SecureBootTemplateId        string `cim:"SecureBootTemplateId"`
 	Version                     string `cim:"Version"`      // 構成バージョン（例: "10.0"）
 	CreationTime                string `cim:"CreationTime"` // CIM DateTime（文字列）

@@ -17,7 +17,7 @@
           <p:AutomaticStartupAction>3</p:AutomaticStartupAction>
           <p:AutomaticShutdownAction>3</p:AutomaticShutdownAction>
           <p:AutomaticRecoveryAction>2</p:AutomaticRecoveryAction>
-          <p:SecureBoot>TRUE</p:SecureBoot>
+          <p:SecureBootEnabled>TRUE</p:SecureBootEnabled>
           <p:Version>10.0</p:Version>
         </p:Msvm_VirtualSystemSettingData>
         <p:Msvm_VirtualSystemSettingData>
@@ -30,7 +30,7 @@
           <p:AutomaticStartupAction>2</p:AutomaticStartupAction>
           <p:AutomaticShutdownAction>2</p:AutomaticShutdownAction>
           <p:AutomaticRecoveryAction>2</p:AutomaticRecoveryAction>
-          <p:SecureBoot>FALSE</p:SecureBoot>
+          <p:SecureBootEnabled>FALSE</p:SecureBootEnabled>
           <p:Version>9.0</p:Version>
         </p:Msvm_VirtualSystemSettingData>
       </e:Items>
