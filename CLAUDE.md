@@ -48,6 +48,22 @@ const (
 )
 ```
 
+## CIM 仕様確認 (新規 Msvm_* クラス実装前 **必須**)
+
+CIM クラスを Go 構造体にバインドする際の一次資料は **Microsoft 公式 MOF**。URL は **アンダースコア除去 + 全小文字** のスラグ形式:
+
+```
+https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/msvm-<class-slug>
+例: Msvm_VirtualHardDiskSettingData → msvm-virtualharddisksettingdata
+```
+
+- フィールド名・型・配列性・列挙定数値を MOF と一致させる
+- `cim:"..."` タグは **MOF プロパティ名と完全一致** 必須 (Go 識別子は別でも可)
+- Issue 記述、terraform-provider-hyperv の Go コード、他言語ライブラリは **二次情報**、信用しない
+- 新規クラス追加時は `hyperv/testdata/mof/{class_snake_case}.txt` に **struct が参照する CIM プロパティのみ** 保存し (網羅不要)、`cim_compliance_test.go` の reflect 突合テストで CI チェックさせる
+- 既存クラスへの遡及は不要 (手動監査済)。気付いた時に fixture 追加で OK
+- 詳細・経緯・失敗事例: Obsidian `40-Knowledge/cim/cim-bindings-mof-verification.md`
+
 ## テスト規約
 
 ### TDD サイクル（必須）
