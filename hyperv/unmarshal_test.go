@@ -174,8 +174,8 @@ func TestUnmarshal_VirtualHardDiskSettingData(t *testing.T) {
 	props := map[string]string{
 		"InstanceID":         "Microsoft:Definition\\1\\Default",
 		"ElementName":        "vm-disk",
-		"VirtualDiskFormat":  "3",
-		"VirtualDiskType":    "3",
+		"Format":             "3",
+		"Type":               "3",
 		"BlockSize":          "33554432",
 		"LogicalSectorSize":  "512",
 		"PhysicalSectorSize": "4096",

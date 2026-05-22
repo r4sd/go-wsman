@@ -1,0 +1,19 @@
+# Msvm_VirtualHardDiskSettingData CIM プロパティ
+#
+# Source: https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/msvm-virtualharddisksettingdata
+# Fetched: 2026-05-20
+# 形式: <CIM プロパティ名> <CIM 型>
+#
+# fixture ポリシー: struct が cim タグで参照するプロパティのみ列挙 (詳細は cim_compliance_test.go)。
+# 鮮度: Fetched から 1 年以上経過した場合は再取得を検討。
+
+InstanceID string
+ElementName string
+Format uint16
+Type uint16
+BlockSize uint32
+LogicalSectorSize uint32
+PhysicalSectorSize uint32
+MaxInternalSize uint64
+Path string
+ParentPath string

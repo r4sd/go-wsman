@@ -1,0 +1,36 @@
+# Msvm_VirtualSystemSettingData CIM プロパティ
+#
+# Source: https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/msvm-virtualsystemsettingdata
+# Fetched: 2026-05-20
+# 形式: <CIM プロパティ名> <CIM 型>
+#
+# fixture ポリシー: struct が cim タグで参照するプロパティのみ列挙 (詳細は cim_compliance_test.go)。
+# 鮮度: Fetched から 1 年以上経過した場合は再取得を検討。
+#
+# 注: 本 fixture は main 時点の Msvm_VirtualSystemSettingData struct が参照するプロパティを列挙。
+#     PR #62 で追加される予定の 10 フィールド (HighMmioGapSize 等) は別途 fixture 更新時に追加する。
+
+InstanceID string
+ElementName string
+Caption string
+Description string
+VirtualSystemIdentifier string
+VirtualSystemType string
+VirtualSystemSubType string
+ConfigurationID string
+ConfigurationDataRoot string
+ConfigurationFile string
+SnapshotDataRoot string
+SuspendDataRoot string
+SwapFileDataRoot string
+LogDataRoot string
+AutomaticStartupAction uint16
+AutomaticStartupActionDelay datetime
+AutomaticShutdownAction uint16
+AutomaticRecoveryAction uint16
+BIOSGUID string
+BIOSNumLock boolean
+SecureBootEnabled boolean
+SecureBootTemplateId string
+Version string
+CreationTime datetime

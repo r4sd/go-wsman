@@ -178,3 +178,26 @@ func TestCIMCompliance_MemorySettingData(t *testing.T) {
 		nil, // 許容逸脱なし
 	)
 }
+
+// TestCIMCompliance_VirtualHardDiskSettingData は Issue #65 修正後の cim タグが MOF と整合するか検証する。
+// Format/Type が CIM 正名に揃っていることを保証する。
+func TestCIMCompliance_VirtualHardDiskSettingData(t *testing.T) {
+	assertCIMCompliance(t,
+		&Msvm_VirtualHardDiskSettingData{},
+		"msvm_virtualharddisksettingdata.txt",
+		nil,
+	)
+}
+
+// TestCIMCompliance_VirtualSystemSettingData は Issue #65 修正後の cim タグが MOF と整合するか検証する。
+// SecureBootEnabled が CIM 正名に揃っていることを保証する。
+//
+// 注: PR #62 で追加される予定の 10 フィールド (HighMmioGapSize 等) は本 fixture 未掲載、
+// PR #62 マージ時に fixture を更新すること。
+func TestCIMCompliance_VirtualSystemSettingData(t *testing.T) {
+	assertCIMCompliance(t,
+		&Msvm_VirtualSystemSettingData{},
+		"msvm_virtualsystemsettingdata.txt",
+		nil,
+	)
+}
