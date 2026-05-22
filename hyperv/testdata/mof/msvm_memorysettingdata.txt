@@ -1,0 +1,21 @@
+# Msvm_MemorySettingData CIM プロパティ
+#
+# Source: https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/msvm-memorysettingdata
+# Fetched: 2026-05-20
+# 形式: <CIM プロパティ名> <CIM 型>
+#
+# fixture ポリシー: go-wsman の Msvm_MemorySettingData struct が cim タグで参照するプロパティのみ列挙する
+# (MOF 全プロパティ網羅は不要)。理由: Msvm_* クラスは 50+ プロパティを持つものが多く、
+# 全コピーは fixture 肥大化と保守負債につながるため。詳細は cim_compliance_test.go と
+# Obsidian `40-Knowledge/cim/cim-bindings-mof-verification.md` 参照。
+#
+# 鮮度: Fetched から 1 年以上経過した場合は再取得を検討 (新 Windows バージョンでの MOF 更新確認)
+
+InstanceID string
+ElementName string
+ResourceType uint16
+VirtualQuantity uint64
+DynamicMemoryEnabled boolean
+Reservation uint64
+Limit uint64
+Weight uint32

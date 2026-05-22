@@ -43,8 +43,8 @@ const (
 type Msvm_VirtualHardDiskSettingData struct {
 	InstanceID         string `cim:"InstanceID"`
 	ElementName        string `cim:"ElementName"`
-	VirtualDiskFormat  uint16 `cim:"VirtualDiskFormat"`  // 2=VHD, 3=VHDX, 4=VHDSet
-	VirtualDiskType    uint16 `cim:"VirtualDiskType"`    // 2=Fixed, 3=Dynamic, 4=Differencing
+	VirtualDiskFormat  uint16 `cim:"Format"`             // 2=VHD, 3=VHDX, 4=VHDSet (CIM 正名: Format)
+	VirtualDiskType    uint16 `cim:"Type"`               // 2=Fixed, 3=Dynamic, 4=Differencing (CIM 正名: Type)
 	BlockSize          uint32 `cim:"BlockSize"`          // バイト単位
 	LogicalSectorSize  uint32 `cim:"LogicalSectorSize"`  // バイト単位
 	PhysicalSectorSize uint32 `cim:"PhysicalSectorSize"` // バイト単位
@@ -98,16 +98,6 @@ const (
 const (
 	AutomaticCriticalErrorActionNone  uint16 = 0
 	AutomaticCriticalErrorActionPause uint16 = 1
-)
-
-// CheckpointType 定数（Msvm_VirtualSystemSettingData.CheckpointType）
-//
-// VM のチェックポイント種別。Production はアプリ整合性、Standard はクラッシュ整合性。
-const (
-	CheckpointTypeDisabled       uint16 = 2
-	CheckpointTypeProduction     uint16 = 3
-	CheckpointTypeProductionOnly uint16 = 4
-	CheckpointTypeStandard       uint16 = 5
 )
 
 // ResourceType 定数（CIM_ResourceAllocationSettingData.ResourceType）
@@ -294,25 +284,23 @@ type Msvm_VirtualSystemSettingData struct {
 	SuspendDataRoot                     string   `cim:"SuspendDataRoot"`
 	SwapFileDataRoot                    string   `cim:"SwapFileDataRoot"`
 	LogDataRoot                         string   `cim:"LogDataRoot"`
-	SmartPagingFilePath                 string   `cim:"SmartPagingFilePath"` // スマートページングファイル位置
 	AutomaticStartupAction              uint16   `cim:"AutomaticStartupAction"`
 	AutomaticStartupActionDelay         string   `cim:"AutomaticStartupActionDelay"` // CIM Duration（文字列）
 	AutomaticShutdownAction             uint16   `cim:"AutomaticShutdownAction"`
 	AutomaticRecoveryAction             uint16   `cim:"AutomaticRecoveryAction"`
 	AutomaticCriticalErrorAction        uint16   `cim:"AutomaticCriticalErrorAction"`        // 0=None, 1=Pause
-	AutomaticCriticalErrorActionTimeout uint16   `cim:"AutomaticCriticalErrorActionTimeout"` // Pause 継続時間 (分)
+	AutomaticCriticalErrorActionTimeout string   `cim:"AutomaticCriticalErrorActionTimeout"` // CIM datetime (interval)、Pause 継続時間
 	BIOSGUID                            string   `cim:"BIOSGUID"`
 	BIOSNumLock                         bool     `cim:"BIOSNumLock"`
-	SecureBoot                          bool     `cim:"SecureBoot"`
+	SecureBoot                          bool     `cim:"SecureBootEnabled"` // CIM 正名: SecureBootEnabled
 	SecureBootTemplateId                string   `cim:"SecureBootTemplateId"`
 	BootSourceOrder                     []string `cim:"BootSourceOrder"` // Gen2 ブート順序 (EPR/Drive 参照の配列)
 	Notes                               []string `cim:"Notes"`           // VM 備考 (複数行を配列で保持)
 	LockOnDisconnect                    bool     `cim:"LockOnDisconnect"`
 	GuestControlledCacheTypes           bool     `cim:"GuestControlledCacheTypes"`
-	HighMemoryMappedIoSpace             uint64   `cim:"HighMemoryMappedIoSpace"`
-	LowMemoryMappedIoSpace              uint32   `cim:"LowMemoryMappedIoSpace"`
-	CheckpointType                      uint16   `cim:"CheckpointType"`              // 2=Disabled, 3=Production, 4=ProductionOnly, 5=Standard
-	AutomaticCheckpointsEnabled         bool     `cim:"AutomaticCheckpointsEnabled"` // 自動チェックポイント (Win10+ ホスト)
-	Version                             string   `cim:"Version"`                     // 構成バージョン（例: "10.0"）
-	CreationTime                        string   `cim:"CreationTime"`                // CIM DateTime（文字列）
+	HighMmioGapSize                     uint64   `cim:"HighMmioGapSize"`           // High MMIO ギャップサイズ (MB)
+	LowMmioGapSize                      uint64   `cim:"LowMmioGapSize"`            // Low MMIO ギャップサイズ (MB)
+	AutomaticSnapshotsEnabled           bool     `cim:"AutomaticSnapshotsEnabled"` // 自動スナップショット (Win10+ ホスト)
+	Version                             string   `cim:"Version"`                   // 構成バージョン（例: "10.0"）
+	CreationTime                        string   `cim:"CreationTime"`              // CIM DateTime（文字列）
 }

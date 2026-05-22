@@ -369,17 +369,14 @@ func TestClient_GetSystemSettingData_FullFields(t *testing.T) {
 		t.Errorf("AutomaticCriticalErrorAction: got %d, want %d",
 			got.AutomaticCriticalErrorAction, AutomaticCriticalErrorActionPause)
 	}
-	if got.AutomaticCriticalErrorActionTimeout != 30 {
-		t.Errorf("AutomaticCriticalErrorActionTimeout: got %d", got.AutomaticCriticalErrorActionTimeout)
+	if got.AutomaticCriticalErrorActionTimeout != "00000000003000.000000:000" {
+		t.Errorf("AutomaticCriticalErrorActionTimeout: got %q", got.AutomaticCriticalErrorActionTimeout)
 	}
-	if got.HighMemoryMappedIoSpace != 536870912 {
-		t.Errorf("HighMemoryMappedIoSpace: got %d", got.HighMemoryMappedIoSpace)
+	if got.HighMmioGapSize != 536870912 {
+		t.Errorf("HighMmioGapSize: got %d", got.HighMmioGapSize)
 	}
-	if got.LowMemoryMappedIoSpace != 268435456 {
-		t.Errorf("LowMemoryMappedIoSpace: got %d", got.LowMemoryMappedIoSpace)
-	}
-	if got.CheckpointType != CheckpointTypeProduction {
-		t.Errorf("CheckpointType: got %d, want %d", got.CheckpointType, CheckpointTypeProduction)
+	if got.LowMmioGapSize != 268435456 {
+		t.Errorf("LowMmioGapSize: got %d", got.LowMmioGapSize)
 	}
 
 	// bool フィールド
@@ -389,16 +386,13 @@ func TestClient_GetSystemSettingData_FullFields(t *testing.T) {
 	if got.GuestControlledCacheTypes {
 		t.Errorf("GuestControlledCacheTypes: want false")
 	}
-	if !got.AutomaticCheckpointsEnabled {
-		t.Errorf("AutomaticCheckpointsEnabled: want true")
+	if !got.AutomaticSnapshotsEnabled {
+		t.Errorf("AutomaticSnapshotsEnabled: want true")
 	}
 
 	// string フィールド
 	if got.SnapshotDataRoot != `C:\VMs\Snapshots\vm-full` {
 		t.Errorf("SnapshotDataRoot: got %q", got.SnapshotDataRoot)
-	}
-	if got.SmartPagingFilePath != `C:\VMs\SmartPaging\vm-full` {
-		t.Errorf("SmartPagingFilePath: got %q", got.SmartPagingFilePath)
 	}
 }
 

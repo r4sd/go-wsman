@@ -15,13 +15,12 @@
           <p:VirtualSystemSubType>Microsoft:Hyper-V:SubType:2</p:VirtualSystemSubType>
           <p:ConfigurationID>99999999-aaaa-bbbb-cccc-000000000099</p:ConfigurationID>
           <p:SnapshotDataRoot>C:\VMs\Snapshots\vm-full</p:SnapshotDataRoot>
-          <p:SmartPagingFilePath>C:\VMs\SmartPaging\vm-full</p:SmartPagingFilePath>
           <p:AutomaticStartupAction>3</p:AutomaticStartupAction>
           <p:AutomaticShutdownAction>3</p:AutomaticShutdownAction>
           <p:AutomaticRecoveryAction>2</p:AutomaticRecoveryAction>
           <p:AutomaticCriticalErrorAction>1</p:AutomaticCriticalErrorAction>
-          <p:AutomaticCriticalErrorActionTimeout>30</p:AutomaticCriticalErrorActionTimeout>
-          <p:SecureBoot>TRUE</p:SecureBoot>
+          <p:AutomaticCriticalErrorActionTimeout>00000000003000.000000:000</p:AutomaticCriticalErrorActionTimeout>
+          <p:SecureBootEnabled>TRUE</p:SecureBootEnabled>
           <p:BootSourceOrder>Microsoft:99999999-aaaa-bbbb-cccc-000000000099\BootSource\0</p:BootSourceOrder>
           <p:BootSourceOrder>Microsoft:99999999-aaaa-bbbb-cccc-000000000099\BootSource\1</p:BootSourceOrder>
           <p:BootSourceOrder>Microsoft:99999999-aaaa-bbbb-cccc-000000000099\BootSource\2</p:BootSourceOrder>
@@ -29,10 +28,9 @@
           <p:Notes>line2 with &amp; symbol</p:Notes>
           <p:LockOnDisconnect>TRUE</p:LockOnDisconnect>
           <p:GuestControlledCacheTypes>FALSE</p:GuestControlledCacheTypes>
-          <p:HighMemoryMappedIoSpace>536870912</p:HighMemoryMappedIoSpace>
-          <p:LowMemoryMappedIoSpace>268435456</p:LowMemoryMappedIoSpace>
-          <p:CheckpointType>3</p:CheckpointType>
-          <p:AutomaticCheckpointsEnabled>TRUE</p:AutomaticCheckpointsEnabled>
+          <p:HighMmioGapSize>536870912</p:HighMmioGapSize>
+          <p:LowMmioGapSize>268435456</p:LowMmioGapSize>
+          <p:AutomaticSnapshotsEnabled>TRUE</p:AutomaticSnapshotsEnabled>
           <p:Version>10.0</p:Version>
         </p:Msvm_VirtualSystemSettingData>
       </e:Items>
