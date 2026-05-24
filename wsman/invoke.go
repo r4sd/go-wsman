@@ -111,11 +111,11 @@ func BuildInvokeRequestMulti(resourceURI, endpoint, methodName string, params []
 	env := NewEnvelope(opts...)
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf(`<p:%s_INPUT xmlns:p="%s">`, methodName, resourceURI))
+	fmt.Fprintf(&sb, `<p:%s_INPUT xmlns:p="%s">`, methodName, resourceURI)
 	for _, p := range params {
-		sb.WriteString(fmt.Sprintf(`<p:%s>%s</p:%s>`, p.Name, p.Value, p.Name))
+		fmt.Fprintf(&sb, `<p:%s>%s</p:%s>`, p.Name, p.Value, p.Name)
 	}
-	sb.WriteString(fmt.Sprintf(`</p:%s_INPUT>`, methodName))
+	fmt.Fprintf(&sb, `</p:%s_INPUT>`, methodName)
 
 	env.SetBody([]byte("\n    " + sb.String() + "\n  "))
 
