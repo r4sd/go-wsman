@@ -52,11 +52,11 @@ func BuildCreateRequest(resourceURI, endpoint string, properties map[string]stri
 	sort.Strings(keys)
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf(`<p:%s xmlns:p="%s">`, className, resourceURI))
+	fmt.Fprintf(&sb, `<p:%s xmlns:p="%s">`, className, resourceURI)
 	for _, k := range keys {
-		sb.WriteString(fmt.Sprintf(`<p:%s>%s</p:%s>`, k, properties[k], k))
+		fmt.Fprintf(&sb, `<p:%s>%s</p:%s>`, k, properties[k], k)
 	}
-	sb.WriteString(fmt.Sprintf(`</p:%s>`, className))
+	fmt.Fprintf(&sb, `</p:%s>`, className)
 
 	env.SetBody([]byte("\n    " + sb.String() + "\n  "))
 

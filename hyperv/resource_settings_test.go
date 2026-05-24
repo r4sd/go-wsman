@@ -95,7 +95,7 @@ func TestClient_ModifyResourceSettings_MultipleParams(t *testing.T) {
 	if idxFirst < 0 || idxSecond < 0 || idxThird < 0 {
 		t.Fatalf("body missing markers: first=%d second=%d third=%d", idxFirst, idxSecond, idxThird)
 	}
-	if !(idxFirst < idxSecond && idxSecond < idxThird) {
+	if idxFirst >= idxSecond || idxSecond >= idxThird {
 		t.Errorf("array params are out of order: first=%d second=%d third=%d", idxFirst, idxSecond, idxThird)
 	}
 
