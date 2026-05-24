@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd" xmlns:e="http://schemas.xmlsoap.org/ws/2004/09/enumeration" xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_VirtualSystemSettingData">
+  <s:Header>
+    <a:Action>http://schemas.xmlsoap.org/ws/2004/09/enumeration/PullResponse</a:Action>
+    <a:MessageID>uuid:response-pull-vssd-full-001</a:MessageID>
+  </s:Header>
+  <s:Body>
+    <e:PullResponse>
+      <e:Items>
+        <p:Msvm_VirtualSystemSettingData>
+          <p:InstanceID>Microsoft:99999999-aaaa-bbbb-cccc-000000000099</p:InstanceID>
+          <p:ElementName>vm-full</p:ElementName>
+          <p:VirtualSystemIdentifier>99999999-aaaa-bbbb-cccc-000000000099</p:VirtualSystemIdentifier>
+          <p:VirtualSystemType>Microsoft:Hyper-V:System:Realized</p:VirtualSystemType>
+          <p:VirtualSystemSubType>Microsoft:Hyper-V:SubType:2</p:VirtualSystemSubType>
+          <p:ConfigurationID>99999999-aaaa-bbbb-cccc-000000000099</p:ConfigurationID>
+          <p:SnapshotDataRoot>C:\VMs\Snapshots\vm-full</p:SnapshotDataRoot>
+          <p:AutomaticStartupAction>3</p:AutomaticStartupAction>
+          <p:AutomaticShutdownAction>3</p:AutomaticShutdownAction>
+          <p:AutomaticRecoveryAction>2</p:AutomaticRecoveryAction>
+          <p:AutomaticCriticalErrorAction>1</p:AutomaticCriticalErrorAction>
+          <p:AutomaticCriticalErrorActionTimeout>00000000003000.000000:000</p:AutomaticCriticalErrorActionTimeout>
+          <p:SecureBootEnabled>TRUE</p:SecureBootEnabled>
+          <p:BootSourceOrder>Microsoft:99999999-aaaa-bbbb-cccc-000000000099\BootSource\0</p:BootSourceOrder>
+          <p:BootSourceOrder>Microsoft:99999999-aaaa-bbbb-cccc-000000000099\BootSource\1</p:BootSourceOrder>
+          <p:BootSourceOrder>Microsoft:99999999-aaaa-bbbb-cccc-000000000099\BootSource\2</p:BootSourceOrder>
+          <p:Notes>line1</p:Notes>
+          <p:Notes>line2 with &amp; symbol</p:Notes>
+          <p:LockOnDisconnect>TRUE</p:LockOnDisconnect>
+          <p:GuestControlledCacheTypes>FALSE</p:GuestControlledCacheTypes>
+          <p:HighMmioGapSize>536870912</p:HighMmioGapSize>
+          <p:LowMmioGapSize>268435456</p:LowMmioGapSize>
+          <p:AutomaticSnapshotsEnabled>TRUE</p:AutomaticSnapshotsEnabled>
+          <p:Version>10.0</p:Version>
+        </p:Msvm_VirtualSystemSettingData>
+      </e:Items>
+      <e:EndOfSequence/>
+    </e:PullResponse>
+  </s:Body>
+</s:Envelope>

@@ -6,9 +6,6 @@
 #
 # fixture ポリシー: struct が cim タグで参照するプロパティのみ列挙 (詳細は cim_compliance_test.go)。
 # 鮮度: Fetched から 1 年以上経過した場合は再取得を検討。
-#
-# 注: 本 fixture は main 時点の Msvm_VirtualSystemSettingData struct が参照するプロパティを列挙。
-#     PR #62 で追加される予定の 10 フィールド (HighMmioGapSize 等) は別途 fixture 更新時に追加する。
 
 InstanceID string
 ElementName string
@@ -28,9 +25,18 @@ AutomaticStartupAction uint16
 AutomaticStartupActionDelay datetime
 AutomaticShutdownAction uint16
 AutomaticRecoveryAction uint16
+AutomaticCriticalErrorAction uint16
+AutomaticCriticalErrorActionTimeout datetime
 BIOSGUID string
 BIOSNumLock boolean
 SecureBootEnabled boolean
 SecureBootTemplateId string
+BootSourceOrder string[]
+Notes string[]
+LockOnDisconnect boolean
+GuestControlledCacheTypes boolean
+HighMmioGapSize uint64
+LowMmioGapSize uint64
+AutomaticSnapshotsEnabled boolean
 Version string
 CreationTime datetime
