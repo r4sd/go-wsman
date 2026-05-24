@@ -13,20 +13,20 @@ permissions:
 jobs:
   go-lint:
     name: Lint
-    if: github.actor == github.repository_owner
+    if: github.actor == github.repository_owner || github.actor == 'dependabot[bot]'
     uses: ./.github/workflows/_go-lint.yml
 
   go-test:
     name: Test
-    if: github.actor == github.repository_owner
+    if: github.actor == github.repository_owner || github.actor == 'dependabot[bot]'
     uses: ./.github/workflows/_go-test.yml
 
   go-build:
     name: Build
-    if: github.actor == github.repository_owner
+    if: github.actor == github.repository_owner || github.actor == 'dependabot[bot]'
     uses: ./.github/workflows/_go-build.yml
 
   security-scan:
     name: Security Scan
-    if: github.actor == github.repository_owner
+    if: github.actor == github.repository_owner || github.actor == 'dependabot[bot]'
     uses: ./.github/workflows/_security-scan.yml
