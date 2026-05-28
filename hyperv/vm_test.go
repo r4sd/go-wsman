@@ -389,6 +389,18 @@ func TestClient_GetSystemSettingData_FullFields(t *testing.T) {
 	if !got.AutomaticSnapshotsEnabled {
 		t.Errorf("AutomaticSnapshotsEnabled: want true")
 	}
+	if !got.PauseAfterBootFailure {
+		t.Errorf("PauseAfterBootFailure: want true")
+	}
+
+	// Gen2 ファームウェア enum (#51)
+	if got.NetworkBootPreferredProtocol != NetworkBootPreferredProtocolIPv6 {
+		t.Errorf("NetworkBootPreferredProtocol: got %d, want %d (IPv6)",
+			got.NetworkBootPreferredProtocol, NetworkBootPreferredProtocolIPv6)
+	}
+	if got.ConsoleMode != ConsoleModeCOM1 {
+		t.Errorf("ConsoleMode: got %d, want %d (COM1)", got.ConsoleMode, ConsoleModeCOM1)
+	}
 
 	// string フィールド
 	if got.SnapshotDataRoot != `C:\VMs\Snapshots\vm-full` {

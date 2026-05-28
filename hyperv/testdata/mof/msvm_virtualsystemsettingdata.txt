@@ -1,7 +1,7 @@
 # Msvm_VirtualSystemSettingData CIM プロパティ
 #
 # Source: https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/msvm-virtualsystemsettingdata
-# Fetched: 2026-05-20
+# Fetched: 2026-05-29
 # 形式: <CIM プロパティ名> <CIM 型>
 #
 # fixture ポリシー: struct が cim タグで参照するプロパティのみ列挙 (詳細は cim_compliance_test.go)。
@@ -38,5 +38,8 @@ GuestControlledCacheTypes boolean
 HighMmioGapSize uint64
 LowMmioGapSize uint64
 AutomaticSnapshotsEnabled boolean
+NetworkBootPreferredProtocol uint16
+ConsoleMode uint16
+PauseAfterBootFailure boolean
 Version string
 CreationTime datetime
