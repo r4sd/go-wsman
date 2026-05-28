@@ -100,6 +100,26 @@ const (
 	AutomaticCriticalErrorActionPause uint16 = 1
 )
 
+// NetworkBootPreferredProtocol 定数（Msvm_VirtualSystemSettingData.NetworkBootPreferredProtocol）。
+//
+// Gen2 VM の PXE ブート時に使うプロトコル。MOF の ValueMap は 4096/4097 で
+// 直感的な 4/6 ではない点に注意 (Issue #51 の表は誤り、MOF を一次資料とした)。
+const (
+	NetworkBootPreferredProtocolIPv4 uint16 = 4096
+	NetworkBootPreferredProtocolIPv6 uint16 = 4097
+)
+
+// ConsoleMode 定数（Msvm_VirtualSystemSettingData.ConsoleMode）。
+//
+// VM のコンソール出力先。COM1/COM2 を指定するとシリアル経由で OS の
+// コンソールにアクセスできる (Linux ゲストの早期ブートデバッグ等で利用)。
+const (
+	ConsoleModeDefault uint16 = 0
+	ConsoleModeCOM1    uint16 = 1
+	ConsoleModeCOM2    uint16 = 2
+	ConsoleModeNone    uint16 = 3
+)
+
 // ResourceType 定数（CIM_ResourceAllocationSettingData.ResourceType）
 //
 // VM に紐づくリソース種別を表す。Phase 4 で扱うリソースに対応する値のみ列挙する。
@@ -301,8 +321,12 @@ type Msvm_VirtualSystemSettingData struct {
 	HighMmioGapSize                     uint64   `cim:"HighMmioGapSize"`           // High MMIO ギャップサイズ (MB)
 	LowMmioGapSize                      uint64   `cim:"LowMmioGapSize"`            // Low MMIO ギャップサイズ (MB)
 	AutomaticSnapshotsEnabled           bool     `cim:"AutomaticSnapshotsEnabled"` // 自動スナップショット (Win10+ ホスト)
-	Version                             string   `cim:"Version"`                   // 構成バージョン（例: "10.0"）
-	CreationTime                        string   `cim:"CreationTime"`              // CIM DateTime（文字列）
+	// Gen2 ファームウェア (#51)
+	NetworkBootPreferredProtocol uint16 `cim:"NetworkBootPreferredProtocol"` // 4096=IPv4, 4097=IPv6 (CIM 列挙値、4/6 ではない)
+	ConsoleMode                  uint16 `cim:"ConsoleMode"`                  // 0=Default, 1=COM1, 2=COM2, 3=None
+	PauseAfterBootFailure        bool   `cim:"PauseAfterBootFailure"`        // BIOS が boot 失敗で一時停止 (MOF は boolean、OnOffState ではない)
+	Version                      string `cim:"Version"`                      // 構成バージョン（例: "10.0"）
+	CreationTime                 string `cim:"CreationTime"`                 // CIM DateTime（文字列）
 }
 
 // VlanOperationMode 定数群 (Msvm_EthernetSwitchPortVlanSettingData.OperationMode、CIM 型 uint32)。

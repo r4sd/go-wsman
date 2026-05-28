@@ -191,7 +191,8 @@ func TestCIMCompliance_VirtualHardDiskSettingData(t *testing.T) {
 
 // TestCIMCompliance_VirtualSystemSettingData は cim タグが MOF と整合するか検証する。
 // SecureBootEnabled (Issue #65) + HighMmioGapSize/LowMmioGapSize/AutomaticSnapshotsEnabled
-// (#50 part 1) が CIM 正名に揃っていることを保証する。
+// (#50 part 1) + NetworkBootPreferredProtocol/ConsoleMode/PauseAfterBootFailure (#51)
+// が CIM 正名に揃っていることを保証する。
 func TestCIMCompliance_VirtualSystemSettingData(t *testing.T) {
 	assertCIMCompliance(t,
 		&Msvm_VirtualSystemSettingData{},

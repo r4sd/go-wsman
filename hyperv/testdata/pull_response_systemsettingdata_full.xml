@@ -31,6 +31,9 @@
           <p:HighMmioGapSize>536870912</p:HighMmioGapSize>
           <p:LowMmioGapSize>268435456</p:LowMmioGapSize>
           <p:AutomaticSnapshotsEnabled>TRUE</p:AutomaticSnapshotsEnabled>
+          <p:NetworkBootPreferredProtocol>4097</p:NetworkBootPreferredProtocol>
+          <p:ConsoleMode>1</p:ConsoleMode>
+          <p:PauseAfterBootFailure>TRUE</p:PauseAfterBootFailure>
           <p:Version>10.0</p:Version>
         </p:Msvm_VirtualSystemSettingData>
       </e:Items>
