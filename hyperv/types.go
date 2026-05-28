@@ -304,3 +304,41 @@ type Msvm_VirtualSystemSettingData struct {
 	Version                             string   `cim:"Version"`                   // 構成バージョン（例: "10.0"）
 	CreationTime                        string   `cim:"CreationTime"`              // CIM DateTime（文字列）
 }
+
+// VlanOperationMode 定数群 (Msvm_EthernetSwitchPortVlanSettingData.OperationMode、CIM 型 uint32)。
+// MOF デフォルトは 0 (タグなし扱い)。明示する場合は下記を使う。
+const (
+	VlanOperationModeAccess  uint32 = 1
+	VlanOperationModeTrunk   uint32 = 2
+	VlanOperationModePrivate uint32 = 3
+)
+
+// PvlanMode 定数群 (Msvm_EthernetSwitchPortVlanSettingData.PvlanMode、CIM 型 uint32)。
+// Private VLAN 利用時のみ意味を持つ。
+const (
+	PvlanModeIsolated    uint32 = 1
+	PvlanModeCommunity   uint32 = 2
+	PvlanModePromiscuous uint32 = 3
+)
+
+// Msvm_EthernetSwitchPortVlanSettingData は仮想 NIC ポートの VLAN 設定を表す CIM クラス。
+// AddFeatureSettings 経由で NIC (Msvm_EthernetPortAllocationSettingData) に紐付ける。
+//
+// OperationMode によって意味を持つフィールドが切り替わる:
+//   - Access (1)  → AccessVlanId
+//   - Trunk (2)   → NativeVlanId + TrunkVlanIdArray + (任意) PruneVlanIdArray
+//   - Private (3) → PvlanMode + PrimaryVlanId + SecondaryVlanId(Array)
+//
+// CIM 仕様: https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/msvm-ethernetswitchportvlansettingdata
+type Msvm_EthernetSwitchPortVlanSettingData struct {
+	InstanceID           string   `cim:"InstanceID"`
+	OperationMode        uint32   `cim:"OperationMode"` // 1=Access, 2=Trunk, 3=Private
+	AccessVlanId         uint16   `cim:"AccessVlanId"`
+	NativeVlanId         uint16   `cim:"NativeVlanId"`
+	PvlanMode            uint32   `cim:"PvlanMode"` // 1=Isolated, 2=Community, 3=Promiscuous
+	PrimaryVlanId        uint16   `cim:"PrimaryVlanId"`
+	SecondaryVlanId      uint16   `cim:"SecondaryVlanId"`
+	PruneVlanIdArray     []uint16 `cim:"PruneVlanIdArray"`
+	TrunkVlanIdArray     []uint16 `cim:"TrunkVlanIdArray"`
+	SecondaryVlanIdArray []uint16 `cim:"SecondaryVlanIdArray"`
+}

@@ -8,9 +8,10 @@ import (
 )
 
 const (
-	msvmVirtualEthernetSwitchURI             = nsVirtV2 + "/Msvm_VirtualEthernetSwitch"
-	msvmSyntheticEthernetPortSettingDataURI  = nsVirtV2 + "/Msvm_SyntheticEthernetPortSettingData"
-	msvmEthernetPortAllocationSettingDataURI = nsVirtV2 + "/Msvm_EthernetPortAllocationSettingData"
+	msvmVirtualEthernetSwitchURI                 = nsVirtV2 + "/Msvm_VirtualEthernetSwitch"
+	msvmSyntheticEthernetPortSettingDataURI      = nsVirtV2 + "/Msvm_SyntheticEthernetPortSettingData"
+	msvmEthernetPortAllocationSettingDataURI     = nsVirtV2 + "/Msvm_EthernetPortAllocationSettingData"
+	msvmEthernetSwitchPortVlanSettingDataURI     = nsVirtV2 + "/Msvm_EthernetSwitchPortVlanSettingData"
 )
 
 // NetworkAdapterOptions は AddNetworkAdapter のオプション。

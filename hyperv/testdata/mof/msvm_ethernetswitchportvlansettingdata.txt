@@ -1,0 +1,19 @@
+# Msvm_EthernetSwitchPortVlanSettingData CIM プロパティ
+#
+# Source: https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/msvm-ethernetswitchportvlansettingdata
+# Fetched: 2026-05-29
+# 形式: <CIM プロパティ名> <CIM 型>
+#
+# fixture ポリシー: struct が cim タグで参照するプロパティのみ列挙する
+# (MOF 全プロパティ網羅は不要)。詳細は cim_compliance_test.go の冒頭参照。
+
+InstanceID string
+OperationMode uint32
+AccessVlanId uint16
+NativeVlanId uint16
+PvlanMode uint32
+PrimaryVlanId uint16
+SecondaryVlanId uint16
+PruneVlanIdArray uint16[]
+TrunkVlanIdArray uint16[]
+SecondaryVlanIdArray uint16[]
