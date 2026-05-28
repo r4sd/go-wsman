@@ -199,3 +199,14 @@ func TestCIMCompliance_VirtualSystemSettingData(t *testing.T) {
 		nil,
 	)
 }
+
+// TestCIMCompliance_EthernetSwitchPortVlanSettingData は #53 で追加した VLAN 設定 struct の
+// cim タグが MOF と整合するか検証する。Issue #53 の表は CIM と複数不一致だった
+// (OperationMode uint8→uint32、PrivateVlanMode→PvlanMode 等) ため MOF を一次資料に取った。
+func TestCIMCompliance_EthernetSwitchPortVlanSettingData(t *testing.T) {
+	assertCIMCompliance(t,
+		&Msvm_EthernetSwitchPortVlanSettingData{},
+		"msvm_ethernetswitchportvlansettingdata.txt",
+		nil,
+	)
+}

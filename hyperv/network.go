@@ -11,6 +11,7 @@ const (
 	msvmVirtualEthernetSwitchURI             = nsVirtV2 + "/Msvm_VirtualEthernetSwitch"
 	msvmSyntheticEthernetPortSettingDataURI  = nsVirtV2 + "/Msvm_SyntheticEthernetPortSettingData"
 	msvmEthernetPortAllocationSettingDataURI = nsVirtV2 + "/Msvm_EthernetPortAllocationSettingData"
+	msvmEthernetSwitchPortVlanSettingDataURI = nsVirtV2 + "/Msvm_EthernetSwitchPortVlanSettingData"
 )
 
 // NetworkAdapterOptions は AddNetworkAdapter のオプション。
@@ -203,4 +204,69 @@ func (c *Client) RemoveNetworkAdapter(ctx context.Context, adapterInstanceID str
 		"InstanceID": adapterInstanceID,
 	})
 	return c.RemoveResourceSettings(ctx, []string{epr})
+}
+
+// AddNetworkAdapterVlan は NIC (Msvm_EthernetPortAllocationSettingData) に VLAN 設定を
+// 追加する (#53)。CIM の AddFeatureSettings 経由で
+// Msvm_EthernetSwitchPortVlanSettingData を Feature として紐付ける。
+//
+// adapterAllocationInstanceID は対象 NIC の Msvm_EthernetPortAllocationSettingData の
+// InstanceID (AddNetworkAdapter の AllocationRef、または既存 NIC を Enumerate して取得)。
+// 注意: SyntheticEthernetPort(NIC 本体) ではなく EthernetPortAllocation(スイッチ接続) の
+// InstanceID であることに注意 — VLAN は「NIC とスイッチを繋ぐ port allocation」に紐付く。
+//
+// OperationMode によって意味を持つフィールドが切り替わる:
+//
+//   - Access: settings.OperationMode = VlanOperationModeAccess + AccessVlanId
+//   - Trunk : settings.OperationMode = VlanOperationModeTrunk  + NativeVlanId + TrunkVlanIdArray
+//   - Private: settings.OperationMode = VlanOperationModePrivate + PvlanMode + Primary/SecondaryVlanId
+//
+// 戻り値は非同期 Job 参照 (Msvm_ConcreteJob)。
+// ReturnValue=0 (同期完了) の場合は空文字列、4096 (非同期開始) の場合は Job 参照を返す。
+//
+// CIM 仕様 (Microsoft 公式 MOF、AddFeatureSettings on Msvm_VirtualSystemManagementService):
+//
+//	uint32 AddFeatureSettings(
+//	  [in]  Msvm_EthernetPortAllocationSettingData    REF AffectedConfiguration,
+//	  [in]  string                                        FeatureSettings[],
+//	  [out] Msvm_EthernetSwitchPortFeatureSettingData REF ResultingFeatureSettings[],
+//	  [out] CIM_ConcreteJob                           REF Job
+//	);
+func (c *Client) AddNetworkAdapterVlan(ctx context.Context, adapterAllocationInstanceID string, settings *Msvm_EthernetSwitchPortVlanSettingData) (string, error) {
+	if adapterAllocationInstanceID == "" {
+		return "", fmt.Errorf("AddNetworkAdapterVlan: adapterAllocationInstanceID must not be empty")
+	}
+	if settings == nil {
+		return "", fmt.Errorf("AddNetworkAdapterVlan: settings must not be nil")
+	}
+
+	vlanXML, err := marshalEmbeddedInstance(settings, "Msvm_EthernetSwitchPortVlanSettingData", nsVirtV2)
+	if err != nil {
+		return "", fmt.Errorf("AddNetworkAdapterVlan: marshal vlan settings: %w", err)
+	}
+
+	affectedEPR := buildEndpointReference(msvmEthernetPortAllocationSettingDataURI, map[string]string{
+		"InstanceID": adapterAllocationInstanceID,
+	})
+
+	params := []wsman.Param{
+		{Name: "AffectedConfiguration", Value: affectedEPR},
+		{Name: "FeatureSettings", Value: vlanXML},
+	}
+
+	resp, err := c.wsman.InvokeMulti(ctx, msvmVirtualSystemManagementServiceURI, "AddFeatureSettings", params)
+	if err != nil {
+		return "", err
+	}
+
+	rv := resp.ReturnValue
+	if rv != "0" && rv != "4096" {
+		return "", fmt.Errorf("AddNetworkAdapterVlan: unexpected ReturnValue=%s", rv)
+	}
+
+	jobRef := resp.Property("Job")
+	if rv == "4096" && jobRef == "" {
+		return "", fmt.Errorf("AddNetworkAdapterVlan: ReturnValue=4096 but no Job reference")
+	}
+	return jobRef, nil
 }

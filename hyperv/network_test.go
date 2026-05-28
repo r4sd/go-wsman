@@ -293,3 +293,137 @@ func TestClient_RemoveNetworkAdapter_Empty(t *testing.T) {
 		t.Error("expected error for empty adapterInstanceID")
 	}
 }
+
+// TestClient_AddNetworkAdapterVlan_Access は Access モード(単一 VLAN ID)で VLAN 設定を
+// 追加するリクエストが正しく組み立てられ、非同期 Job 参照が返ることを検証する (#53)。
+func TestClient_AddNetworkAdapterVlan_Access(t *testing.T) {
+	respXML := loadGolden(t, "invoke_response_add_feature_settings.xml")
+
+	var capturedBody string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read body: %v", err)
+		}
+		capturedBody = string(body)
+		w.Header().Set("Content-Type", "application/soap+xml; charset=utf-8")
+		_, _ = w.Write([]byte(respXML))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(server.URL)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	const allocationID = `Microsoft:11111111-2222-3333-4444-555555555555\NIC-ALLOC-001`
+	settings := &Msvm_EthernetSwitchPortVlanSettingData{
+		OperationMode: VlanOperationModeAccess,
+		AccessVlanId:  100,
+	}
+
+	jobRef, err := client.AddNetworkAdapterVlan(context.Background(), allocationID, settings)
+	if err != nil {
+		t.Fatalf("AddNetworkAdapterVlan: %v", err)
+	}
+	if jobRef == "" {
+		t.Errorf("expected job reference, got empty string")
+	}
+
+	// リクエスト body 検証: CIM メソッド名 + AffectedConfiguration EPR + 埋め込み VLAN クラス + 値
+	if !strings.Contains(capturedBody, "AddFeatureSettings") {
+		t.Errorf("request body should contain method name AddFeatureSettings")
+	}
+	if !strings.Contains(capturedBody, "AffectedConfiguration") {
+		t.Errorf("request body should contain AffectedConfiguration parameter")
+	}
+	if !strings.Contains(capturedBody, allocationID) {
+		t.Errorf("request body should contain allocation InstanceID %q", allocationID)
+	}
+	if !strings.Contains(capturedBody, "Msvm_EthernetSwitchPortVlanSettingData") {
+		t.Errorf("request body should contain embedded VLAN class name")
+	}
+	if !strings.Contains(capturedBody, "<p:OperationMode>1</p:OperationMode>") {
+		t.Errorf("request body should contain OperationMode=1 (Access)")
+	}
+	if !strings.Contains(capturedBody, "<p:AccessVlanId>100</p:AccessVlanId>") {
+		t.Errorf("request body should contain AccessVlanId=100")
+	}
+}
+
+// TestClient_AddNetworkAdapterVlan_Trunk は Trunk モード(ネイティブ VLAN + 許可 VLAN 配列)
+// で VLAN 設定が正しく組み立てられることを検証する。#48 配列対応の動作確認も兼ねる。
+func TestClient_AddNetworkAdapterVlan_Trunk(t *testing.T) {
+	respXML := loadGolden(t, "invoke_response_add_feature_settings.xml")
+
+	var capturedBody string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read body: %v", err)
+		}
+		capturedBody = string(body)
+		w.Header().Set("Content-Type", "application/soap+xml; charset=utf-8")
+		_, _ = w.Write([]byte(respXML))
+	}))
+	defer server.Close()
+
+	client, _ := NewClient(server.URL)
+
+	settings := &Msvm_EthernetSwitchPortVlanSettingData{
+		OperationMode:    VlanOperationModeTrunk,
+		NativeVlanId:     10,
+		TrunkVlanIdArray: []uint16{20, 30, 40},
+	}
+
+	_, err := client.AddNetworkAdapterVlan(context.Background(), "alloc-trunk-001", settings)
+	if err != nil {
+		t.Fatalf("AddNetworkAdapterVlan: %v", err)
+	}
+
+	if !strings.Contains(capturedBody, "<p:OperationMode>2</p:OperationMode>") {
+		t.Errorf("request body should contain OperationMode=2 (Trunk)")
+	}
+	if !strings.Contains(capturedBody, "<p:NativeVlanId>10</p:NativeVlanId>") {
+		t.Errorf("request body should contain NativeVlanId=10")
+	}
+	// TrunkVlanIdArray は配列なので、同名要素が複数回出現する (#48 で対応済)
+	for _, v := range []string{
+		"<p:TrunkVlanIdArray>20</p:TrunkVlanIdArray>",
+		"<p:TrunkVlanIdArray>30</p:TrunkVlanIdArray>",
+		"<p:TrunkVlanIdArray>40</p:TrunkVlanIdArray>",
+	} {
+		if !strings.Contains(capturedBody, v) {
+			t.Errorf("request body should contain %s", v)
+		}
+	}
+}
+
+// TestClient_AddNetworkAdapterVlan_NilSettings は settings=nil のバリデーションエラー確認。
+func TestClient_AddNetworkAdapterVlan_NilSettings(t *testing.T) {
+	client, _ := NewClient("http://example.invalid")
+	_, err := client.AddNetworkAdapterVlan(context.Background(), "alloc-001", nil)
+	if err == nil {
+		t.Fatal("expected error for nil settings")
+	}
+	if !strings.Contains(err.Error(), "nil") {
+		t.Errorf("error should mention nil, got: %v", err)
+	}
+}
+
+// TestClient_AddNetworkAdapterVlan_EmptyAdapterID は adapterAllocationInstanceID 空文字の
+// バリデーションエラー確認。CIM 側で対象 NIC を特定できなくなるため必須。
+func TestClient_AddNetworkAdapterVlan_EmptyAdapterID(t *testing.T) {
+	client, _ := NewClient("http://example.invalid")
+	settings := &Msvm_EthernetSwitchPortVlanSettingData{
+		OperationMode: VlanOperationModeAccess,
+		AccessVlanId:  1,
+	}
+	_, err := client.AddNetworkAdapterVlan(context.Background(), "", settings)
+	if err == nil {
+		t.Fatal("expected error for empty adapterAllocationInstanceID")
+	}
+	if !strings.Contains(err.Error(), "adapterAllocationInstanceID") {
+		t.Errorf("error should mention adapterAllocationInstanceID, got: %v", err)
+	}
+}
