@@ -161,3 +161,57 @@ func (c *Client) DestroySystem(ctx context.Context, vmName string) (string, erro
 	}
 	return jobRef, nil
 }
+
+// UpdateVm は VM の構成設定を CIM の ModifySystemSettings 経由で更新する (#50 part 2/2)。
+//
+// settings.InstanceID で対象 VM を特定する。`marshalEmbeddedInstance` はゼロ値の
+// フィールドを出力しないため (CIM SettingData の慣習 = 未指定 = デフォルト/変更なし)、
+// 変更したいフィールドだけ書き換えて渡せばよい。典型的な使い方:
+//
+//	settings, err := c.GetSystemSettingData(ctx, vmName)
+//	if err != nil { return err }
+//	settings.Notes = []string{"updated"}
+//	settings.AutomaticCriticalErrorAction = AutomaticCriticalErrorActionPause
+//	jobRef, err := c.UpdateVm(ctx, settings)
+//
+// 戻り値は非同期 Job 参照 (Msvm_ConcreteJob)。
+// ReturnValue=0 (同期完了) の場合は空文字列、4096 (非同期開始) の場合は Job 参照を返す。
+//
+// CIM 仕様 (Microsoft 公式 MOF、ModifySystemSettings on Msvm_VirtualSystemManagementService):
+//
+//	uint32 ModifySystemSettings(
+//	  [in]  string              SystemSettings,
+//	  [out] CIM_ConcreteJob REF Job
+//	);
+func (c *Client) UpdateVm(ctx context.Context, settings *Msvm_VirtualSystemSettingData) (string, error) {
+	if settings == nil {
+		return "", fmt.Errorf("UpdateVm: settings must not be nil")
+	}
+	if settings.InstanceID == "" {
+		return "", fmt.Errorf("UpdateVm: settings.InstanceID must not be empty (used to identify the VM)")
+	}
+
+	embedded, err := marshalEmbeddedInstance(settings, "Msvm_VirtualSystemSettingData", nsVirtV2)
+	if err != nil {
+		return "", fmt.Errorf("UpdateVm: marshal embedded instance: %w", err)
+	}
+
+	resp, err := c.wsman.Invoke(ctx, msvmVirtualSystemManagementServiceURI, "ModifySystemSettings",
+		map[string]string{
+			"SystemSettings": embedded,
+		})
+	if err != nil {
+		return "", err
+	}
+
+	rv := resp.ReturnValue
+	if rv != "0" && rv != "4096" {
+		return "", fmt.Errorf("UpdateVm: unexpected ReturnValue=%s", rv)
+	}
+
+	jobRef := resp.Property("Job")
+	if rv == "4096" && jobRef == "" {
+		return "", fmt.Errorf("UpdateVm: ReturnValue=4096 but no Job reference")
+	}
+	return jobRef, nil
+}

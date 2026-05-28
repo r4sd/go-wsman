@@ -396,6 +396,106 @@ func TestClient_GetSystemSettingData_FullFields(t *testing.T) {
 	}
 }
 
+// TestClient_UpdateVm は VM 設定の変更リクエストが正しく組み立てられ、
+// 非同期 Job 参照が返ることを検証する (#50 part 2/2)。
+//
+// CIM の Msvm_VirtualSystemManagementService.ModifySystemSettings を叩く。
+// SystemSettings には Msvm_VirtualSystemSettingData の embedded instance を入れ、
+// InstanceID で対象 VM を特定する。
+func TestClient_UpdateVm(t *testing.T) {
+	respXML := loadGolden(t, "invoke_response_modify_system_settings.xml")
+
+	var capturedBody string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read body: %v", err)
+		}
+		capturedBody = string(body)
+		w.Header().Set("Content-Type", "application/soap+xml; charset=utf-8")
+		_, _ = w.Write([]byte(respXML))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(server.URL)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	settings := &Msvm_VirtualSystemSettingData{
+		InstanceID: `Microsoft:11111111-2222-3333-4444-555555555555`,
+		// 部分更新: ゼロ値のフィールドは embedded instance に出力されない
+		// (marshalEmbeddedInstance の挙動)。下記2件だけが実際に CIM に送られる。
+		Notes:                        []string{"updated by go-wsman test"},
+		LockOnDisconnect:             true,
+		AutomaticCriticalErrorAction: 1, // 1 = Pause (CIM 定数)
+	}
+
+	jobRef, err := client.UpdateVm(context.Background(), settings)
+	if err != nil {
+		t.Fatalf("UpdateVm: %v", err)
+	}
+
+	if jobRef == "" {
+		t.Errorf("expected job reference, got empty string")
+	}
+
+	// リクエスト body の中身を検証 (CIM メソッド名と embedded instance の主要要素)
+	if !strings.Contains(capturedBody, "ModifySystemSettings") {
+		t.Errorf("request body should contain method name ModifySystemSettings")
+	}
+	if !strings.Contains(capturedBody, "SystemSettings") {
+		t.Errorf("request body should contain SystemSettings parameter")
+	}
+	if !strings.Contains(capturedBody, "Msvm_VirtualSystemSettingData") {
+		t.Errorf("request body should contain embedded class name")
+	}
+	if !strings.Contains(capturedBody, settings.InstanceID) {
+		t.Errorf("request body should contain InstanceID %q", settings.InstanceID)
+	}
+	if !strings.Contains(capturedBody, "updated by go-wsman test") {
+		t.Errorf("request body should contain Notes value")
+	}
+}
+
+// TestClient_UpdateVm_NilSettings は nil ポインタを渡した時にバリデーションエラーになることを確認する。
+func TestClient_UpdateVm_NilSettings(t *testing.T) {
+	client, err := NewClient("http://example.invalid")
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	_, err = client.UpdateVm(context.Background(), nil)
+	if err == nil {
+		t.Fatal("expected error for nil settings, got nil")
+	}
+	if !strings.Contains(err.Error(), "nil") {
+		t.Errorf("error should mention nil, got: %v", err)
+	}
+}
+
+// TestClient_UpdateVm_EmptyInstanceID は InstanceID 未指定時にバリデーションエラーになることを確認する。
+// CIM の ModifySystemSettings は InstanceID で更新対象を特定するため、空文字では呼び出してはならない。
+func TestClient_UpdateVm_EmptyInstanceID(t *testing.T) {
+	client, err := NewClient("http://example.invalid")
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	settings := &Msvm_VirtualSystemSettingData{
+		// InstanceID 空文字
+		Notes: []string{"will not be sent"},
+	}
+
+	_, err = client.UpdateVm(context.Background(), settings)
+	if err == nil {
+		t.Fatal("expected error for empty InstanceID, got nil")
+	}
+	if !strings.Contains(err.Error(), "InstanceID") {
+		t.Errorf("error should mention InstanceID, got: %v", err)
+	}
+}
+
 func stringSlicesEqual(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
