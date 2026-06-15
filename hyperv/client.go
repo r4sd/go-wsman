@@ -55,9 +55,15 @@ func (c *Client) GetComputerSystem(ctx context.Context, name string) (*Msvm_Comp
 // が GUID となる。
 //
 // ElementName を WQL でサーバー側フィルタした上で、クライアント側でも完全一致を確認する
-// (WQL の大小文字・部分一致のクセに依存しない)。Hyper-V では表示名の一意性は保証されない
-// が、homelab 運用では一意前提。複数一致時は最初の完全一致を返す。
-// 該当が無い場合はエラーを返す。
+// (WQL の部分一致のクセに依存しない)。Hyper-V では表示名の一意性は保証されないため、
+// 複数の VM が一致した場合は曖昧としてエラーを返す (黙って1件返すと誤った VM を操作しうる)。
+// 該当が無い場合は ErrVMNotFound をラップしたエラーを返す。
+//
+// 注意: クライアント側の完全一致は大文字小文字を区別するが、WQL の比較は仕様上
+// 大文字小文字を区別しない (Microsoft WHERE Clause: "Comparison tests are always
+// case-insensitive")。したがって elementName は対象 VM の表示名と大小文字まで
+// 一致させること。ケース違いの名前を渡すと、サーバー側 WQL がヒットしても
+// クライアント側で除外され ErrVMNotFound となる。
 func (c *Client) FindComputerSystemByElementName(ctx context.Context, elementName string) (*Msvm_ComputerSystem, error) {
 	if elementName == "" {
 		return nil, fmt.Errorf("FindComputerSystemByElementName: elementName must not be empty")
