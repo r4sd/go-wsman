@@ -2,6 +2,7 @@ package wsman
 
 import (
 	"context"
+	"encoding/xml"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -40,8 +41,14 @@ func TestBuildEnumerateRequest_WithWQL(t *testing.T) {
 		if !strings.Contains(bodyStr, DialectWQL) {
 			t.Error("Body に WQL Dialect URI が含まれていない")
 		}
-		if !strings.Contains(bodyStr, wql) {
-			t.Error("Body に WQL クエリが含まれていない")
+		// WQL は XML テキストとしてエスケープされて埋め込まれる (' → &#39; 等)。
+		// エスケープ済みの形で含まれることを検証する。
+		var escWQL strings.Builder
+		if err := xml.EscapeText(&escWQL, []byte(wql)); err != nil {
+			t.Fatalf("xml.EscapeText: %v", err)
+		}
+		if !strings.Contains(bodyStr, escWQL.String()) {
+			t.Errorf("Body にエスケープ済み WQL クエリが含まれていない\nwant substring: %s\nbody: %s", escWQL.String(), bodyStr)
 		}
 		if !strings.Contains(bodyStr, "w:Filter") {
 			t.Error("Body に w:Filter 要素が含まれていない")

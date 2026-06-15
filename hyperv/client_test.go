@@ -2,6 +2,8 @@ package hyperv
 
 import (
 	"context"
+	"encoding/xml"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -142,7 +144,8 @@ func TestClient_FindComputerSystemByElementName(t *testing.T) {
 		t.Errorf("ElementName: got %q, want vm-2", got.ElementName)
 	}
 	// 表示名が WQL フィルタとしてサーバーに送られていること。
-	if !strings.Contains(enumBody, `ElementName="vm-2"`) {
+	// SOAP では引用符が XML エスケープされる (" → &#34;)。
+	if !strings.Contains(enumBody, `ElementName=&#34;vm-2&#34;`) {
 		t.Errorf("WQL ElementName filter not sent; enumerate body: %s", enumBody)
 	}
 }
@@ -171,8 +174,96 @@ func TestClient_FindComputerSystemByElementName_NotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	if _, err := client.FindComputerSystemByElementName(context.Background(), "does-not-exist"); err == nil {
+	_, err = client.FindComputerSystemByElementName(context.Background(), "does-not-exist")
+	if err == nil {
 		t.Fatal("expected error for missing VM, got nil")
+	}
+	// 不在は sentinel error にラップされ、provider 側で errors.Is 判定できること。
+	if !errors.Is(err, ErrVMNotFound) {
+		t.Errorf("expected errors.Is(err, ErrVMNotFound), got %v", err)
+	}
+}
+
+// TestClient_FindComputerSystemByElementName_EscapesSpecialChars は表示名に含まれる
+// 特殊文字 (& / ") が安全にエスケープされて送信されることを検証する。
+//
+//   - & は XML 自体を壊す (エスケープ漏れ = 通信失敗)
+//   - " は WQL リテラルを破壊しうる (フィルタ改竄)
+//
+// 送信された Enumerate ボディが整形式 XML であり、& が XML エスケープ、" が
+// WQL バックスラッシュ + XML エスケープ (\&#34;) されていることを確認する。
+func TestClient_FindComputerSystemByElementName_EscapesSpecialChars(t *testing.T) {
+	enumXML := loadGolden(t, "enumerate_response_computersystem.xml")
+	pullXML := loadGolden(t, "pull_response_computersystem.xml")
+
+	var enumBody string
+	callCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		callCount++
+		w.Header().Set("Content-Type", "application/soap+xml; charset=utf-8")
+		if callCount == 1 {
+			enumBody = string(body)
+			_, _ = w.Write([]byte(enumXML))
+		} else {
+			_, _ = w.Write([]byte(pullXML))
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(server.URL)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	// golden に一致 VM は無いので戻り値はエラーだが、検証対象は送信ボディ。
+	_, _ = client.FindComputerSystemByElementName(context.Background(), `a&b"c`)
+
+	// 1) SOAP ボディが整形式 XML であること (エスケープ漏れなら & で壊れる)。
+	dec := xml.NewDecoder(strings.NewReader(enumBody))
+	for {
+		_, derr := dec.Token()
+		if derr == io.EOF {
+			break
+		}
+		if derr != nil {
+			t.Fatalf("enumerate body is not well-formed XML: %v\nbody=%s", derr, enumBody)
+		}
+	}
+	// 2) & が XML エスケープされている。
+	if !strings.Contains(enumBody, "a&amp;b") {
+		t.Errorf("& not XML-escaped; body=%s", enumBody)
+	}
+	// 3) WQL リテラルの " がバックスラッシュ + XML エスケープされている (\&#34;)。
+	if !strings.Contains(enumBody, `\&#34;`) {
+		t.Errorf(`" not WQL+XML-escaped (expected \&#34;); body=%s`, enumBody)
+	}
+}
+
+// TestClient_FindComputerSystemByElementName_MultipleMatch は同名 VM が複数存在する
+// 場合にエラーを返すことを検証する (黙って最初の1件を返すと誤 VM を破壊しうる)。
+func TestClient_FindComputerSystemByElementName_MultipleMatch(t *testing.T) {
+	enumXML := loadGolden(t, "enumerate_response_computersystem.xml")
+	pullXML := loadGolden(t, "pull_response_computersystem_dup.xml")
+
+	callCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		w.Header().Set("Content-Type", "application/soap+xml; charset=utf-8")
+		if callCount == 1 {
+			_, _ = w.Write([]byte(enumXML))
+		} else {
+			_, _ = w.Write([]byte(pullXML))
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(server.URL)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	if _, err := client.FindComputerSystemByElementName(context.Background(), "dup-vm"); err == nil {
+		t.Fatal("expected error for multiple matching VMs, got nil")
 	}
 }
 
