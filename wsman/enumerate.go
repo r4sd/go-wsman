@@ -223,7 +223,7 @@ func ParsePullResponse(data []byte) (*PullResponse, error) {
 // parseInstances は Items の innerxml から個別の CIM インスタンスを抽出する。
 // 同名要素 (CIM 配列プロパティ) は順序を保ったまま slice に追加する。
 // プロパティが入れ子 XML を含む場合は入れ子内の最後の非空テキストを値とする (extractProperties と同じ後方互換挙動)。
-func parseInstances(data []byte) ([]*Instance, error) {
+func parseInstances(data []byte) ([]*Instance, error) { //nolint:gocognit // XML トークンストリームの状態機械 (depth 追跡 + token 種別 switch)。分割は可読性を損なう
 	decoder := xml.NewDecoder(bytes.NewReader(data))
 
 	var instances []*Instance
