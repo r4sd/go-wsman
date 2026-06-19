@@ -101,11 +101,14 @@ func BuildEnumerateRequest(resourceURI, endpoint string, opts ...EnumerateOption
 	// Enumerate ボディ要素
 	var body string
 	if cfg.wqlFilter != "" {
+		// WQL フィルタは XML テキストとして埋め込むため、& や < を含む表示名でも
+		// SOAP が壊れないよう XML エスケープする。WQL リテラル内の引用符の
+		// エスケープ (" → \") は呼び出し側 (hyperv 層) の責務。
 		body = fmt.Sprintf(
 			`<n:Enumerate xmlns:n="%s"><w:Filter Dialect="%s">%s</w:Filter></n:Enumerate>`,
 			NSEnumeration,
 			DialectWQL,
-			cfg.wqlFilter,
+			escapeXMLText(cfg.wqlFilter),
 		)
 	} else {
 		body = fmt.Sprintf(
@@ -276,4 +279,16 @@ func parseInstances(data []byte) ([]*Instance, error) {
 	}
 
 	return instances, nil
+}
+
+// escapeXMLText は文字列を XML テキスト内容として安全な形にエスケープする。
+//
+// & < > " ' を実体参照に変換する。WQL フィルタを SOAP ボディへ埋め込む際に使用し、
+// 特殊文字を含む表示名でも整形式 XML を保つ。
+func escapeXMLText(s string) string {
+	var sb strings.Builder
+	if err := xml.EscapeText(&sb, []byte(s)); err != nil {
+		return s
+	}
+	return sb.String()
 }

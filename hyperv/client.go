@@ -2,10 +2,16 @@ package hyperv
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/r4sd/go-wsman/wsman"
 )
+
+// ErrVMNotFound は ElementName / GUID に一致する VM が存在しないことを表す sentinel error。
+// provider 側で errors.Is により「不在」と「通信失敗」を区別するために使う。
+var ErrVMNotFound = errors.New("hyperv: virtual machine not found")
 
 const (
 	nsVirtV2              = "http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2"
@@ -39,6 +45,49 @@ func (c *Client) GetComputerSystem(ctx context.Context, name string) (*Msvm_Comp
 		return nil, fmt.Errorf("failed to unmarshal Msvm_ComputerSystem: %w", err)
 	}
 	return &cs, nil
+}
+
+// FindComputerSystemByElementName は表示名 (ElementName) から VM を取得する。
+// 戻り値の Msvm_ComputerSystem.Name が GUID で、CIM の各操作はこの GUID を要求する。
+//
+// 複数一致は曖昧としてエラー、不在は ErrVMNotFound を返す。
+// elementName は大小文字まで一致させること: WQL の比較は大小文字を区別しないが、
+// クライアント側の最終照合は区別するため、ケース違いは ErrVMNotFound になる。
+func (c *Client) FindComputerSystemByElementName(ctx context.Context, elementName string) (*Msvm_ComputerSystem, error) {
+	if elementName == "" {
+		return nil, fmt.Errorf("FindComputerSystemByElementName: elementName must not be empty")
+	}
+	// WQL リテラル用にエスケープ (" → \", \ → \\)。SOAP への XML エスケープは wsman 層が行う。
+	query := fmt.Sprintf(`SELECT * FROM Msvm_ComputerSystem WHERE ElementName="%s"`, wqlEscapeLiteral(elementName))
+	instances, err := c.wsman.Enumerate(ctx, msvmComputerSystemURI, wsman.WithWQL(query))
+	if err != nil {
+		return nil, err
+	}
+	var matches []*Msvm_ComputerSystem
+	for _, inst := range instances {
+		var cs Msvm_ComputerSystem
+		if err := Unmarshal(inst.Properties(), &cs); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal Msvm_ComputerSystem: %w", err)
+		}
+		if cs.ElementName == elementName {
+			matches = append(matches, &cs)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return nil, fmt.Errorf("FindComputerSystemByElementName %q: %w", elementName, ErrVMNotFound)
+	case 1:
+		return matches[0], nil
+	default:
+		// Hyper-V は同名 VM を許す。黙って1件返すと誤った VM を操作しうるためエラーにする。
+		return nil, fmt.Errorf("FindComputerSystemByElementName: %d VMs found with ElementName %q; name is ambiguous", len(matches), elementName)
+	}
+}
+
+// wqlEscapeLiteral は WQL の二重引用符文字列リテラルに安全に埋め込めるよう、
+// バックスラッシュと二重引用符をエスケープする (\ → \\, " → \")。
+func wqlEscapeLiteral(s string) string {
+	return strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s)
 }
 
 // ListComputerSystems は全 VM を Enumerate で取得する。
