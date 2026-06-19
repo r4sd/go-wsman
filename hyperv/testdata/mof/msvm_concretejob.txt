@@ -1,0 +1,13 @@
+# Msvm_ConcreteJob CIM プロパティ
+#
+# Source: https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/msvm-concretejob
+# Fetched: 2026-06-19
+# 形式: <CIM プロパティ名> <CIM 型>
+#
+# fixture ポリシー: struct が cim タグで参照するプロパティのみ列挙する。
+
+InstanceID string
+JobState uint16
+PercentComplete uint16
+ErrorCode uint16
+ErrorDescription string

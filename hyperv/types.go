@@ -366,3 +366,33 @@ type Msvm_EthernetSwitchPortVlanSettingData struct {
 	TrunkVlanIdArray     []uint16 `cim:"TrunkVlanIdArray"`
 	SecondaryVlanIdArray []uint16 `cim:"SecondaryVlanIdArray"`
 }
+
+// JobState 定数（CIM_ConcreteJob.JobState、Msvm_ConcreteJob が継承）。
+//
+// 終端状態: Completed=成功、Terminated/Killed/Exception=失敗。
+// それ以外 (New〜Service) は進行中。
+const (
+	JobStateNew          uint16 = 2
+	JobStateStarting     uint16 = 3
+	JobStateRunning      uint16 = 4
+	JobStateSuspended    uint16 = 5
+	JobStateShuttingDown uint16 = 6
+	JobStateCompleted    uint16 = 7
+	JobStateTerminated   uint16 = 8
+	JobStateKilled       uint16 = 9
+	JobStateException    uint16 = 10
+	JobStateService      uint16 = 11
+)
+
+// Msvm_ConcreteJob は非同期操作の進捗を追跡する CIM クラス。
+// 名前空間: root/virtualization/v2。
+//
+// 非同期 (ReturnValue=4096) を返す CIM メソッドの完了待ちに使う。InstanceID で
+// Get し、JobState の終端到達を待つ (WaitForJob)。
+type Msvm_ConcreteJob struct {
+	InstanceID       string `cim:"InstanceID"`
+	JobState         uint16 `cim:"JobState"`
+	PercentComplete  uint16 `cim:"PercentComplete"`
+	ErrorCode        uint16 `cim:"ErrorCode"`
+	ErrorDescription string `cim:"ErrorDescription"`
+}

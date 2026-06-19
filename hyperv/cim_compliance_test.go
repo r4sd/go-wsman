@@ -211,3 +211,12 @@ func TestCIMCompliance_EthernetSwitchPortVlanSettingData(t *testing.T) {
 		nil,
 	)
 }
+
+// TestCIMCompliance_ConcreteJob は Msvm_ConcreteJob の cim タグが MOF と整合するか検証する。
+func TestCIMCompliance_ConcreteJob(t *testing.T) {
+	assertCIMCompliance(t,
+		&Msvm_ConcreteJob{},
+		"msvm_concretejob.txt",
+		nil, // 許容逸脱なし
+	)
+}
