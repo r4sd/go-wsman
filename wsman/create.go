@@ -93,7 +93,7 @@ func ParseCreateResponse(data []byte) (*CreateResponse, error) {
 
 // extractEndpointReference は CreateResponse の Body から ResourceURI と SelectorSet を抽出する。
 // XML トークンベースのパースで、名前空間プレフィックスに依存しない。
-func extractEndpointReference(data []byte, resp *CreateResponse) error {
+func extractEndpointReference(data []byte, resp *CreateResponse) error { //nolint:gocognit // XML トークンストリームの状態機械。分割は可読性を損なう
 	decoder := xml.NewDecoder(strings.NewReader(string(data)))
 
 	var inResourceURI bool

@@ -2,9 +2,16 @@ version: "2"
 linters:
   enable:
     - misspell
+    - gocognit # 認知的複雑度のガードレール (関数が複雑化しすぎたら警告)
   settings:
     misspell:
       locale: US
+    gocognit:
+      # 30 を閾値に将来の肥大化を検出する (慣れたら 20 程度へ段階的に締める)。
+      # 既存の XML パーサ 2 つ (parseInstances/extractEndpointReference) は
+      # 30 超だが状態機械で複雑度が不可避なため //nolint:gocognit で明示除外。
+      # テストは httptest のクロージャ等で複雑度が上がるため下の rules で除外。
+      min-complexity: 30
   exclusions:
     generated: lax
     presets:
@@ -12,6 +19,11 @@ linters:
       - common-false-positives
       - legacy
       - std-error-handling
+    rules:
+      # テストは httptest のクロージャ等で複雑度が自然に上がるため gocognit を除外。
+      - path: _test\.go
+        linters:
+          - gocognit
     paths:
       - third_party$
       - builtin$
