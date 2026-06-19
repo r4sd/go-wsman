@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd" xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_ConcreteJob">
+  <s:Header>
+    <a:Action>http://schemas.xmlsoap.org/ws/2004/09/transfer/GetResponse</a:Action>
+    <a:MessageID>uuid:response-job-exception</a:MessageID>
+  </s:Header>
+  <s:Body>
+    <p:Msvm_ConcreteJob>
+      <p:InstanceID>9C7D3E22-AAAA-BBBB-CCCC-111122223333</p:InstanceID>
+      <p:JobState>10</p:JobState>
+      <p:PercentComplete>65</p:PercentComplete>
+      <p:ErrorCode>32768</p:ErrorCode>
+      <p:ErrorDescription>The operation failed.</p:ErrorDescription>
+    </p:Msvm_ConcreteJob>
+  </s:Body>
+</s:Envelope>
