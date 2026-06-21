@@ -186,11 +186,14 @@ func TestBugSweep_WsmanOperations(t *testing.T) {
 	})
 	t.Run("write/ModifySystemSettings(UpdateVm)", func(t *testing.T) {
 		requireCreated(t)
-		sd, err := c.GetSystemSettingData(ctx, createdGUID)
+		// ModifySystemSettings は「変更箇所 + InstanceID」だけ送る (libvirt 実証パターン)。
+		// GetSystemSettingData は InstanceID 取得のためだけに使い、変更フィールドのみ詰めた
+		// 最小 instance を渡す。全体を渡すと read-only プロパティでジョブが失敗する。
+		cur, err := c.GetSystemSettingData(ctx, createdGUID)
 		if err != nil {
 			t.Skip("GetSystemSettingData 失敗のためスキップ (依存)")
 		}
-		sd.Notes = []string{"sweep-update"}
+		sd := &Msvm_VirtualSystemSettingData{InstanceID: cur.InstanceID, Notes: []string{"sweep-update"}}
 		jr, err := c.UpdateVm(ctx, sd)
 		if err != nil {
 			t.Errorf("FAIL: %v", err)

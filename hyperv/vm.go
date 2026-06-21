@@ -212,6 +212,29 @@ func (c *Client) DestroySystem(ctx context.Context, vmName string) (string, erro
 //	  [in]  string              SystemSettings,
 //	  [out] CIM_ConcreteJob REF Job
 //	);
+//
+// clearReadOnlyForModify は ModifySystemSettings に渡してはいけない read-only プロパティを
+// ゼロ値にする。InstanceID (キー) は対象 VM 特定に必須なので残す。read-only 値を送り返すと
+// Hyper-V がジョブを Exception で失敗させる。Read/Write 修飾子は MS 公式 MOF
+// (Msvm_VirtualSystemSettingData) に準拠。ElementName / Notes / Automatic*Action /
+// MMIO / BootSourceOrder 等の変更可能フィールドは保持する。
+func clearReadOnlyForModify(sd *Msvm_VirtualSystemSettingData) {
+	sd.VirtualSystemIdentifier = ""
+	sd.VirtualSystemType = ""
+	sd.VirtualSystemSubType = ""
+	sd.ConfigurationID = ""
+	sd.ConfigurationDataRoot = ""
+	sd.ConfigurationFile = ""
+	sd.SnapshotDataRoot = ""
+	sd.SuspendDataRoot = ""
+	sd.SwapFileDataRoot = ""
+	sd.LogDataRoot = ""
+	sd.CreationTime = ""
+	sd.Version = ""
+	sd.Caption = ""
+	sd.Description = ""
+}
+
 func (c *Client) UpdateVm(ctx context.Context, settings *Msvm_VirtualSystemSettingData) (string, error) {
 	if settings == nil {
 		return "", fmt.Errorf("UpdateVm: settings must not be nil")
@@ -220,7 +243,15 @@ func (c *Client) UpdateVm(ctx context.Context, settings *Msvm_VirtualSystemSetti
 		return "", fmt.Errorf("UpdateVm: settings.InstanceID must not be empty (used to identify the VM)")
 	}
 
-	embedded, err := marshalEmbeddedInstance(settings, "Msvm_VirtualSystemSettingData", nsVirtV2)
+	// ModifySystemSettings は「変更箇所 (modified aspects) + InstanceID」だけを受け付ける。
+	// GetSystemSettingData の結果をそのまま渡すと read-only プロパティ
+	// (VirtualSystemType="...:Realized" / CreationTime / Version / Configuration* 等) が
+	// 非ゼロ値で乗り、ジョブが Exception で失敗する (実機 acc test で確認)。コピーを作って
+	// read-only をクリアしてから marshal する (呼び出し側の struct は変更しない)。
+	mod := *settings
+	clearReadOnlyForModify(&mod)
+
+	embedded, err := marshalEmbeddedInstance(&mod, "Msvm_VirtualSystemSettingData", nsVirtV2)
 	if err != nil {
 		return "", fmt.Errorf("UpdateVm: marshal embedded instance: %w", err)
 	}
