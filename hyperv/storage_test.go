@@ -115,7 +115,8 @@ func TestClient_AttachVHD(t *testing.T) {
 	if !strings.Contains(driveBody, ResourceSubTypeSyntheticDiskDrive) {
 		t.Errorf("drive body should contain Synthetic Disk Drive subtype")
 	}
-	if !strings.Contains(driveBody, `<p:AddressOnParent>0</p:AddressOnParent>`) {
+	// embedded instance は CIM-XML <PROPERTY> 形式で CDATA 内に入る (#81)。
+	if !strings.Contains(driveBody, `<PROPERTY NAME="AddressOnParent" TYPE="string"><VALUE>0</VALUE></PROPERTY>`) {
 		t.Errorf("drive body should contain AddressOnParent=0")
 	}
 

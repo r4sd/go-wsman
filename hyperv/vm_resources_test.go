@@ -118,7 +118,8 @@ func TestClient_SetMemorySettings(t *testing.T) {
 	if !strings.Contains(body, "Msvm_MemorySettingData") {
 		t.Errorf("body should contain Msvm_MemorySettingData embedded class")
 	}
-	if !strings.Contains(body, "<p:VirtualQuantity>4096</p:VirtualQuantity>") {
+	// embedded instance は CIM-XML <PROPERTY> 形式で CDATA 内に入る (#81)。
+	if !strings.Contains(body, `<PROPERTY NAME="VirtualQuantity" TYPE="uint64"><VALUE>4096</VALUE></PROPERTY>`) {
 		t.Errorf("body should contain new VirtualQuantity value")
 	}
 	if !strings.Contains(body, "ModifyResourceSettings") {
@@ -202,10 +203,12 @@ func TestClient_SetProcessorSettings(t *testing.T) {
 	if !strings.Contains(body, "Msvm_ProcessorSettingData") {
 		t.Errorf("body should contain Msvm_ProcessorSettingData embedded class")
 	}
-	if !strings.Contains(body, "<p:VirtualQuantity>4</p:VirtualQuantity>") {
+	// embedded instance は CIM-XML <PROPERTY> 形式で CDATA 内に入る (#81)。
+	if !strings.Contains(body, `<PROPERTY NAME="VirtualQuantity" TYPE="uint64"><VALUE>4</VALUE></PROPERTY>`) {
 		t.Errorf("body should contain new VirtualQuantity")
 	}
-	if !strings.Contains(body, "<p:ExposeVirtualizationExtensions>TRUE</p:ExposeVirtualizationExtensions>") {
-		t.Errorf("body should contain ExposeVirtualizationExtensions=TRUE")
+	// bool は CIM-XML 標準 (DSP0201) の小文字 true。
+	if !strings.Contains(body, `<PROPERTY NAME="ExposeVirtualizationExtensions" TYPE="boolean"><VALUE>true</VALUE></PROPERTY>`) {
+		t.Errorf("body should contain ExposeVirtualizationExtensions=true")
 	}
 }

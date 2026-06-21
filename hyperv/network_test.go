@@ -343,10 +343,11 @@ func TestClient_AddNetworkAdapterVlan_Access(t *testing.T) {
 	if !strings.Contains(capturedBody, "Msvm_EthernetSwitchPortVlanSettingData") {
 		t.Errorf("request body should contain embedded VLAN class name")
 	}
-	if !strings.Contains(capturedBody, "<p:OperationMode>1</p:OperationMode>") {
+	// embedded instance は CIM-XML <PROPERTY> 形式で CDATA 内に入る (#81)。
+	if !strings.Contains(capturedBody, `<PROPERTY NAME="OperationMode" TYPE="uint32"><VALUE>1</VALUE></PROPERTY>`) {
 		t.Errorf("request body should contain OperationMode=1 (Access)")
 	}
-	if !strings.Contains(capturedBody, "<p:AccessVlanId>100</p:AccessVlanId>") {
+	if !strings.Contains(capturedBody, `<PROPERTY NAME="AccessVlanId" TYPE="uint16"><VALUE>100</VALUE></PROPERTY>`) {
 		t.Errorf("request body should contain AccessVlanId=100")
 	}
 }
@@ -381,21 +382,19 @@ func TestClient_AddNetworkAdapterVlan_Trunk(t *testing.T) {
 		t.Fatalf("AddNetworkAdapterVlan: %v", err)
 	}
 
-	if !strings.Contains(capturedBody, "<p:OperationMode>2</p:OperationMode>") {
+	// embedded instance は CIM-XML <PROPERTY> 形式で CDATA 内に入る (#81)。
+	if !strings.Contains(capturedBody, `<PROPERTY NAME="OperationMode" TYPE="uint32"><VALUE>2</VALUE></PROPERTY>`) {
 		t.Errorf("request body should contain OperationMode=2 (Trunk)")
 	}
-	if !strings.Contains(capturedBody, "<p:NativeVlanId>10</p:NativeVlanId>") {
+	if !strings.Contains(capturedBody, `<PROPERTY NAME="NativeVlanId" TYPE="uint16"><VALUE>10</VALUE></PROPERTY>`) {
 		t.Errorf("request body should contain NativeVlanId=10")
 	}
-	// TrunkVlanIdArray は配列なので、同名要素が複数回出現する (#48 で対応済)
-	for _, v := range []string{
-		"<p:TrunkVlanIdArray>20</p:TrunkVlanIdArray>",
-		"<p:TrunkVlanIdArray>30</p:TrunkVlanIdArray>",
-		"<p:TrunkVlanIdArray>40</p:TrunkVlanIdArray>",
-	} {
-		if !strings.Contains(capturedBody, v) {
-			t.Errorf("request body should contain %s", v)
-		}
+	// TrunkVlanIdArray は配列なので CIM-XML の PROPERTY.ARRAY/VALUE.ARRAY に展開される (#48/#81)
+	want := `<PROPERTY.ARRAY NAME="TrunkVlanIdArray" TYPE="uint16"><VALUE.ARRAY>` +
+		`<VALUE>20</VALUE><VALUE>30</VALUE><VALUE>40</VALUE>` +
+		`</VALUE.ARRAY></PROPERTY.ARRAY>`
+	if !strings.Contains(capturedBody, want) {
+		t.Errorf("request body should contain TrunkVlanIdArray array %q", want)
 	}
 }
 
