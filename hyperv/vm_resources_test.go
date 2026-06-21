@@ -9,10 +9,14 @@ import (
 	"testing"
 )
 
-// TestClient_GetMemorySettings は VM GUID から WQL でメモリ設定を取得するテスト。
+// TestClient_GetMemorySettings は VM GUID からメモリ設定を取得するテスト。
+//
+// Hyper-V は WQL フィルタ列挙を拒否する (#80) ため、無フィルタ列挙 + Go 側の InstanceID
+// prefix フィルタで対象 VM のメモリ設定だけを選ぶ。multi golden には別 VM
+// (8192MB/動的メモリ有効) のメモリ設定も含めて、対象 VM (2048MB) を正しく選べることを検証する。
 func TestClient_GetMemorySettings(t *testing.T) {
 	enumXML := loadGolden(t, "enumerate_response_memorysettingdata.xml")
-	pullXML := loadGolden(t, "pull_response_memorysettingdata.xml")
+	pullXML := loadGolden(t, "pull_response_memorysettingdata_multi.xml")
 
 	var enumBody string
 	callCount := 0
@@ -36,8 +40,9 @@ func TestClient_GetMemorySettings(t *testing.T) {
 		t.Fatalf("GetMemorySettings: %v", err)
 	}
 
+	// 対象 VM のメモリ設定 (2048MB) が選ばれること (別 VM の 8192MB ではない)。
 	if got.VirtualQuantity != 2048 {
-		t.Errorf("VirtualQuantity: got %d, want 2048", got.VirtualQuantity)
+		t.Errorf("VirtualQuantity: got %d, want 2048 (別 VM の設定を選んではいけない)", got.VirtualQuantity)
 	}
 	if got.ResourceType != ResourceTypeMemory {
 		t.Errorf("ResourceType: got %d, want %d", got.ResourceType, ResourceTypeMemory)
@@ -49,12 +54,9 @@ func TestClient_GetMemorySettings(t *testing.T) {
 		t.Errorf("Weight: got %d, want 5000", got.Weight)
 	}
 
-	// WQL に VM GUID と LIKE が含まれること
-	if !strings.Contains(enumBody, "11111111-aaaa-bbbb-cccc-000000000001") {
-		t.Errorf("enum body should contain VM GUID")
-	}
-	if !strings.Contains(enumBody, "LIKE") {
-		t.Errorf("enum body should use LIKE filter")
+	// Hyper-V は WQL フィルタ列挙を拒否するため、Enumerate は無フィルタで送ること (#80)。
+	if strings.Contains(enumBody, "Filter") || strings.Contains(enumBody, "SELECT") {
+		t.Errorf("enum body should be unfiltered (no WQL Filter); body: %s", enumBody)
 	}
 }
 
@@ -118,7 +120,8 @@ func TestClient_SetMemorySettings(t *testing.T) {
 	if !strings.Contains(body, "Msvm_MemorySettingData") {
 		t.Errorf("body should contain Msvm_MemorySettingData embedded class")
 	}
-	if !strings.Contains(body, "<p:VirtualQuantity>4096</p:VirtualQuantity>") {
+	// embedded instance は CIM-XML <PROPERTY> 形式で CDATA 内に入る (#81)。
+	if !strings.Contains(body, `<PROPERTY NAME="VirtualQuantity" TYPE="uint64"><VALUE>4096</VALUE></PROPERTY>`) {
 		t.Errorf("body should contain new VirtualQuantity value")
 	}
 	if !strings.Contains(body, "ModifyResourceSettings") {
@@ -202,10 +205,12 @@ func TestClient_SetProcessorSettings(t *testing.T) {
 	if !strings.Contains(body, "Msvm_ProcessorSettingData") {
 		t.Errorf("body should contain Msvm_ProcessorSettingData embedded class")
 	}
-	if !strings.Contains(body, "<p:VirtualQuantity>4</p:VirtualQuantity>") {
+	// embedded instance は CIM-XML <PROPERTY> 形式で CDATA 内に入る (#81)。
+	if !strings.Contains(body, `<PROPERTY NAME="VirtualQuantity" TYPE="uint64"><VALUE>4</VALUE></PROPERTY>`) {
 		t.Errorf("body should contain new VirtualQuantity")
 	}
-	if !strings.Contains(body, "<p:ExposeVirtualizationExtensions>TRUE</p:ExposeVirtualizationExtensions>") {
-		t.Errorf("body should contain ExposeVirtualizationExtensions=TRUE")
+	// bool は CIM-XML 標準 (DSP0201) の小文字 true。
+	if !strings.Contains(body, `<PROPERTY NAME="ExposeVirtualizationExtensions" TYPE="boolean"><VALUE>true</VALUE></PROPERTY>`) {
+		t.Errorf("body should contain ExposeVirtualizationExtensions=true")
 	}
 }

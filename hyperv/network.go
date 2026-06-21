@@ -86,11 +86,11 @@ func (c *Client) ListNetworkAdapters(ctx context.Context, vmName string) ([]*Msv
 	if vmName == "" {
 		return nil, fmt.Errorf("ListNetworkAdapters: vmName must not be empty")
 	}
-	query := fmt.Sprintf(
-		`SELECT * FROM Msvm_SyntheticEthernetPortSettingData WHERE InstanceID LIKE '%s%s%%'`,
-		settingDataInstanceIDPrefix, vmName,
-	)
-	instances, err := c.wsman.Enumerate(ctx, msvmSyntheticEthernetPortSettingDataURI, wsman.WithWQL(query))
+	// 元の WQL `InstanceID LIKE 'Microsoft:<guid>%'` を Go 側フィルタに移す
+	// (Hyper-V は WQL フィルタ列挙を拒否する #80)。
+	instances, err := c.enumerateFiltered(ctx, msvmSyntheticEthernetPortSettingDataURI, func(inst *wsman.Instance) bool {
+		return matchSettingDataVM(inst.Property("InstanceID"), vmName)
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -254,7 +254,7 @@ func (c *Client) AddNetworkAdapterVlan(ctx context.Context, adapterAllocationIns
 		{Name: "FeatureSettings", Value: vlanXML},
 	}
 
-	resp, err := c.wsman.InvokeMulti(ctx, msvmVirtualSystemManagementServiceURI, "AddFeatureSettings", params)
+	resp, err := c.wsman.InvokeMulti(ctx, msvmVirtualSystemManagementServiceURI, "AddFeatureSettings", params, vsmsSelectors()...)
 	if err != nil {
 		return "", err
 	}

@@ -31,9 +31,11 @@ func TestBuildEnumerateRequest_WithWQL(t *testing.T) {
 			t.Errorf("Action = %v, want %q", env.Header.Action, ActionEnumerate)
 		}
 
-		// ResourceURI
-		if env.Header.ResourceURI == nil || env.Header.ResourceURI.Value != resourceURI {
-			t.Errorf("ResourceURI = %v, want %q", env.Header.ResourceURI, resourceURI)
+		// ResourceURI: WQL フィルタ時はクラス名が '*' に置換される (実クラスは WQL の
+		// FROM 句で指定)。具体クラス URI + WQL は MS WS-Man で Fault になる (実機確認)。
+		wantURI := "http://schemas.microsoft.com/wbem/wsman/1/wmi/root/cimv2/*"
+		if env.Header.ResourceURI == nil || env.Header.ResourceURI.Value != wantURI {
+			t.Errorf("ResourceURI = %v, want %q", env.Header.ResourceURI, wantURI)
 		}
 
 		// Body に Filter 要素と WQL Dialect が含まれることを検証

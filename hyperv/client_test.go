@@ -109,8 +109,8 @@ func TestClient_ListComputerSystems(t *testing.T) {
 //
 // provider 側の VM CRUD は表示名で操作するが、CIM の各操作 (GetSystemSettingData /
 // DestroySystem / RequestStateChange 等) は VM GUID を要求する。本メソッドは
-// 表示名→GUID 解決の入口となる。サーバー側 WQL で絞った上で ElementName 完全一致を
-// クライアント側でも確認する (WQL の部分一致・大小文字のクセに依存しない)。
+// 表示名→GUID 解決の入口となる。Hyper-V は WQL フィルタ列挙を拒否する (#80) ため、
+// 無フィルタ列挙 + クライアント側の ElementName 完全一致で絞り込む。
 func TestClient_FindComputerSystemByElementName(t *testing.T) {
 	enumXML := loadGolden(t, "enumerate_response_computersystem.xml")
 	pullXML := loadGolden(t, "pull_response_computersystem.xml")
@@ -143,10 +143,10 @@ func TestClient_FindComputerSystemByElementName(t *testing.T) {
 	if got.ElementName != "vm-2" {
 		t.Errorf("ElementName: got %q, want vm-2", got.ElementName)
 	}
-	// 表示名が WQL フィルタとしてサーバーに送られていること。
-	// SOAP では引用符が XML エスケープされる (" → &#34;)。
-	if !strings.Contains(enumBody, `ElementName=&#34;vm-2&#34;`) {
-		t.Errorf("WQL ElementName filter not sent; enumerate body: %s", enumBody)
+	// Hyper-V は WQL フィルタ列挙を拒否するため、Enumerate は無フィルタで送られること
+	// (WQL Filter を含めると実機で CannotProcessFilter Fault になる。#80)。
+	if strings.Contains(enumBody, "Filter") || strings.Contains(enumBody, "SELECT") {
+		t.Errorf("enumerate should be unfiltered (no WQL Filter); body: %s", enumBody)
 	}
 }
 
@@ -184,17 +184,32 @@ func TestClient_FindComputerSystemByElementName_NotFound(t *testing.T) {
 	}
 }
 
-// TestClient_FindComputerSystemByElementName_EscapesSpecialChars は表示名に含まれる
-// 特殊文字 (& / ") が安全にエスケープされて送信されることを検証する。
+// TestClient_FindComputerSystemByElementName_SpecialChars は表示名に特殊文字 (& / ")
+// が含まれていても安全に扱えることを検証する。
 //
-//   - & は XML 自体を壊す (エスケープ漏れ = 通信失敗)
-//   - " は WQL リテラルを破壊しうる (フィルタ改竄)
-//
-// 送信された Enumerate ボディが整形式 XML であり、& が XML エスケープ、" が
-// WQL バックスラッシュ + XML エスケープ (\&#34;) されていることを確認する。
-func TestClient_FindComputerSystemByElementName_EscapesSpecialChars(t *testing.T) {
+// 無フィルタ列挙 + クライアント側マッチに切り替えた (#80) ため、ElementName は WQL
+// リテラルとして送信されず、エスケープの心配はない。検証ポイント:
+//   - 送信される Enumerate は整形式 XML かつ WQL フィルタを含まない (実機 Fault 回避)
+//   - 特殊文字を含む表示名でもクライアント側マッチで正しく VM を引ける
+func TestClient_FindComputerSystemByElementName_SpecialChars(t *testing.T) {
 	enumXML := loadGolden(t, "enumerate_response_computersystem.xml")
-	pullXML := loadGolden(t, "pull_response_computersystem.xml")
+	// & を含む表示名の VM を 1 件返す pull レスポンス (XML 上は &amp; でエスケープ)。
+	pullXML := `<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:e="http://schemas.xmlsoap.org/ws/2004/09/enumeration" xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_ComputerSystem">
+  <s:Body>
+    <e:PullResponse>
+      <e:Items>
+        <p:Msvm_ComputerSystem>
+          <p:Name>aaaaaaaa-0000-1111-2222-333344445555</p:Name>
+          <p:ElementName>a&amp;b"c</p:ElementName>
+          <p:EnabledState>2</p:EnabledState>
+          <p:HealthState>5</p:HealthState>
+        </p:Msvm_ComputerSystem>
+      </e:Items>
+      <e:EndOfSequence/>
+    </e:PullResponse>
+  </s:Body>
+</s:Envelope>`
 
 	var enumBody string
 	callCount := 0
@@ -216,10 +231,15 @@ func TestClient_FindComputerSystemByElementName_EscapesSpecialChars(t *testing.T
 		t.Fatalf("NewClient: %v", err)
 	}
 
-	// golden に一致 VM は無いので戻り値はエラーだが、検証対象は送信ボディ。
-	_, _ = client.FindComputerSystemByElementName(context.Background(), `a&b"c`)
+	got, err := client.FindComputerSystemByElementName(context.Background(), `a&b"c`)
+	if err != nil {
+		t.Fatalf("FindComputerSystemByElementName: %v", err)
+	}
+	if got.ElementName != `a&b"c` {
+		t.Errorf("ElementName: got %q, want %q", got.ElementName, `a&b"c`)
+	}
 
-	// 1) SOAP ボディが整形式 XML であること (エスケープ漏れなら & で壊れる)。
+	// 1) SOAP ボディが整形式 XML であること。
 	dec := xml.NewDecoder(strings.NewReader(enumBody))
 	for {
 		_, derr := dec.Token()
@@ -230,13 +250,9 @@ func TestClient_FindComputerSystemByElementName_EscapesSpecialChars(t *testing.T
 			t.Fatalf("enumerate body is not well-formed XML: %v\nbody=%s", derr, enumBody)
 		}
 	}
-	// 2) & が XML エスケープされている。
-	if !strings.Contains(enumBody, "a&amp;b") {
-		t.Errorf("& not XML-escaped; body=%s", enumBody)
-	}
-	// 3) WQL リテラルの " がバックスラッシュ + XML エスケープされている (\&#34;)。
-	if !strings.Contains(enumBody, `\&#34;`) {
-		t.Errorf(`" not WQL+XML-escaped (expected \&#34;); body=%s`, enumBody)
+	// 2) WQL フィルタが含まれないこと (含めると実機で CannotProcessFilter Fault)。
+	if strings.Contains(enumBody, "Filter") || strings.Contains(enumBody, "SELECT") {
+		t.Errorf("enumerate should be unfiltered (no WQL Filter); body=%s", enumBody)
 	}
 }
 

@@ -63,11 +63,12 @@ func (c *Client) ListIDEControllers(ctx context.Context, vmName string) ([]*Msvm
 		return nil, fmt.Errorf("ListIDEControllers: vmName must not be empty")
 	}
 
-	query := fmt.Sprintf(
-		`SELECT * FROM Msvm_ResourceAllocationSettingData WHERE InstanceID LIKE '%s%s%%' AND ResourceSubType="%s"`,
-		settingDataInstanceIDPrefix, vmName, ResourceSubTypeIDEController,
-	)
-	instances, err := c.wsman.Enumerate(ctx, msvmResourceAllocationSettingDataURI, wsman.WithWQL(query))
+	// 元の WQL `InstanceID LIKE 'Microsoft:<guid>%' AND ResourceSubType="<IDE>"` を
+	// Go 側フィルタに移す (Hyper-V は WQL フィルタ列挙を拒否する #80)。
+	instances, err := c.enumerateFiltered(ctx, msvmResourceAllocationSettingDataURI, func(inst *wsman.Instance) bool {
+		return matchSettingDataVM(inst.Property("InstanceID"), vmName) &&
+			inst.Property("ResourceSubType") == ResourceSubTypeIDEController
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -90,11 +91,11 @@ func (c *Client) ListAttachedStorage(ctx context.Context, vmName string) ([]*Msv
 		return nil, fmt.Errorf("ListAttachedStorage: vmName must not be empty")
 	}
 
-	query := fmt.Sprintf(
-		`SELECT * FROM Msvm_StorageAllocationSettingData WHERE InstanceID LIKE '%s%s%%'`,
-		settingDataInstanceIDPrefix, vmName,
-	)
-	instances, err := c.wsman.Enumerate(ctx, msvmStorageAllocationSettingDataURI, wsman.WithWQL(query))
+	// 元の WQL `InstanceID LIKE 'Microsoft:<guid>%'` を Go 側フィルタに移す
+	// (Hyper-V は WQL フィルタ列挙を拒否する #80)。
+	instances, err := c.enumerateFiltered(ctx, msvmStorageAllocationSettingDataURI, func(inst *wsman.Instance) bool {
+		return matchSettingDataVM(inst.Property("InstanceID"), vmName)
+	})
 	if err != nil {
 		return nil, err
 	}

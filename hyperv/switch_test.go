@@ -95,8 +95,8 @@ func TestClient_CreateSwitch_Internal(t *testing.T) {
 	if !strings.Contains(body, "Msvm_EthernetPortAllocationSettingData") {
 		t.Errorf("body should contain Msvm_EthernetPortAllocationSettingData")
 	}
-	// Internal Port は HostResource を持たない
-	if strings.Contains(body, "<p:HostResource>") {
+	// Internal Port は HostResource を持たない (embedded instance は CIM-XML <PROPERTY> 形式, #81)
+	if strings.Contains(body, `NAME="HostResource"`) {
 		t.Errorf("Internal switch should not have HostResource (no physical NIC)")
 	}
 }

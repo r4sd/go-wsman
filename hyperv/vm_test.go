@@ -11,10 +11,12 @@ import (
 
 // TestClient_GetSystemSettingData は VM GUID から Realized 構成を取得するテスト。
 //
-// 内部では WQL フィルタ付き Enumerate → Pull のサイクルを実行する。
+// Hyper-V は WQL フィルタ列挙を拒否する (#80) ため、無フィルタ列挙 + Go 側フィルタで
+// 「対象 VM かつ VirtualSystemType=Realized」だけを選ぶ。mixed golden には同一 VM の
+// Snapshot:Realized と別 VM の Realized も含めて、正しく Realized 1 件だけ選べることを検証する。
 func TestClient_GetSystemSettingData(t *testing.T) {
 	enumXML := loadGolden(t, "enumerate_response_systemsettingdata.xml")
-	pullXML := loadGolden(t, "pull_response_systemsettingdata.xml")
+	pullXML := loadGolden(t, "pull_response_systemsettingdata_mixed.xml")
 
 	var enumBody string
 	callCount := 0
@@ -44,11 +46,15 @@ func TestClient_GetSystemSettingData(t *testing.T) {
 		t.Fatalf("GetSystemSettingData: %v", err)
 	}
 
+	// 対象 VM の Realized が選ばれること (Snapshot:Realized や別 VM ではない)。
 	if got.VirtualSystemIdentifier != "11111111-aaaa-bbbb-cccc-000000000001" {
 		t.Errorf("VirtualSystemIdentifier: got %q", got.VirtualSystemIdentifier)
 	}
 	if got.VirtualSystemType != VirtualSystemTypeRealized {
-		t.Errorf("VirtualSystemType: got %q", got.VirtualSystemType)
+		t.Errorf("VirtualSystemType: got %q, want Realized (Snapshot を選んではいけない)", got.VirtualSystemType)
+	}
+	if got.ElementName != "vm-1" {
+		t.Errorf("ElementName: got %q, want vm-1 (checkpoint を選んではいけない)", got.ElementName)
 	}
 	if got.VirtualSystemSubType != VirtualSystemSubTypeGen2 {
 		t.Errorf("VirtualSystemSubType: got %q", got.VirtualSystemSubType)
@@ -60,12 +66,9 @@ func TestClient_GetSystemSettingData(t *testing.T) {
 		t.Errorf("SecureBoot: got false, want true")
 	}
 
-	// WQL クエリが Enumerate リクエストに含まれていることを検証
-	if !strings.Contains(enumBody, "VirtualSystemIdentifier") {
-		t.Errorf("enumerate body should contain WQL filter on VirtualSystemIdentifier")
-	}
-	if !strings.Contains(enumBody, VirtualSystemTypeRealized) {
-		t.Errorf("enumerate body should filter by VirtualSystemType=Realized")
+	// Hyper-V は WQL フィルタ列挙を拒否するため、Enumerate は無フィルタで送ること (#80)。
+	if strings.Contains(enumBody, "Filter") || strings.Contains(enumBody, "SELECT") {
+		t.Errorf("enumerate should be unfiltered (no WQL Filter); body: %s", enumBody)
 	}
 }
 
@@ -273,10 +276,14 @@ func TestBuildEndpointReference(t *testing.T) {
 	}
 }
 
-// TestClient_ListSystemSettingData は WQL で全 VM の Realized 構成を取得するテスト。
+// TestClient_ListSystemSettingData は全 VM の Realized 構成を取得するテスト。
+//
+// 無フィルタ列挙 + Go 側フィルタ (#80) で VirtualSystemType=Realized のみを返す。
+// mixed golden は vm-1(Realized) / vm-1(Snapshot:Realized) / vm-2(Realized) を含むので、
+// Snapshot を除外して Realized 2 件だけ返ることを検証する。
 func TestClient_ListSystemSettingData(t *testing.T) {
 	enumXML := loadGolden(t, "enumerate_response_systemsettingdata.xml")
-	pullXML := loadGolden(t, "pull_response_systemsettingdata.xml")
+	pullXML := loadGolden(t, "pull_response_systemsettingdata_mixed.xml")
 
 	callCount := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

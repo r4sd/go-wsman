@@ -29,6 +29,27 @@ func TestBuildEnumerateRequest(t *testing.T) {
 			t.Error("Body が空")
 		}
 	})
+
+	t.Run("WQL フィルタ時は ResourceURI が wildcard (/*) になる", func(t *testing.T) {
+		// MS WS-Man 仕様: WQL フィルタ列挙では ResourceURI のクラス名を '*' にし、
+		// 実クラスは WQL の FROM 句で指定する。具体クラス URI + WQL フィルタは
+		// 「リソース URI にはキーを含めることはできず、クラス名は '*' でなければなりません」
+		// の Fault になる (実機 Hyper-V で確認)。
+		classURI := "http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_ComputerSystem"
+		wantURI := "http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/*"
+		data, err := BuildEnumerateRequest(classURI, "http://host:5986/wsman",
+			WithWQL(`SELECT * FROM Msvm_ComputerSystem WHERE ElementName="vm1"`))
+		if err != nil {
+			t.Fatalf("BuildEnumerateRequest に失敗: %v", err)
+		}
+		env, err := UnmarshalEnvelope(data)
+		if err != nil {
+			t.Fatalf("生成された XML のパースに失敗: %v", err)
+		}
+		if env.Header.ResourceURI == nil || env.Header.ResourceURI.Value != wantURI {
+			t.Errorf("ResourceURI = %v, want %q", env.Header.ResourceURI, wantURI)
+		}
+	})
 }
 
 func TestBuildPullRequest(t *testing.T) {

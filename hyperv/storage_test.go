@@ -7,9 +7,14 @@ import (
 )
 
 // TestClient_ListIDEControllers は VM の IDE Controller 一覧取得を検証する。
+//
+// Hyper-V は WQL フィルタ列挙を拒否する (#80) ため、無フィルタ列挙 + Go 側フィルタで
+// 「対象 VM かつ ResourceSubType=Emulated IDE Controller」だけを返す。mixed golden は
+// 対象 VM の IDE / 対象 VM の SCSI(別 SubType) / 別 VM の IDE を含めて、IDE 1 件だけを
+// 選べることを検証する。
 func TestClient_ListIDEControllers(t *testing.T) {
 	enum := loadGolden(t, "enumerate_response_idecontroller.xml")
-	pull := loadGolden(t, "pull_response_idecontroller.xml")
+	pull := loadGolden(t, "pull_response_idecontroller_mixed.xml")
 
 	var bodies []string
 	server := newSequenceServer(t, []string{enum, pull}, &bodies)
@@ -20,8 +25,9 @@ func TestClient_ListIDEControllers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListIDEControllers: %v", err)
 	}
-	if len(got) != 2 {
-		t.Fatalf("len: got %d, want 2", len(got))
+	// SCSI(別 SubType) と別 VM の IDE を除外し、対象 VM の IDE Controller 1 件だけ返ること。
+	if len(got) != 1 {
+		t.Fatalf("len: got %d, want 1 (SCSI / 別 VM の IDE を含めてはいけない)", len(got))
 	}
 	if got[0].ResourceType != ResourceTypeIDEController {
 		t.Errorf("ResourceType: %d", got[0].ResourceType)
@@ -29,10 +35,13 @@ func TestClient_ListIDEControllers(t *testing.T) {
 	if got[0].ResourceSubType != ResourceSubTypeIDEController {
 		t.Errorf("ResourceSubType: %q", got[0].ResourceSubType)
 	}
+	if got[0].InstanceID != `Microsoft:11111111-aaaa-bbbb-cccc-000000000001\IDE-CTRL-0` {
+		t.Errorf("InstanceID: got %q (対象 VM の IDE であるべき)", got[0].InstanceID)
+	}
 
-	// WQL に IDE Controller の SubType フィルタが含まれること
-	if !strings.Contains(bodies[0], "Emulated IDE Controller") {
-		t.Errorf("WQL should filter by IDE Controller subtype")
+	// Hyper-V は WQL フィルタ列挙を拒否するため、Enumerate は無フィルタで送ること (#80)。
+	if strings.Contains(bodies[0], "Filter") || strings.Contains(bodies[0], "SELECT") {
+		t.Errorf("enumerate should be unfiltered (no WQL Filter); body: %s", bodies[0])
 	}
 }
 
@@ -115,7 +124,8 @@ func TestClient_AttachVHD(t *testing.T) {
 	if !strings.Contains(driveBody, ResourceSubTypeSyntheticDiskDrive) {
 		t.Errorf("drive body should contain Synthetic Disk Drive subtype")
 	}
-	if !strings.Contains(driveBody, `<p:AddressOnParent>0</p:AddressOnParent>`) {
+	// embedded instance は CIM-XML <PROPERTY> 形式で CDATA 内に入る (#81)。
+	if !strings.Contains(driveBody, `<PROPERTY NAME="AddressOnParent" TYPE="string"><VALUE>0</VALUE></PROPERTY>`) {
 		t.Errorf("drive body should contain AddressOnParent=0")
 	}
 

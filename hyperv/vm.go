@@ -12,10 +12,28 @@ const (
 	msvmVirtualSystemManagementServiceURI = nsVirtV2 + "/Msvm_VirtualSystemManagementService"
 )
 
+// matchRealizedSettingDataForVM は SettingData が指定 VM の Realized 構成かを判定する純関数。
+//
+// 元の WQL `VirtualSystemIdentifier="<vm>" AND VirtualSystemType="Realized"` と同じ絞り込み。
+// VirtualSystemIdentifier は VM GUID と完全一致 (実機の GUID は常に同一表記)。
+func matchRealizedSettingDataForVM(vmIdentifier, vmType, vmName string) bool {
+	return vmIdentifier == vmName && vmType == VirtualSystemTypeRealized
+}
+
+// matchRealizedSettingData は SettingData が Realized 構成かを判定する純関数。
+//
+// 元の WQL `VirtualSystemType="Realized"` 相当 (Snapshot:Realized 等を除外)。
+func matchRealizedSettingData(vmType string) bool {
+	return vmType == VirtualSystemTypeRealized
+}
+
 // GetSystemSettingData は VM GUID から Realized 構成の SettingData を 1 件取得する。
 //
 // 同一 VM に対して Realized / Snapshot:Realized 等複数の SettingData が存在するため、
-// VirtualSystemType="Microsoft:Hyper-V:System:Realized" を WQL でフィルタする。
+// VirtualSystemType="Microsoft:Hyper-V:System:Realized" でフィルタする。
+//
+// Hyper-V は WS-Man の WQL フィルタ列挙を拒否する (#80) ため、無フィルタ列挙 + Go 側
+// フィルタ (matchRealizedSettingDataForVM) で同じ絞り込みを行う。
 //
 // vmName は Msvm_ComputerSystem.Name（VM GUID）。
 // 該当する Realized 設定が見つからない場合はエラーを返す。
@@ -23,12 +41,10 @@ func (c *Client) GetSystemSettingData(ctx context.Context, vmName string) (*Msvm
 	if vmName == "" {
 		return nil, fmt.Errorf("GetSystemSettingData: vmName must not be empty")
 	}
-	query := fmt.Sprintf(
-		`SELECT * FROM Msvm_VirtualSystemSettingData WHERE VirtualSystemIdentifier="%s" AND VirtualSystemType="%s"`,
-		vmName, VirtualSystemTypeRealized,
-	)
 
-	instances, err := c.wsman.Enumerate(ctx, msvmVirtualSystemSettingDataURI, wsman.WithWQL(query))
+	instances, err := c.enumerateFiltered(ctx, msvmVirtualSystemSettingDataURI, func(inst *wsman.Instance) bool {
+		return matchRealizedSettingDataForVM(inst.Property("VirtualSystemIdentifier"), inst.Property("VirtualSystemType"), vmName)
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -46,13 +62,12 @@ func (c *Client) GetSystemSettingData(ctx context.Context, vmName string) (*Msvm
 // ListSystemSettingData は全 VM の Realized 構成 SettingData を取得する。
 //
 // Snapshot:Realized 等は除外し、各 VM の現在構成のみを返す。
+// Hyper-V は WQL フィルタ列挙を拒否する (#80) ため、無フィルタ列挙 + Go 側フィルタ
+// (matchRealizedSettingData) で VirtualSystemType=Realized を絞り込む。
 func (c *Client) ListSystemSettingData(ctx context.Context) ([]*Msvm_VirtualSystemSettingData, error) {
-	query := fmt.Sprintf(
-		`SELECT * FROM Msvm_VirtualSystemSettingData WHERE VirtualSystemType="%s"`,
-		VirtualSystemTypeRealized,
-	)
-
-	instances, err := c.wsman.Enumerate(ctx, msvmVirtualSystemSettingDataURI, wsman.WithWQL(query))
+	instances, err := c.enumerateFiltered(ctx, msvmVirtualSystemSettingDataURI, func(inst *wsman.Instance) bool {
+		return matchRealizedSettingData(inst.Property("VirtualSystemType"))
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -77,6 +92,20 @@ type DefineSystemResult struct {
 	JobRef          string // 非同期 Job 参照 (Msvm_ConcreteJob の InstanceID)。同期成功時は空。
 	ResultingSystem string // 作成された VM の識別子 (Msvm_ComputerSystem.Name = VM GUID)
 	ReturnValue     string // "0"=同期成功, "4096"=非同期 Job 開始
+}
+
+// vsmsSelectors は Msvm_VirtualSystemManagementService (シングルトン) のメソッド呼び出しに
+// 付与する SelectorSet を返す。Hyper-V WMI プロバイダ (WsmWmiPl.dll) はメソッド実行時に
+// インスタンスを特定する selector を要求し、無いと WBEM_E_INVALID_METHOD_PARAMETERS
+// (HRESULT 0x8004102F) になる。CreationClassName だけでシングルトンを一意特定できる
+// (libvirt の hyperv driver 実装で実証、実機 acc test で確認)。
+//
+// VSMS のメソッド (DefineSystem / DestroySystem / ModifySystemSettings /
+// Add・Modify・RemoveResourceSettings 等) すべてに付与すること。
+func vsmsSelectors() []wsman.Selector {
+	return []wsman.Selector{
+		{Name: "CreationClassName", Value: "Msvm_VirtualSystemManagementService"},
+	}
 }
 
 // DefineSystem は新規 VM を作成する。
@@ -108,7 +137,7 @@ func (c *Client) DefineSystem(ctx context.Context, settings *Msvm_VirtualSystemS
 	}
 
 	resp, err := c.wsman.Invoke(ctx, msvmVirtualSystemManagementServiceURI, "DefineSystem",
-		map[string]string{"SystemSettings": embedded})
+		map[string]string{"SystemSettings": embedded}, vsmsSelectors()...)
 	if err != nil {
 		return nil, err
 	}
@@ -145,7 +174,7 @@ func (c *Client) DestroySystem(ctx context.Context, vmName string) (string, erro
 	})
 
 	resp, err := c.wsman.Invoke(ctx, msvmVirtualSystemManagementServiceURI, "DestroySystem",
-		map[string]string{"AffectedSystem": affected})
+		map[string]string{"AffectedSystem": affected}, vsmsSelectors()...)
 	if err != nil {
 		return "", err
 	}
@@ -183,6 +212,29 @@ func (c *Client) DestroySystem(ctx context.Context, vmName string) (string, erro
 //	  [in]  string              SystemSettings,
 //	  [out] CIM_ConcreteJob REF Job
 //	);
+//
+// clearReadOnlyForModify は ModifySystemSettings に渡してはいけない read-only プロパティを
+// ゼロ値にする。InstanceID (キー) は対象 VM 特定に必須なので残す。read-only 値を送り返すと
+// Hyper-V がジョブを Exception で失敗させる。Read/Write 修飾子は MS 公式 MOF
+// (Msvm_VirtualSystemSettingData) に準拠。ElementName / Notes / Automatic*Action /
+// MMIO / BootSourceOrder 等の変更可能フィールドは保持する。
+func clearReadOnlyForModify(sd *Msvm_VirtualSystemSettingData) {
+	sd.VirtualSystemIdentifier = ""
+	sd.VirtualSystemType = ""
+	sd.VirtualSystemSubType = ""
+	sd.ConfigurationID = ""
+	sd.ConfigurationDataRoot = ""
+	sd.ConfigurationFile = ""
+	sd.SnapshotDataRoot = ""
+	sd.SuspendDataRoot = ""
+	sd.SwapFileDataRoot = ""
+	sd.LogDataRoot = ""
+	sd.CreationTime = ""
+	sd.Version = ""
+	sd.Caption = ""
+	sd.Description = ""
+}
+
 func (c *Client) UpdateVm(ctx context.Context, settings *Msvm_VirtualSystemSettingData) (string, error) {
 	if settings == nil {
 		return "", fmt.Errorf("UpdateVm: settings must not be nil")
@@ -191,7 +243,15 @@ func (c *Client) UpdateVm(ctx context.Context, settings *Msvm_VirtualSystemSetti
 		return "", fmt.Errorf("UpdateVm: settings.InstanceID must not be empty (used to identify the VM)")
 	}
 
-	embedded, err := marshalEmbeddedInstance(settings, "Msvm_VirtualSystemSettingData", nsVirtV2)
+	// ModifySystemSettings は「変更箇所 (modified aspects) + InstanceID」だけを受け付ける。
+	// GetSystemSettingData の結果をそのまま渡すと read-only プロパティ
+	// (VirtualSystemType="...:Realized" / CreationTime / Version / Configuration* 等) が
+	// 非ゼロ値で乗り、ジョブが Exception で失敗する (実機 acc test で確認)。コピーを作って
+	// read-only をクリアしてから marshal する (呼び出し側の struct は変更しない)。
+	mod := *settings
+	clearReadOnlyForModify(&mod)
+
+	embedded, err := marshalEmbeddedInstance(&mod, "Msvm_VirtualSystemSettingData", nsVirtV2)
 	if err != nil {
 		return "", fmt.Errorf("UpdateVm: marshal embedded instance: %w", err)
 	}
@@ -199,7 +259,7 @@ func (c *Client) UpdateVm(ctx context.Context, settings *Msvm_VirtualSystemSetti
 	resp, err := c.wsman.Invoke(ctx, msvmVirtualSystemManagementServiceURI, "ModifySystemSettings",
 		map[string]string{
 			"SystemSettings": embedded,
-		})
+		}, vsmsSelectors()...)
 	if err != nil {
 		return "", err
 	}
