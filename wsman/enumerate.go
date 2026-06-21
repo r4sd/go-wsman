@@ -76,6 +76,20 @@ func WithWQL(query string) EnumerateOption {
 	}
 }
 
+// wqlWildcardResourceURI は WQL フィルタ列挙用に ResourceURI のクラス名を '*' に置換する。
+//
+// Microsoft WS-Man は WQL Dialect のフィルタを使う列挙で、ResourceURI のクラス名を '*'
+// (ワイルドカード) にすることを要求する (実クラスは WQL の FROM 句で指定)。具体クラス URI
+// + WQL フィルタは「リソース URI にはキーを含めることはできず、クラス名は '*' でなければ
+// なりません」の Fault になる (実機 Hyper-V で確認)。namespace 部分は保持し、末尾の
+// クラスセグメントのみ '*' に置換する。
+func wqlWildcardResourceURI(resourceURI string) string {
+	if i := strings.LastIndex(resourceURI, "/"); i >= 0 {
+		return resourceURI[:i+1] + "*"
+	}
+	return resourceURI
+}
+
 // BuildEnumerateRequest は WS-Enumeration Enumerate リクエストの SOAP XML を生成する。
 // opts で WQL フィルタ等のオプションを指定できる。
 func BuildEnumerateRequest(resourceURI, endpoint string, opts ...EnumerateOption) ([]byte, error) {
@@ -88,9 +102,16 @@ func BuildEnumerateRequest(resourceURI, endpoint string, opts ...EnumerateOption
 		return nil, fmt.Errorf("WQL query must not be empty")
 	}
 
+	// WQL フィルタ使用時は ResourceURI のクラス名を '*' に置換する (実クラスは WQL の
+	// FROM 句で指定)。具体クラス URI + WQL は MS WS-Man で Fault になるため。
+	uri := resourceURI
+	if cfg.wqlFilterSet {
+		uri = wqlWildcardResourceURI(resourceURI)
+	}
+
 	env := NewEnvelope(
 		WithAction(ActionEnumerate),
-		WithResourceURI(resourceURI),
+		WithResourceURI(uri),
 		WithTo(endpoint),
 		WithReplyTo(AddressAnonymous),
 		WithMessageID("uuid:"+uuid.New().String()),

@@ -313,6 +313,16 @@ func (c *Client) Get(ctx context.Context, resourceURI string, selectors ...Selec
 // Enumerate → Pull → EndOfSequence のサイクルを自動的に回す。
 // opts で WQL フィルタ等を指定できる。
 func (c *Client) Enumerate(ctx context.Context, resourceURI string, opts ...EnumerateOption) ([]*Instance, error) {
+	// WQL フィルタ時は Pull リクエストの ResourceURI も wildcard にする (Enumerate と整合)。
+	var cfg enumerateConfig
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+	pullURI := resourceURI
+	if cfg.wqlFilterSet {
+		pullURI = wqlWildcardResourceURI(resourceURI)
+	}
+
 	// Step 1: Enumerate リクエスト
 	enumReqData, err := BuildEnumerateRequest(resourceURI, c.endpoint, opts...)
 	if err != nil {
@@ -333,7 +343,7 @@ func (c *Client) Enumerate(ctx context.Context, resourceURI string, opts ...Enum
 	var allInstances []*Instance
 
 	for i := 0; i < DefaultMaxPullIterations; i++ {
-		pullReqData, err := BuildPullRequest(resourceURI, c.endpoint, enumCtx)
+		pullReqData, err := BuildPullRequest(pullURI, c.endpoint, enumCtx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build Pull request: %w", err)
 		}
