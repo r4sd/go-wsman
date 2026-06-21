@@ -59,20 +59,20 @@ func (c *Client) FindComputerSystemByElementName(ctx context.Context, elementNam
 	}
 	// 全 Msvm_ComputerSystem を列挙して ElementName でクライアント側フィルタする。
 	// (MS WS-Man Hyper-V は WQL フィルタ列挙を CannotProcessFilter で拒否するため、
-	// 実機で動く無フィルタ列挙を使う。実機 acc test で確認。)
-	instances, err := c.wsman.Enumerate(ctx, msvmComputerSystemURI)
+	// 実機で動く無フィルタ列挙を使う。実機 acc test で確認。#80)
+	instances, err := c.enumerateFiltered(ctx, msvmComputerSystemURI, func(inst *wsman.Instance) bool {
+		return inst.Property("ElementName") == elementName
+	})
 	if err != nil {
 		return nil, err
 	}
-	var matches []*Msvm_ComputerSystem
+	matches := make([]*Msvm_ComputerSystem, 0, len(instances))
 	for _, inst := range instances {
 		var cs Msvm_ComputerSystem
 		if err := Unmarshal(inst.Properties(), &cs); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal Msvm_ComputerSystem: %w", err)
 		}
-		if cs.ElementName == elementName {
-			matches = append(matches, &cs)
-		}
+		matches = append(matches, &cs)
 	}
 	switch len(matches) {
 	case 0:
@@ -85,10 +85,38 @@ func (c *Client) FindComputerSystemByElementName(ctx context.Context, elementNam
 	}
 }
 
-// wqlEscapeLiteral は WQL の二重引用符文字列リテラルに安全に埋め込めるよう、
-// バックスラッシュと二重引用符をエスケープする (\ → \\, " → \")。
-func wqlEscapeLiteral(s string) string {
-	return strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s)
+// enumerateFiltered は resourceURI を無フィルタで Enumerate し、keep が true を返した
+// インスタンスだけを返す共通ヘルパー。
+//
+// Hyper-V (root/virtualization/v2) のプロバイダは WS-Man 経由の WQL フィルタ列挙を
+// CannotProcessFilter で拒否する (#80, omi#398 同型)。このため本パッケージの
+// read/list/get 系は「サーバー側 WHERE 句」の代わりに「全件列挙 + クライアント側述語
+// フィルタ」を共通利用する。元の WQL の WHERE 条件は keep 述語に移す。
+//
+// なお wsman.WithWQL API 自体は残してある (root/cimv2 等、WQL フィルタが効く namespace
+// 向け)。Hyper-V namespace では使わないこと。
+func (c *Client) enumerateFiltered(ctx context.Context, resourceURI string, keep func(*wsman.Instance) bool) ([]*wsman.Instance, error) {
+	instances, err := c.wsman.Enumerate(ctx, resourceURI)
+	if err != nil {
+		return nil, err
+	}
+	matched := make([]*wsman.Instance, 0, len(instances))
+	for _, inst := range instances {
+		if keep(inst) {
+			matched = append(matched, inst)
+		}
+	}
+	return matched, nil
+}
+
+// matchSettingDataVM は SettingData の InstanceID が指定 VM (GUID) に属するかを判定する純関数。
+//
+// Hyper-V の SettingData InstanceID は "Microsoft:<VM_GUID>\<RES_GUID>" 形式
+// (settingDataInstanceIDPrefix = "Microsoft:")。元の WQL
+// `InstanceID LIKE 'Microsoft:<guid>%'` と同じ前方一致を行う。LIKE のパターンは
+// prefix + ワイルドカードなので strings.HasPrefix と等価。
+func matchSettingDataVM(instanceID, vmGUID string) bool {
+	return strings.HasPrefix(instanceID, settingDataInstanceIDPrefix+vmGUID)
 }
 
 // ListComputerSystems は全 VM を Enumerate で取得する。

@@ -28,11 +28,11 @@ func (c *Client) GetMemorySettings(ctx context.Context, vmName string) (*Msvm_Me
 		return nil, fmt.Errorf("GetMemorySettings: vmName must not be empty")
 	}
 
-	query := fmt.Sprintf(
-		`SELECT * FROM Msvm_MemorySettingData WHERE InstanceID LIKE '%s%s%%'`,
-		settingDataInstanceIDPrefix, vmName,
-	)
-	instances, err := c.wsman.Enumerate(ctx, msvmMemorySettingDataURI, wsman.WithWQL(query))
+	// 元の WQL `InstanceID LIKE 'Microsoft:<guid>%'` を Go 側フィルタに移す
+	// (Hyper-V は WQL フィルタ列挙を拒否する #80)。
+	instances, err := c.enumerateFiltered(ctx, msvmMemorySettingDataURI, func(inst *wsman.Instance) bool {
+		return matchSettingDataVM(inst.Property("InstanceID"), vmName)
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -77,11 +77,11 @@ func (c *Client) GetProcessorSettings(ctx context.Context, vmName string) (*Msvm
 		return nil, fmt.Errorf("GetProcessorSettings: vmName must not be empty")
 	}
 
-	query := fmt.Sprintf(
-		`SELECT * FROM Msvm_ProcessorSettingData WHERE InstanceID LIKE '%s%s%%'`,
-		settingDataInstanceIDPrefix, vmName,
-	)
-	instances, err := c.wsman.Enumerate(ctx, msvmProcessorSettingDataURI, wsman.WithWQL(query))
+	// 元の WQL `InstanceID LIKE 'Microsoft:<guid>%'` を Go 側フィルタに移す
+	// (Hyper-V は WQL フィルタ列挙を拒否する #80)。
+	instances, err := c.enumerateFiltered(ctx, msvmProcessorSettingDataURI, func(inst *wsman.Instance) bool {
+		return matchSettingDataVM(inst.Property("InstanceID"), vmName)
+	})
 	if err != nil {
 		return nil, err
 	}

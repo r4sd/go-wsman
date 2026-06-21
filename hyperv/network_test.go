@@ -97,9 +97,13 @@ func TestClient_GetVirtualEthernetSwitch(t *testing.T) {
 }
 
 // TestClient_ListNetworkAdapters は VM の NIC 一覧取得を検証する。
+//
+// Hyper-V は WQL フィルタ列挙を拒否する (#80) ため、無フィルタ列挙 + Go 側の InstanceID
+// prefix フィルタで対象 VM の NIC だけを返す。multi golden には別 VM の NIC も含めて、
+// 対象 VM の NIC (1 件) だけを返すことを検証する。
 func TestClient_ListNetworkAdapters(t *testing.T) {
 	enum := loadGolden(t, "enumerate_response_syntheticethernetport.xml")
-	pull := loadGolden(t, "pull_response_syntheticethernetport.xml")
+	pull := loadGolden(t, "pull_response_syntheticethernetport_multi.xml")
 
 	var bodies []string
 	server := newSequenceServer(t, []string{enum, pull}, &bodies)
@@ -110,8 +114,9 @@ func TestClient_ListNetworkAdapters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListNetworkAdapters: %v", err)
 	}
+	// 別 VM の NIC (00155D09ABCD) を除外し、対象 VM の NIC だけが返ること。
 	if len(got) != 1 {
-		t.Fatalf("len: got %d, want 1", len(got))
+		t.Fatalf("len: got %d, want 1 (別 VM の NIC を含めてはいけない)", len(got))
 	}
 	if got[0].Address != "00155D012345" {
 		t.Errorf("Address: %q", got[0].Address)
@@ -120,9 +125,9 @@ func TestClient_ListNetworkAdapters(t *testing.T) {
 		t.Errorf("ResourceType: got %d, want %d", got[0].ResourceType, ResourceTypeEthernetAdapter)
 	}
 
-	// WQL に VM GUID と LIKE が含まれること
-	if !strings.Contains(bodies[0], "11111111-aaaa-bbbb-cccc-000000000001") {
-		t.Errorf("enumerate body should contain VM GUID")
+	// Hyper-V は WQL フィルタ列挙を拒否するため、Enumerate は無フィルタで送ること (#80)。
+	if strings.Contains(bodies[0], "Filter") || strings.Contains(bodies[0], "SELECT") {
+		t.Errorf("enumerate should be unfiltered (no WQL Filter); body: %s", bodies[0])
 	}
 }
 
