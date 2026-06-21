@@ -141,8 +141,10 @@ func TestClient_RemoveResourceSettings(t *testing.T) {
 	if !strings.Contains(body, "RemoveResourceSettings") {
 		t.Errorf("body should contain method name")
 	}
-	if !strings.Contains(body, "EndpointReference") {
-		t.Errorf("body should contain EPR")
+	// EPR は <a:EndpointReference> ラッパー無しで Address + ReferenceParameters を
+	// param 要素直下に置く (MS WS-Man REF パラメータ形式、実機検証済)。
+	if !strings.Contains(body, "ReferenceParameters") {
+		t.Errorf("body should contain EPR ReferenceParameters")
 	}
 }
 

@@ -14,6 +14,7 @@ package hyperv
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
 
@@ -47,13 +48,15 @@ func TestBugSweep_WsmanOperations(t *testing.T) {
 	}
 	var sampleName, sampleGUID string
 	for _, vm := range vms {
-		if vm.ElementName != "" && vm.Name != "" {
+		// guest VM のみ対象 (管理ホストは Name==ElementName==ホスト名)。
+		// guest は Name=GUID ≠ ElementName=表示名。
+		if vm.ElementName != "" && vm.Name != "" && vm.Name != vm.ElementName {
 			sampleName, sampleGUID = vm.ElementName, vm.Name
 			break
 		}
 	}
 	if sampleName == "" {
-		t.Skip("read テスト用の既存 VM が見つからない")
+		t.Skip("read テスト用の guest VM が見つからない")
 	}
 	t.Logf("read テスト対象 VM: name=%q guid=%q (既存 %d VM)", sampleName, sampleGUID, len(vms))
 
@@ -123,6 +126,10 @@ func TestBugSweep_WsmanOperations(t *testing.T) {
 		res, err := c.DefineSystem(ctx, sd)
 		if err != nil {
 			t.Errorf("FAIL: %v", err)
+			var f *wsman.Fault
+			if errors.As(err, &f) && f.Detail != "" {
+				t.Logf("fault detail: %s", f.Detail)
+			}
 			return
 		}
 		if err := c.WaitForJob(ctx, res.JobRef); err != nil {

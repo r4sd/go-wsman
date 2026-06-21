@@ -254,7 +254,7 @@ func (c *Client) AddNetworkAdapterVlan(ctx context.Context, adapterAllocationIns
 		{Name: "FeatureSettings", Value: vlanXML},
 	}
 
-	resp, err := c.wsman.InvokeMulti(ctx, msvmVirtualSystemManagementServiceURI, "AddFeatureSettings", params)
+	resp, err := c.wsman.InvokeMulti(ctx, msvmVirtualSystemManagementServiceURI, "AddFeatureSettings", params, vsmsSelectors()...)
 	if err != nil {
 		return "", err
 	}

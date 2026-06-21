@@ -57,7 +57,7 @@ func (c *Client) AddResourceSettings(ctx context.Context, vmName string, setting
 		params = append(params, wsman.Param{Name: "ResourceSettings", Value: s})
 	}
 
-	resp, err := c.wsman.InvokeMulti(ctx, msvmVirtualSystemManagementServiceURI, "AddResourceSettings", params)
+	resp, err := c.wsman.InvokeMulti(ctx, msvmVirtualSystemManagementServiceURI, "AddResourceSettings", params, vsmsSelectors()...)
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +99,7 @@ func (c *Client) ModifyResourceSettings(ctx context.Context, settingsXML []strin
 		params = append(params, wsman.Param{Name: "ResourceSettings", Value: s})
 	}
 
-	resp, err := c.wsman.InvokeMulti(ctx, msvmVirtualSystemManagementServiceURI, "ModifyResourceSettings", params)
+	resp, err := c.wsman.InvokeMulti(ctx, msvmVirtualSystemManagementServiceURI, "ModifyResourceSettings", params, vsmsSelectors()...)
 	if err != nil {
 		return nil, err
 	}
@@ -139,7 +139,7 @@ func (c *Client) RemoveResourceSettings(ctx context.Context, resourceRefs []stri
 		params = append(params, wsman.Param{Name: "ResourceSettings", Value: r})
 	}
 
-	resp, err := c.wsman.InvokeMulti(ctx, msvmVirtualSystemManagementServiceURI, "RemoveResourceSettings", params)
+	resp, err := c.wsman.InvokeMulti(ctx, msvmVirtualSystemManagementServiceURI, "RemoveResourceSettings", params, vsmsSelectors()...)
 	if err != nil {
 		return "", err
 	}

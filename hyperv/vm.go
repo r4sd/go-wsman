@@ -94,6 +94,20 @@ type DefineSystemResult struct {
 	ReturnValue     string // "0"=同期成功, "4096"=非同期 Job 開始
 }
 
+// vsmsSelectors は Msvm_VirtualSystemManagementService (シングルトン) のメソッド呼び出しに
+// 付与する SelectorSet を返す。Hyper-V WMI プロバイダ (WsmWmiPl.dll) はメソッド実行時に
+// インスタンスを特定する selector を要求し、無いと WBEM_E_INVALID_METHOD_PARAMETERS
+// (HRESULT 0x8004102F) になる。CreationClassName だけでシングルトンを一意特定できる
+// (libvirt の hyperv driver 実装で実証、実機 acc test で確認)。
+//
+// VSMS のメソッド (DefineSystem / DestroySystem / ModifySystemSettings /
+// Add・Modify・RemoveResourceSettings 等) すべてに付与すること。
+func vsmsSelectors() []wsman.Selector {
+	return []wsman.Selector{
+		{Name: "CreationClassName", Value: "Msvm_VirtualSystemManagementService"},
+	}
+}
+
 // DefineSystem は新規 VM を作成する。
 //
 // settings には少なくとも以下を設定すること:
@@ -123,7 +137,7 @@ func (c *Client) DefineSystem(ctx context.Context, settings *Msvm_VirtualSystemS
 	}
 
 	resp, err := c.wsman.Invoke(ctx, msvmVirtualSystemManagementServiceURI, "DefineSystem",
-		map[string]string{"SystemSettings": embedded})
+		map[string]string{"SystemSettings": embedded}, vsmsSelectors()...)
 	if err != nil {
 		return nil, err
 	}
@@ -160,7 +174,7 @@ func (c *Client) DestroySystem(ctx context.Context, vmName string) (string, erro
 	})
 
 	resp, err := c.wsman.Invoke(ctx, msvmVirtualSystemManagementServiceURI, "DestroySystem",
-		map[string]string{"AffectedSystem": affected})
+		map[string]string{"AffectedSystem": affected}, vsmsSelectors()...)
 	if err != nil {
 		return "", err
 	}
@@ -214,7 +228,7 @@ func (c *Client) UpdateVm(ctx context.Context, settings *Msvm_VirtualSystemSetti
 	resp, err := c.wsman.Invoke(ctx, msvmVirtualSystemManagementServiceURI, "ModifySystemSettings",
 		map[string]string{
 			"SystemSettings": embedded,
-		})
+		}, vsmsSelectors()...)
 	if err != nil {
 		return "", err
 	}
