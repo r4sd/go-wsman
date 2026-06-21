@@ -57,9 +57,10 @@ func (c *Client) FindComputerSystemByElementName(ctx context.Context, elementNam
 	if elementName == "" {
 		return nil, fmt.Errorf("FindComputerSystemByElementName: elementName must not be empty")
 	}
-	// WQL リテラル用にエスケープ (" → \", \ → \\)。SOAP への XML エスケープは wsman 層が行う。
-	query := fmt.Sprintf(`SELECT * FROM Msvm_ComputerSystem WHERE ElementName="%s"`, wqlEscapeLiteral(elementName))
-	instances, err := c.wsman.Enumerate(ctx, msvmComputerSystemURI, wsman.WithWQL(query))
+	// 全 Msvm_ComputerSystem を列挙して ElementName でクライアント側フィルタする。
+	// (MS WS-Man Hyper-V は WQL フィルタ列挙を CannotProcessFilter で拒否するため、
+	// 実機で動く無フィルタ列挙を使う。実機 acc test で確認。)
+	instances, err := c.wsman.Enumerate(ctx, msvmComputerSystemURI)
 	if err != nil {
 		return nil, err
 	}
