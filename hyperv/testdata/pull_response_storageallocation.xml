@@ -12,7 +12,7 @@
           <p:ElementName>Hard Disk</p:ElementName>
           <p:ResourceType>31</p:ResourceType>
           <p:ResourceSubType>Microsoft:Hyper-V:Virtual Hard Disk</p:ResourceSubType>
-          <p:HostResource>C:\VMs\test.vhdx</p:HostResource>
+          <p:HostResource>D:\VMs\test.vhdx</p:HostResource>
         </p:Msvm_StorageAllocationSettingData>
       </e:Items>
       <e:EndOfSequence/>

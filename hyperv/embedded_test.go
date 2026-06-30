@@ -9,13 +9,13 @@ import (
 // map[string]string に変換できることを検証する。
 func TestParseEmbeddedInstance(t *testing.T) {
 	t.Run("単純な要素のパース", func(t *testing.T) {
-		xml := `<p:Msvm_VirtualHardDiskSettingData xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_VirtualHardDiskSettingData"><p:Path>C:\vm.vhdx</p:Path><p:MaxInternalSize>10737418240</p:MaxInternalSize><p:Format>3</p:Format></p:Msvm_VirtualHardDiskSettingData>`
+		xml := `<p:Msvm_VirtualHardDiskSettingData xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_VirtualHardDiskSettingData"><p:Path>D:\vm.vhdx</p:Path><p:MaxInternalSize>10737418240</p:MaxInternalSize><p:Format>3</p:Format></p:Msvm_VirtualHardDiskSettingData>`
 
 		got, err := parseEmbeddedInstance(xml)
 		if err != nil {
 			t.Fatalf("parseEmbeddedInstance: %v", err)
 		}
-		if got["Path"] != `C:\vm.vhdx` {
+		if got["Path"] != `D:\vm.vhdx` {
 			t.Errorf("Path: got %q", got["Path"])
 		}
 		if got["MaxInternalSize"] != "10737418240" {
@@ -27,13 +27,13 @@ func TestParseEmbeddedInstance(t *testing.T) {
 	})
 
 	t.Run("空要素を含むパース", func(t *testing.T) {
-		xml := `<p:Msvm_VirtualHardDiskSettingData xmlns:p="ns"><p:Path>C:\a.vhdx</p:Path><p:ParentPath/></p:Msvm_VirtualHardDiskSettingData>`
+		xml := `<p:Msvm_VirtualHardDiskSettingData xmlns:p="ns"><p:Path>D:\a.vhdx</p:Path><p:ParentPath/></p:Msvm_VirtualHardDiskSettingData>`
 
 		got, err := parseEmbeddedInstance(xml)
 		if err != nil {
 			t.Fatalf("parseEmbeddedInstance: %v", err)
 		}
-		if got["Path"] != `C:\a.vhdx` {
+		if got["Path"] != `D:\a.vhdx` {
 			t.Errorf("Path: got %q", got["Path"])
 		}
 		if got["ParentPath"] != "" {
@@ -213,7 +213,7 @@ func TestMarshalEmbeddedInstance_OmitsEmptySlice(t *testing.T) {
 // CIM の SettingData では未指定 = デフォルト適用なので、ゼロ値を送ると意図しない上書きになる。
 func TestMarshalEmbeddedInstance_OmitsZeroValues(t *testing.T) {
 	settings := Msvm_VirtualHardDiskSettingData{
-		Path:            `C:\a.vhdx`,
+		Path:            `D:\a.vhdx`,
 		MaxInternalSize: 1073741824,
 		// VirtualDiskFormat / Type / BlockSize 等は未設定（ゼロ値）
 	}

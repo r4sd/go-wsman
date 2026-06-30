@@ -45,6 +45,44 @@ func TestClient_ListIDEControllers(t *testing.T) {
 	}
 }
 
+// TestClient_ListSCSIControllers は VM の SCSI Controller 一覧取得を検証する。
+//
+// ListIDEControllers と同じ無フィルタ列挙 + Go 側フィルタ方式で、ResourceSubType が
+// Synthetic SCSI Controller のものだけを選ぶ。mixed golden は対象 VM の IDE / SCSI /
+// 別 VM の IDE を含むので、対象 VM の SCSI 1 件だけを選べることを検証する。
+func TestClient_ListSCSIControllers(t *testing.T) {
+	enum := loadGolden(t, "enumerate_response_idecontroller.xml")
+	pull := loadGolden(t, "pull_response_idecontroller_mixed.xml")
+
+	var bodies []string
+	server := newSequenceServer(t, []string{enum, pull}, &bodies)
+	defer server.Close()
+
+	client, _ := NewClient(server.URL)
+	got, err := client.ListSCSIControllers(context.Background(), "11111111-aaaa-bbbb-cccc-000000000001")
+	if err != nil {
+		t.Fatalf("ListSCSIControllers: %v", err)
+	}
+	// IDE(別 SubType) と別 VM を除外し、対象 VM の SCSI Controller 1 件だけ返ること。
+	if len(got) != 1 {
+		t.Fatalf("len: got %d, want 1 (IDE / 別 VM を含めてはいけない)", len(got))
+	}
+	if got[0].ResourceType != ResourceTypeParallelSCSI {
+		t.Errorf("ResourceType: %d", got[0].ResourceType)
+	}
+	if got[0].ResourceSubType != ResourceSubTypeSCSIController {
+		t.Errorf("ResourceSubType: %q", got[0].ResourceSubType)
+	}
+	if got[0].InstanceID != `Microsoft:11111111-aaaa-bbbb-cccc-000000000001\SCSI-CTRL-0` {
+		t.Errorf("InstanceID: got %q (対象 VM の SCSI であるべき)", got[0].InstanceID)
+	}
+
+	// Hyper-V は WQL フィルタ列挙を拒否するため、Enumerate は無フィルタで送ること (#80)。
+	if strings.Contains(bodies[0], "Filter") || strings.Contains(bodies[0], "SELECT") {
+		t.Errorf("enumerate should be unfiltered (no WQL Filter); body: %s", bodies[0])
+	}
+}
+
 // TestClient_ListAttachedStorage は VM にアタッチされたストレージ一覧を返す。
 func TestClient_ListAttachedStorage(t *testing.T) {
 	enum := loadGolden(t, "enumerate_response_storageallocation.xml")
@@ -62,7 +100,7 @@ func TestClient_ListAttachedStorage(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("len: got %d, want 1", len(got))
 	}
-	if got[0].HostResource != `C:\VMs\test.vhdx` {
+	if got[0].HostResource != `D:\VMs\test.vhdx` {
 		t.Errorf("HostResource: %q", got[0].HostResource)
 	}
 	if got[0].ResourceSubType != ResourceSubTypeVirtualHardDisk {
@@ -103,7 +141,7 @@ func TestClient_AttachVHD(t *testing.T) {
 			ControllerType:     ControllerTypeIDE,
 			ControllerNumber:   0,
 			ControllerLocation: 0,
-			Path:               `C:\VMs\disk.vhdx`,
+			Path:               `D:\VMs\disk.vhdx`,
 		})
 	if err != nil {
 		t.Fatalf("AttachVHD: %v", err)
@@ -134,7 +172,66 @@ func TestClient_AttachVHD(t *testing.T) {
 	if !strings.Contains(storageBody, ResourceSubTypeVirtualHardDisk) {
 		t.Errorf("storage body should contain Virtual Hard Disk subtype")
 	}
-	if !strings.Contains(storageBody, `C:\VMs\disk.vhdx`) {
+	if !strings.Contains(storageBody, `D:\VMs\disk.vhdx`) {
+		t.Errorf("storage body should contain VHD path")
+	}
+}
+
+// TestClient_AttachVHD_SCSI は SCSI Controller への VHD アタッチを検証する。
+//
+// Gen2 VM は IDE を持たずブートディスクは SCSI 必須。AttachVHD と同じ 8 リクエスト構成だが、
+// ターゲット列挙が ListSCSIControllers になり、AddressOnParent は SCSI レンジ (0-63) を取る。
+func TestClient_AttachVHD_SCSI(t *testing.T) {
+	scsiEnum := loadGolden(t, "enumerate_response_idecontroller.xml")
+	scsiPull := loadGolden(t, "pull_response_idecontroller_mixed.xml") // 対象 VM の SCSI 1 件を含む
+	sysEnum := loadGolden(t, "enumerate_response_systemsettingdata.xml")
+	sysPull := loadGolden(t, "pull_response_systemsettingdata.xml")
+	addResp := loadGolden(t, "invoke_response_add_resource_settings.xml")
+
+	responses := []string{
+		scsiEnum, scsiPull, // ListSCSIControllers
+		sysEnum, sysPull, addResp, // Drive 追加
+		sysEnum, sysPull, addResp, // Storage 追加
+	}
+
+	var bodies []string
+	server := newSequenceServer(t, responses, &bodies)
+	defer server.Close()
+
+	client, _ := NewClient(server.URL)
+	got, err := client.AttachVHD(context.Background(),
+		"11111111-aaaa-bbbb-cccc-000000000001",
+		AttachVHDOptions{
+			ControllerType:     ControllerTypeSCSI,
+			ControllerNumber:   0,
+			ControllerLocation: 5, // SCSI は 0-63
+			Path:               `D:\VMs\talos.vhdx`,
+		})
+	if err != nil {
+		t.Fatalf("AttachVHD(SCSI): %v", err)
+	}
+	if got.DriveRef == "" || got.StorageRef == "" {
+		t.Errorf("DriveRef/StorageRef should not be empty")
+	}
+	if len(bodies) != 8 {
+		t.Fatalf("expected 8 requests, got %d", len(bodies))
+	}
+
+	// Drive 追加 invoke に SCSI レンジの AddressOnParent が入ること。
+	driveBody := bodies[4]
+	if !strings.Contains(driveBody, ResourceSubTypeSyntheticDiskDrive) {
+		t.Errorf("drive body should contain Synthetic Disk Drive subtype")
+	}
+	if !strings.Contains(driveBody, `<PROPERTY NAME="AddressOnParent" TYPE="string"><VALUE>5</VALUE></PROPERTY>`) {
+		t.Errorf("drive body should contain AddressOnParent=5")
+	}
+	// Drive の Parent が SCSI Controller の InstanceID を指すこと。
+	if !strings.Contains(driveBody, `SCSI-CTRL-0`) {
+		t.Errorf("drive body Parent should reference the SCSI controller")
+	}
+
+	storageBody := bodies[7]
+	if !strings.Contains(storageBody, `D:\VMs\talos.vhdx`) {
 		t.Errorf("storage body should contain VHD path")
 	}
 }
@@ -166,7 +263,7 @@ func TestClient_AttachDVD(t *testing.T) {
 			ControllerType:     ControllerTypeIDE,
 			ControllerNumber:   1,
 			ControllerLocation: 0,
-			Path:               `C:\ISOs\install.iso`,
+			Path:               `D:\ISOs\install.iso`,
 		})
 	if err != nil {
 		t.Fatalf("AttachDVD: %v", err)
@@ -180,7 +277,7 @@ func TestClient_AttachDVD(t *testing.T) {
 	if !strings.Contains(bodies[7], ResourceSubTypeVirtualCDDVDDisk) {
 		t.Errorf("storage body should contain Virtual CD/DVD Disk subtype")
 	}
-	if !strings.Contains(bodies[7], `C:\ISOs\install.iso`) {
+	if !strings.Contains(bodies[7], `D:\ISOs\install.iso`) {
 		t.Errorf("storage body should contain ISO path")
 	}
 }
@@ -199,10 +296,23 @@ func TestClient_AttachVHD_Validation(t *testing.T) {
 	}); err == nil {
 		t.Error("expected error for empty Path")
 	}
+	// 未知の ControllerType は拒否。
 	if _, err := client.AttachVHD(context.Background(), "vm", AttachVHDOptions{
-		ControllerType: ControllerTypeSCSI, Path: "x",
+		ControllerType: ControllerType("USB"), Path: "x",
 	}); err == nil {
-		t.Error("expected error for SCSI (not supported in Phase 4)")
+		t.Error("expected error for unknown controller type")
+	}
+	// SCSI の AddressOnParent は 0-63。範囲外は拒否。
+	if _, err := client.AttachVHD(context.Background(), "vm", AttachVHDOptions{
+		ControllerType: ControllerTypeSCSI, ControllerLocation: 64, Path: "x",
+	}); err == nil {
+		t.Error("expected error for SCSI AddressOnParent out of range (64)")
+	}
+	// IDE の location は 0-1。範囲外は拒否。
+	if _, err := client.AttachVHD(context.Background(), "vm", AttachVHDOptions{
+		ControllerType: ControllerTypeIDE, ControllerLocation: 2, Path: "x",
+	}); err == nil {
+		t.Error("expected error for IDE location out of range (2)")
 	}
 }
 

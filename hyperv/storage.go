@@ -17,18 +17,25 @@ type ControllerType string
 
 const (
 	ControllerTypeIDE  ControllerType = "IDE"
-	ControllerTypeSCSI ControllerType = "SCSI" // Phase 4 では未対応 (将来用)
+	ControllerTypeSCSI ControllerType = "SCSI"
+)
+
+// Controller 内の location (AddressOnParent) の上限。
+// IDE は 1 Controller あたり 2 ドライブ (0-1)、SCSI は 64 ドライブ (0-63)。
+const (
+	maxIDELocation  = 1
+	maxSCSILocation = 63
 )
 
 // AttachVHDOptions は AttachVHD のオプション。
 type AttachVHDOptions struct {
-	// ControllerType は接続先 Controller 種別。Phase 4 では IDE のみサポート。
+	// ControllerType は接続先 Controller 種別 (IDE または SCSI)。
 	ControllerType ControllerType
 
-	// ControllerNumber は IDE の場合 0 または 1 (VM はデフォルトで 2 個の IDE Controller を持つ)。
+	// ControllerNumber は同種 Controller の何番目か (IDE は通常 0 または 1)。
 	ControllerNumber int
 
-	// ControllerLocation は Controller 内の位置 (IDE の場合 0 または 1)。
+	// ControllerLocation は Controller 内の位置 (AddressOnParent)。IDE は 0-1、SCSI は 0-63。
 	ControllerLocation int
 
 	// Path は VHD/VHDX ファイルのフルパス (Hyper-V ホスト上のローカルパス)。
@@ -83,6 +90,36 @@ func (c *Client) ListIDEControllers(ctx context.Context, vmName string) ([]*Msvm
 	return result, nil
 }
 
+// ListSCSIControllers は VM の SCSI Controller 一覧を返す。
+//
+// Gen2 VM は IDE を持たず、ブートディスクは SCSI に接続する。Gen2 では DefineSystem 時に
+// SCSI Controller 0 が自動生成されるため、通常は「既存 SCSI を列挙 → 接続」で足りる。
+// 各 SCSI Controller は最大 64 ドライブ (AddressOnParent 0-63) を接続できる。
+func (c *Client) ListSCSIControllers(ctx context.Context, vmName string) ([]*Msvm_ResourceAllocationSettingData, error) {
+	if vmName == "" {
+		return nil, fmt.Errorf("ListSCSIControllers: vmName must not be empty")
+	}
+
+	// ListIDEControllers と同じく、WQL フィルタ列挙は Hyper-V が拒否する (#80) ため
+	// 無フィルタ列挙 + Go 側フィルタ (対象 VM かつ Synthetic SCSI Controller) で絞る。
+	instances, err := c.enumerateFiltered(ctx, msvmResourceAllocationSettingDataURI, func(inst *wsman.Instance) bool {
+		return matchSettingDataVM(inst.Property("InstanceID"), vmName) &&
+			inst.Property("ResourceSubType") == ResourceSubTypeSCSIController
+	})
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*Msvm_ResourceAllocationSettingData, 0, len(instances))
+	for _, inst := range instances {
+		var r Msvm_ResourceAllocationSettingData
+		if err := Unmarshal(inst.Properties(), &r); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal Msvm_ResourceAllocationSettingData: %w", err)
+		}
+		result = append(result, &r)
+	}
+	return result, nil
+}
+
 // ListAttachedStorage は VM にアタッチされた VHD/ISO ファイルの一覧を返す。
 //
 // terraform の差分計算や、アタッチ済みディスクの確認に使う。
@@ -118,7 +155,7 @@ func (c *Client) ListAttachedStorage(ctx context.Context, vmName string) ([]*Msv
 //
 // 1 が成功して 2 が失敗した場合、空の Drive が残る (実害は少ないが手動削除推奨)。
 //
-// Phase 4 では ControllerType=IDE のみサポート。SCSI は将来対応。
+// ControllerType は IDE / SCSI をサポート。Gen2 VM のブートディスクは SCSI を使う。
 func (c *Client) AttachVHD(ctx context.Context, vmName string, opts AttachVHDOptions) (*AttachResult, error) {
 	return c.attachStorage(ctx, vmName, attachOpts{
 		ControllerType:     opts.ControllerType,
@@ -169,18 +206,33 @@ func (c *Client) attachStorage(ctx context.Context, vmName string, opts attachOp
 	if opts.Path == "" {
 		return nil, fmt.Errorf("%s: Path must not be empty", opts.opName)
 	}
-	if opts.ControllerType != ControllerTypeIDE {
-		return nil, fmt.Errorf("%s: only IDE controller is supported in Phase 4 (got %q)", opts.opName, opts.ControllerType)
+
+	// ControllerType ごとに location 上限とターゲット列挙方法を切り替える。
+	var maxLocation int
+	var listControllers func(context.Context, string) ([]*Msvm_ResourceAllocationSettingData, error)
+	switch opts.ControllerType {
+	case ControllerTypeIDE:
+		maxLocation = maxIDELocation
+		listControllers = c.ListIDEControllers
+	case ControllerTypeSCSI:
+		maxLocation = maxSCSILocation
+		listControllers = c.ListSCSIControllers
+	default:
+		return nil, fmt.Errorf("%s: unsupported controller type %q (want IDE or SCSI)", opts.opName, opts.ControllerType)
+	}
+	if opts.ControllerLocation < 0 || opts.ControllerLocation > maxLocation {
+		return nil, fmt.Errorf("%s: ControllerLocation %d out of range for %s (0-%d)",
+			opts.opName, opts.ControllerLocation, opts.ControllerType, maxLocation)
 	}
 
-	// 1. ターゲットの IDE Controller を特定
-	controllers, err := c.ListIDEControllers(ctx, vmName)
+	// 1. ターゲットの Controller を特定
+	controllers, err := listControllers(ctx, vmName)
 	if err != nil {
 		return nil, fmt.Errorf("%s: list controllers: %w", opts.opName, err)
 	}
-	if opts.ControllerNumber >= len(controllers) {
-		return nil, fmt.Errorf("%s: ControllerNumber %d out of range (VM has %d IDE controllers)",
-			opts.opName, opts.ControllerNumber, len(controllers))
+	if opts.ControllerNumber < 0 || opts.ControllerNumber >= len(controllers) {
+		return nil, fmt.Errorf("%s: ControllerNumber %d out of range (VM has %d %s controllers)",
+			opts.opName, opts.ControllerNumber, len(controllers), opts.ControllerType)
 	}
 	controller := controllers[opts.ControllerNumber]
 	controllerEPR := buildEndpointReference(msvmResourceAllocationSettingDataURI, map[string]string{

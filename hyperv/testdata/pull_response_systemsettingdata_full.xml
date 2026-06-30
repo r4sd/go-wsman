@@ -14,7 +14,7 @@
           <p:VirtualSystemType>Microsoft:Hyper-V:System:Realized</p:VirtualSystemType>
           <p:VirtualSystemSubType>Microsoft:Hyper-V:SubType:2</p:VirtualSystemSubType>
           <p:ConfigurationID>99999999-aaaa-bbbb-cccc-000000000099</p:ConfigurationID>
-          <p:SnapshotDataRoot>C:\VMs\Snapshots\vm-full</p:SnapshotDataRoot>
+          <p:SnapshotDataRoot>D:\VMs\Snapshots\vm-full</p:SnapshotDataRoot>
           <p:AutomaticStartupAction>3</p:AutomaticStartupAction>
           <p:AutomaticShutdownAction>3</p:AutomaticShutdownAction>
           <p:AutomaticRecoveryAction>2</p:AutomaticRecoveryAction>
