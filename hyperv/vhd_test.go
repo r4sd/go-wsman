@@ -27,12 +27,12 @@ func TestClient_GetVirtualHardDisk(t *testing.T) {
 		t.Fatalf("NewClient: %v", err)
 	}
 
-	got, err := client.GetVirtualHardDisk(context.Background(), `C:\VMs\test.vhdx`)
+	got, err := client.GetVirtualHardDisk(context.Background(), `D:\VMs\test.vhdx`)
 	if err != nil {
 		t.Fatalf("GetVirtualHardDisk: %v", err)
 	}
 
-	if got.Path != `C:\VMs\test.vhdx` {
+	if got.Path != `D:\VMs\test.vhdx` {
 		t.Errorf("Path: got %q", got.Path)
 	}
 	if got.VirtualDiskFormat != VHDFormatVHDX {
@@ -70,7 +70,7 @@ func TestClient_CreateVirtualHardDisk(t *testing.T) {
 	settings := Msvm_VirtualHardDiskSettingData{
 		VirtualDiskFormat: VHDFormatVHDX,
 		VirtualDiskType:   VHDTypeDynamic,
-		Path:              `C:\VMs\new.vhdx`,
+		Path:              `D:\VMs\new.vhdx`,
 		MaxInternalSize:   10737418240,
 	}
 
@@ -88,7 +88,7 @@ func TestClient_CreateVirtualHardDisk(t *testing.T) {
 	if !strings.Contains(capturedBody, "VirtualDiskSettingData") {
 		t.Errorf("request body should contain VirtualDiskSettingData parameter")
 	}
-	if !strings.Contains(capturedBody, `C:\VMs\new.vhdx`) {
+	if !strings.Contains(capturedBody, `D:\VMs\new.vhdx`) {
 		t.Errorf("request body should contain Path value")
 	}
 	if !strings.Contains(capturedBody, "CreateVirtualHardDisk") {
@@ -119,7 +119,7 @@ func TestClient_ResizeVirtualHardDisk(t *testing.T) {
 	}
 
 	const (
-		path    = `C:\VMs\resize.vhdx`
+		path    = `D:\VMs\resize.vhdx`
 		newSize = uint64(21474836480) // 20 GiB
 	)
 

@@ -410,7 +410,7 @@ func TestClient_GetSystemSettingData_FullFields(t *testing.T) {
 	}
 
 	// string フィールド
-	if got.SnapshotDataRoot != `C:\VMs\Snapshots\vm-full` {
+	if got.SnapshotDataRoot != `D:\VMs\Snapshots\vm-full` {
 		t.Errorf("SnapshotDataRoot: got %q", got.SnapshotDataRoot)
 	}
 }

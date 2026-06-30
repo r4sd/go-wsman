@@ -42,7 +42,7 @@ func (c *Client) GetVirtualHardDisk(ctx context.Context, path string) (*Msvm_Vir
 // CreateVirtualHardDisk は新規 VHD/VHDX ファイルを作成する。
 //
 // settings の必須フィールド:
-//   - Path: 作成先のフルパス（例: "C:\\VMs\\new.vhdx"）
+//   - Path: 作成先のフルパス（例: "D:\\VMs\\new.vhdx"）
 //   - MaxInternalSize: 論理サイズ（バイト単位）
 //   - VirtualDiskFormat: VHDFormatVHD / VHDFormatVHDX 等
 //   - VirtualDiskType: VHDTypeFixed / VHDTypeDynamic 等

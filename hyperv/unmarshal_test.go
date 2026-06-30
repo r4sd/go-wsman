@@ -180,7 +180,7 @@ func TestUnmarshal_VirtualHardDiskSettingData(t *testing.T) {
 		"LogicalSectorSize":  "512",
 		"PhysicalSectorSize": "4096",
 		"MaxInternalSize":    "10737418240",
-		"Path":               `C:\VMs\vm.vhdx`,
+		"Path":               `D:\VMs\vm.vhdx`,
 		"ParentPath":         "",
 	}
 
@@ -203,7 +203,7 @@ func TestUnmarshal_VirtualHardDiskSettingData(t *testing.T) {
 	if got.MaxInternalSize != 10737418240 {
 		t.Errorf("MaxInternalSize: got %d", got.MaxInternalSize)
 	}
-	if got.Path != `C:\VMs\vm.vhdx` {
+	if got.Path != `D:\VMs\vm.vhdx` {
 		t.Errorf("Path: got %q", got.Path)
 	}
 }

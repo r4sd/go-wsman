@@ -100,7 +100,7 @@ func TestClient_ListAttachedStorage(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("len: got %d, want 1", len(got))
 	}
-	if got[0].HostResource != `C:\VMs\test.vhdx` {
+	if got[0].HostResource != `D:\VMs\test.vhdx` {
 		t.Errorf("HostResource: %q", got[0].HostResource)
 	}
 	if got[0].ResourceSubType != ResourceSubTypeVirtualHardDisk {
@@ -141,7 +141,7 @@ func TestClient_AttachVHD(t *testing.T) {
 			ControllerType:     ControllerTypeIDE,
 			ControllerNumber:   0,
 			ControllerLocation: 0,
-			Path:               `C:\VMs\disk.vhdx`,
+			Path:               `D:\VMs\disk.vhdx`,
 		})
 	if err != nil {
 		t.Fatalf("AttachVHD: %v", err)
@@ -172,7 +172,7 @@ func TestClient_AttachVHD(t *testing.T) {
 	if !strings.Contains(storageBody, ResourceSubTypeVirtualHardDisk) {
 		t.Errorf("storage body should contain Virtual Hard Disk subtype")
 	}
-	if !strings.Contains(storageBody, `C:\VMs\disk.vhdx`) {
+	if !strings.Contains(storageBody, `D:\VMs\disk.vhdx`) {
 		t.Errorf("storage body should contain VHD path")
 	}
 }
@@ -205,7 +205,7 @@ func TestClient_AttachVHD_SCSI(t *testing.T) {
 			ControllerType:     ControllerTypeSCSI,
 			ControllerNumber:   0,
 			ControllerLocation: 5, // SCSI は 0-63
-			Path:               `C:\VMs\talos.vhdx`,
+			Path:               `D:\VMs\talos.vhdx`,
 		})
 	if err != nil {
 		t.Fatalf("AttachVHD(SCSI): %v", err)
@@ -231,7 +231,7 @@ func TestClient_AttachVHD_SCSI(t *testing.T) {
 	}
 
 	storageBody := bodies[7]
-	if !strings.Contains(storageBody, `C:\VMs\talos.vhdx`) {
+	if !strings.Contains(storageBody, `D:\VMs\talos.vhdx`) {
 		t.Errorf("storage body should contain VHD path")
 	}
 }
@@ -263,7 +263,7 @@ func TestClient_AttachDVD(t *testing.T) {
 			ControllerType:     ControllerTypeIDE,
 			ControllerNumber:   1,
 			ControllerLocation: 0,
-			Path:               `C:\ISOs\install.iso`,
+			Path:               `D:\ISOs\install.iso`,
 		})
 	if err != nil {
 		t.Fatalf("AttachDVD: %v", err)
@@ -277,7 +277,7 @@ func TestClient_AttachDVD(t *testing.T) {
 	if !strings.Contains(bodies[7], ResourceSubTypeVirtualCDDVDDisk) {
 		t.Errorf("storage body should contain Virtual CD/DVD Disk subtype")
 	}
-	if !strings.Contains(bodies[7], `C:\ISOs\install.iso`) {
+	if !strings.Contains(bodies[7], `D:\ISOs\install.iso`) {
 		t.Errorf("storage body should contain ISO path")
 	}
 }

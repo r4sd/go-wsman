@@ -70,7 +70,7 @@ func TestIntegration_ListComputerSystems(t *testing.T) {
 // TestIntegration_GetVirtualHardDisk は環境変数で指定された VHD ファイルの設定を取得する。
 //
 // 追加環境変数:
-//   - HYPERV_TEST_VHD_PATH: 既存 VHD ファイルのフルパス（例: "C:\\VMs\\test.vhdx"）
+//   - HYPERV_TEST_VHD_PATH: 既存 VHD ファイルのフルパス（例: "D:\\VMs\\test.vhdx"）
 func TestIntegration_GetVirtualHardDisk(t *testing.T) {
 	client := getIntegrationClient(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
