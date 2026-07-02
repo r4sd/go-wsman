@@ -96,7 +96,6 @@ func TestClient_GetVirtualEthernetSwitch(t *testing.T) {
 	})
 }
 
-// TestClient_ListNetworkAdapters は VM の NIC 一覧取得を検証する。
 // TestClient_ListEthernetPortAllocations は VM の NIC-スイッチ接続
 // (Msvm_EthernetPortAllocationSettingData) 一覧取得を検証する。
 //
@@ -136,6 +135,7 @@ func TestClient_ListEthernetPortAllocations(t *testing.T) {
 	}
 }
 
+// TestClient_ListNetworkAdapters は VM の NIC 一覧取得を検証する。
 //
 // Hyper-V は WQL フィルタ列挙を拒否する (#80) ため、無フィルタ列挙 + Go 側の InstanceID
 // prefix フィルタで対象 VM の NIC だけを返す。multi golden には別 VM の NIC も含めて、
