@@ -36,7 +36,13 @@ func getIntegrationClient(t *testing.T) *Client {
 		t.Skip("WSMAN_ENDPOINT, WSMAN_USERNAME, WSMAN_PASSWORD must be set")
 	}
 
-	client, err := NewClient(endpoint, wsman.WithNTLM(username, password))
+	// 自己署名証明書のホスト (homelab 等) では WSMAN_INSECURE=true で TLS 検証をスキップする
+	// (bug_sweep_integration_test と同じ挙動)。
+	opts := []wsman.ClientOption{wsman.WithNTLM(username, password)}
+	if os.Getenv("WSMAN_INSECURE") == "true" {
+		opts = append(opts, wsman.WithInsecureSkipVerify())
+	}
+	client, err := NewClient(endpoint, opts...)
 	if err != nil {
 		t.Fatalf("NewClient failed: %v", err)
 	}
@@ -445,8 +451,60 @@ func TestIntegration_ListIDEControllers(t *testing.T) {
 	for i, ctrl := range controllers {
 		t.Logf("  [%d] %s (%s)", i, ctrl.ElementName, ctrl.InstanceID)
 	}
-	if len(controllers) == 0 {
-		t.Errorf("VM should have at least one IDE controller")
+	// 注: Gen2 VM は IDE を持たない (0 が正常)。列挙が成功すること自体を検証する
+	// (件数下限は課さない。以前は「>=1」を要求していたが Gen2 では誤り)。
+}
+
+// TestIntegration_ListScsiAndDiskDrives は SCSI Controller / Disk Drive / attached storage /
+// NIC allocation の列挙を実機で検証する (read-only、provider の Get 逆引きの土台)。
+//
+// Gen2 VM (IDE 非搭載・SCSI ブート) を優先的に対象に選ぶ。#63 の disk/nic Get 経路が実 HW で
+// データを返せることを確認する。
+func TestIntegration_ListScsiAndDiskDrives(t *testing.T) {
+	client := getIntegrationClient(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	vms, err := client.ListComputerSystems(ctx)
+	if err != nil {
+		t.Fatalf("ListComputerSystems: %v", err)
+	}
+	if len(vms) == 0 {
+		t.Skip("Hyper-V ホストに VM が存在しない")
+	}
+	// SCSI Controller を持つ VM (通常 Gen2) を優先的に選ぶ。
+	target := vms[0]
+	for _, vm := range vms {
+		scsi, err := client.ListSCSIControllers(ctx, vm.Name)
+		if err == nil && len(scsi) > 0 {
+			target = vm
+			break
+		}
+	}
+
+	scsi, err := client.ListSCSIControllers(ctx, target.Name)
+	if err != nil {
+		t.Fatalf("ListSCSIControllers: %v", err)
+	}
+	drives, err := client.ListDiskDrives(ctx, target.Name)
+	if err != nil {
+		t.Fatalf("ListDiskDrives: %v", err)
+	}
+	storages, err := client.ListAttachedStorage(ctx, target.Name)
+	if err != nil {
+		t.Fatalf("ListAttachedStorage: %v", err)
+	}
+	allocs, err := client.ListEthernetPortAllocations(ctx, target.Name)
+	if err != nil {
+		t.Fatalf("ListEthernetPortAllocations: %v", err)
+	}
+	t.Logf("VM %q: SCSI=%d DiskDrives=%d AttachedStorage=%d NICAllocations=%d",
+		target.ElementName, len(scsi), len(drives), len(storages), len(allocs))
+	// 逆引きの整合を軽く確認: 各 Disk Drive は Parent(親 Controller EPR) を持つこと。
+	for i, d := range drives {
+		if d.Parent == "" {
+			t.Errorf("disk drive[%d] の Parent(親 Controller) が空", i)
+		}
 	}
 }
 
