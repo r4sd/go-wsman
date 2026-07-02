@@ -120,6 +120,37 @@ func (c *Client) ListSCSIControllers(ctx context.Context, vmName string) ([]*Msv
 	return result, nil
 }
 
+// ListDiskDrives は VM の Disk Drive (Msvm_ResourceAllocationSettingData, ResourceType=17)
+// 一覧を返す。
+//
+// Drive は Parent に親 Controller (IDE/SCSI) の EPR、AddressOnParent に Controller 内の
+// location を持つ。VHD の逆引き (どの Controller のどの位置に何の VHD が付いているか) は
+// ListAttachedStorage(ファイル) の Parent が指す Drive を本メソッドの結果と突き合わせて行う。
+func (c *Client) ListDiskDrives(ctx context.Context, vmName string) ([]*Msvm_ResourceAllocationSettingData, error) {
+	if vmName == "" {
+		return nil, fmt.Errorf("ListDiskDrives: vmName must not be empty")
+	}
+
+	// Controller 列挙と同じく WQL フィルタは Hyper-V が拒否する (#80) ため、無フィルタ列挙 +
+	// Go 側フィルタ (対象 VM かつ Synthetic Disk Drive) で絞る。
+	instances, err := c.enumerateFiltered(ctx, msvmResourceAllocationSettingDataURI, func(inst *wsman.Instance) bool {
+		return matchSettingDataVM(inst.Property("InstanceID"), vmName) &&
+			inst.Property("ResourceSubType") == ResourceSubTypeSyntheticDiskDrive
+	})
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*Msvm_ResourceAllocationSettingData, 0, len(instances))
+	for _, inst := range instances {
+		var r Msvm_ResourceAllocationSettingData
+		if err := Unmarshal(inst.Properties(), &r); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal Msvm_ResourceAllocationSettingData: %w", err)
+		}
+		result = append(result, &r)
+	}
+	return result, nil
+}
+
 // ListAttachedStorage は VM にアタッチされた VHD/ISO ファイルの一覧を返す。
 //
 // terraform の差分計算や、アタッチ済みディスクの確認に使う。

@@ -97,6 +97,45 @@ func TestClient_GetVirtualEthernetSwitch(t *testing.T) {
 }
 
 // TestClient_ListNetworkAdapters は VM の NIC 一覧取得を検証する。
+// TestClient_ListEthernetPortAllocations は VM の NIC-スイッチ接続
+// (Msvm_EthernetPortAllocationSettingData) 一覧取得を検証する。
+//
+// GetVmNetworkAdapters の逆引き (port→allocation→switch) に使う。allocation は Parent に
+// 親 NIC の EPR、HostResource に接続先スイッチの EPR を持つ。対象 VM の allocation 1 件だけを
+// 選べること(別 VM を除外)を検証する。
+func TestClient_ListEthernetPortAllocations(t *testing.T) {
+	enum := loadGolden(t, "enumerate_response_syntheticethernetport.xml")
+	pull := loadGolden(t, "pull_response_ethernetportallocation.xml")
+
+	var bodies []string
+	server := newSequenceServer(t, []string{enum, pull}, &bodies)
+	defer server.Close()
+
+	client, _ := NewClient(server.URL)
+	got, err := client.ListEthernetPortAllocations(context.Background(), "11111111-aaaa-bbbb-cccc-000000000001")
+	if err != nil {
+		t.Fatalf("ListEthernetPortAllocations: %v", err)
+	}
+	// 別 VM の allocation を除外し、対象 VM の allocation 1 件だけ返ること。
+	if len(got) != 1 {
+		t.Fatalf("len: got %d, want 1 (別 VM を含めてはいけない)", len(got))
+	}
+	if !strings.Contains(got[0].Parent, `NIC-001`) {
+		t.Errorf("Parent should reference the NIC; got %q", got[0].Parent)
+	}
+	if got[0].HostResource == "" {
+		t.Errorf("HostResource (switch EPR) should not be empty")
+	}
+	if got[0].ResourceType != ResourceTypeEthernetConnection {
+		t.Errorf("ResourceType: got %d, want %d", got[0].ResourceType, ResourceTypeEthernetConnection)
+	}
+
+	// Hyper-V は WQL フィルタ列挙を拒否するため、Enumerate は無フィルタで送ること (#80)。
+	if strings.Contains(bodies[0], "Filter") || strings.Contains(bodies[0], "SELECT") {
+		t.Errorf("enumerate should be unfiltered (no WQL Filter); body: %s", bodies[0])
+	}
+}
+
 //
 // Hyper-V は WQL フィルタ列挙を拒否する (#80) ため、無フィルタ列挙 + Go 側の InstanceID
 // prefix フィルタで対象 VM の NIC だけを返す。multi golden には別 VM の NIC も含めて、

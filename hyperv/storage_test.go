@@ -83,6 +83,50 @@ func TestClient_ListSCSIControllers(t *testing.T) {
 	}
 }
 
+// TestClient_ListDiskDrives は VM のディスクドライブ (Msvm_ResourceAllocationSettingData,
+// ResourceType=17) 一覧取得を検証する。
+//
+// GetVmHardDiskDrives の逆引き (storage→drive→controller) に使う。ドライブは Parent に
+// 親 Controller の EPR、AddressOnParent に Controller 内 location を持つ。mixed golden は
+// 対象 VM の Disk Drive / 対象 VM の SCSI Controller(別 SubType) / 別 VM の Disk Drive を
+// 含み、対象 VM の Disk Drive 1 件だけを選べることを検証する。
+func TestClient_ListDiskDrives(t *testing.T) {
+	enum := loadGolden(t, "enumerate_response_idecontroller.xml")
+	pull := loadGolden(t, "pull_response_diskdrive_mixed.xml")
+
+	var bodies []string
+	server := newSequenceServer(t, []string{enum, pull}, &bodies)
+	defer server.Close()
+
+	client, _ := NewClient(server.URL)
+	got, err := client.ListDiskDrives(context.Background(), "11111111-aaaa-bbbb-cccc-000000000001")
+	if err != nil {
+		t.Fatalf("ListDiskDrives: %v", err)
+	}
+	// Controller(別 SubType) と別 VM の Disk Drive を除外し、対象 VM の Disk Drive 1 件だけ。
+	if len(got) != 1 {
+		t.Fatalf("len: got %d, want 1 (Controller / 別 VM を含めてはいけない)", len(got))
+	}
+	if got[0].ResourceType != ResourceTypeDiskDrive {
+		t.Errorf("ResourceType: %d", got[0].ResourceType)
+	}
+	if got[0].ResourceSubType != ResourceSubTypeSyntheticDiskDrive {
+		t.Errorf("ResourceSubType: %q", got[0].ResourceSubType)
+	}
+	// 逆引きに必要な Parent(親 Controller) と AddressOnParent(location) が取れること。
+	if got[0].AddressOnParent != "0" {
+		t.Errorf("AddressOnParent: got %q, want 0", got[0].AddressOnParent)
+	}
+	if !strings.Contains(got[0].Parent, `SCSI-CTRL-0`) {
+		t.Errorf("Parent should reference the SCSI controller; got %q", got[0].Parent)
+	}
+
+	// Hyper-V は WQL フィルタ列挙を拒否するため、Enumerate は無フィルタで送ること (#80)。
+	if strings.Contains(bodies[0], "Filter") || strings.Contains(bodies[0], "SELECT") {
+		t.Errorf("enumerate should be unfiltered (no WQL Filter); body: %s", bodies[0])
+	}
+}
+
 // TestClient_ListAttachedStorage は VM にアタッチされたストレージ一覧を返す。
 func TestClient_ListAttachedStorage(t *testing.T) {
 	enum := loadGolden(t, "enumerate_response_storageallocation.xml")
