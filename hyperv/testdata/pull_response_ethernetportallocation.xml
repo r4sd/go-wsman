@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:e="http://schemas.xmlsoap.org/ws/2004/09/enumeration" xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_EthernetPortAllocationSettingData">
+  <s:Header>
+    <a:Action>http://schemas.xmlsoap.org/ws/2004/09/enumeration/PullResponse</a:Action>
+    <a:MessageID>uuid:pull-ethallocation-001</a:MessageID>
+  </s:Header>
+  <s:Body>
+    <e:PullResponse>
+      <e:Items>
+        <p:Msvm_EthernetPortAllocationSettingData>
+          <p:InstanceID>Microsoft:11111111-aaaa-bbbb-cccc-000000000001\NIC-001\CONN</p:InstanceID>
+          <p:ElementName>Ethernet Connection</p:ElementName>
+          <p:ResourceType>33</p:ResourceType>
+          <p:ResourceSubType>Microsoft:Hyper-V:Ethernet Connection</p:ResourceSubType>
+          <p:HostResource>Microsoft:VirtualSwitch\aaaaaaaa-1111-2222-3333-444444444444</p:HostResource>
+          <p:Parent>Microsoft:11111111-aaaa-bbbb-cccc-000000000001\NIC-001</p:Parent>
+          <p:EnabledState>2</p:EnabledState>
+        </p:Msvm_EthernetPortAllocationSettingData>
+        <p:Msvm_EthernetPortAllocationSettingData>
+          <p:InstanceID>Microsoft:22222222-aaaa-bbbb-cccc-000000000002\NIC-001\CONN</p:InstanceID>
+          <p:ElementName>Other VM Ethernet Connection</p:ElementName>
+          <p:ResourceType>33</p:ResourceType>
+          <p:ResourceSubType>Microsoft:Hyper-V:Ethernet Connection</p:ResourceSubType>
+          <p:HostResource>Microsoft:VirtualSwitch\bbbbbbbb-1111-2222-3333-444444444444</p:HostResource>
+          <p:Parent>Microsoft:22222222-aaaa-bbbb-cccc-000000000002\NIC-001</p:Parent>
+          <p:EnabledState>2</p:EnabledState>
+        </p:Msvm_EthernetPortAllocationSettingData>
+      </e:Items>
+      <e:EndOfSequence/>
+    </e:PullResponse>
+  </s:Body>
+</s:Envelope>

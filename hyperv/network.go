@@ -105,6 +105,35 @@ func (c *Client) ListNetworkAdapters(ctx context.Context, vmName string) ([]*Msv
 	return result, nil
 }
 
+// ListEthernetPortAllocations は VM の NIC-スイッチ接続
+// (Msvm_EthernetPortAllocationSettingData) 一覧を返す。
+//
+// allocation は Parent に親 NIC の EPR、HostResource に接続先スイッチの EPR を持つ。
+// NIC がどのスイッチに繋がっているかの逆引きは、ListNetworkAdapters(NIC 本体) の InstanceID を
+// 本メソッドの Parent と突き合わせ、HostResource のスイッチ EPR を GetVirtualEthernetSwitch 等で
+// 名前解決して行う。
+func (c *Client) ListEthernetPortAllocations(ctx context.Context, vmName string) ([]*Msvm_EthernetPortAllocationSettingData, error) {
+	if vmName == "" {
+		return nil, fmt.Errorf("ListEthernetPortAllocations: vmName must not be empty")
+	}
+	// ListNetworkAdapters と同じく無フィルタ列挙 + Go 側の InstanceID prefix フィルタ (#80)。
+	instances, err := c.enumerateFiltered(ctx, msvmEthernetPortAllocationSettingDataURI, func(inst *wsman.Instance) bool {
+		return matchSettingDataVM(inst.Property("InstanceID"), vmName)
+	})
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*Msvm_EthernetPortAllocationSettingData, 0, len(instances))
+	for _, inst := range instances {
+		var a Msvm_EthernetPortAllocationSettingData
+		if err := Unmarshal(inst.Properties(), &a); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal Msvm_EthernetPortAllocationSettingData: %w", err)
+		}
+		result = append(result, &a)
+	}
+	return result, nil
+}
+
 // AddNetworkAdapter は VM に NIC を追加し、必要なら指定スイッチに接続する。
 //
 // 内部で 2 段階の AddResourceSettings を実行する:
