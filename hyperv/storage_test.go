@@ -83,6 +83,49 @@ func TestClient_ListSCSIControllers(t *testing.T) {
 	}
 }
 
+// TestClient_AddScsiController は VM への SCSI Controller 追加を検証する。
+//
+// go-wsman の DefineSystem はシェル VM を作り Gen2 でも SCSI Controller を持たないため
+// (#88)、SCSI ブートには本メソッドで明示追加する。AddResourceSettings は内部で
+// GetSystemSettingData (enum + pull) → invoke の 3 リクエスト。
+func TestClient_AddScsiController(t *testing.T) {
+	sysEnum := loadGolden(t, "enumerate_response_systemsettingdata.xml")
+	sysPull := loadGolden(t, "pull_response_systemsettingdata.xml")
+	addResp := loadGolden(t, "invoke_response_add_resource_settings.xml")
+
+	var bodies []string
+	server := newSequenceServer(t, []string{sysEnum, sysPull, addResp}, &bodies)
+	defer server.Close()
+
+	client, _ := NewClient(server.URL)
+	got, err := client.AddScsiController(context.Background(), "11111111-aaaa-bbbb-cccc-000000000001")
+	if err != nil {
+		t.Fatalf("AddScsiController: %v", err)
+	}
+	if got.ControllerRef == "" {
+		t.Errorf("ControllerRef should not be empty")
+	}
+	if len(bodies) != 3 {
+		t.Fatalf("expected 3 requests, got %d", len(bodies))
+	}
+	// invoke (3 番目) に Synthetic SCSI Controller subtype と ResourceType=6 が入ること。
+	invokeBody := bodies[2]
+	if !strings.Contains(invokeBody, ResourceSubTypeSCSIController) {
+		t.Errorf("invoke body should contain Synthetic SCSI Controller subtype")
+	}
+	if !strings.Contains(invokeBody, `<PROPERTY NAME="ResourceType" TYPE="uint16"><VALUE>6</VALUE></PROPERTY>`) {
+		t.Errorf("invoke body should contain ResourceType=6 (Parallel SCSI HBA)")
+	}
+}
+
+// TestClient_AddScsiController_Validation はバリデーション。
+func TestClient_AddScsiController_Validation(t *testing.T) {
+	client, _ := NewClient("http://localhost")
+	if _, err := client.AddScsiController(context.Background(), ""); err == nil {
+		t.Error("expected error for empty vmName")
+	}
+}
+
 // TestClient_ListAttachedStorage は VM にアタッチされたストレージ一覧を返す。
 func TestClient_ListAttachedStorage(t *testing.T) {
 	enum := loadGolden(t, "enumerate_response_storageallocation.xml")

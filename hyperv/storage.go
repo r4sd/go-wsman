@@ -92,9 +92,12 @@ func (c *Client) ListIDEControllers(ctx context.Context, vmName string) ([]*Msvm
 
 // ListSCSIControllers は VM の SCSI Controller 一覧を返す。
 //
-// Gen2 VM は IDE を持たず、ブートディスクは SCSI に接続する。Gen2 では DefineSystem 時に
-// SCSI Controller 0 が自動生成されるため、通常は「既存 SCSI を列挙 → 接続」で足りる。
-// 各 SCSI Controller は最大 64 ドライブ (AddressOnParent 0-63) を接続できる。
+// Gen2 VM は IDE を持たず、ブートディスクは SCSI に接続する。各 SCSI Controller は最大
+// 64 ドライブ (AddressOnParent 0-63) を接続できる。
+//
+// 注意: go-wsman の DefineSystem はシェル VM を作るため、Hyper-V の New-VM と違い Gen2 でも
+// SCSI Controller が自動生成されない (#88、実機確認済)。go-wsman で作った VM に SCSI ブート
+// ディスクを付ける場合は、先に AddScsiController で Controller を追加する必要がある。
 func (c *Client) ListSCSIControllers(ctx context.Context, vmName string) ([]*Msvm_ResourceAllocationSettingData, error) {
 	if vmName == "" {
 		return nil, fmt.Errorf("ListSCSIControllers: vmName must not be empty")
@@ -118,6 +121,39 @@ func (c *Client) ListSCSIControllers(ctx context.Context, vmName string) ([]*Msv
 		result = append(result, &r)
 	}
 	return result, nil
+}
+
+// AddControllerResult は Controller 追加操作の結果。
+type AddControllerResult struct {
+	ControllerRef string // 作成された Controller (Msvm_ResourceAllocationSettingData) の InstanceID
+	JobRef        string
+}
+
+// AddScsiController は VM に Synthetic SCSI Controller を 1 つ追加する。
+//
+// go-wsman の DefineSystem はシェル VM を作り Gen2 でも SCSI Controller を持たない (#88) ため、
+// SCSI ブートディスクを付ける前に本メソッドで Controller を追加する。追加した Controller は
+// ListSCSIControllers に現れ、AttachVHD(ControllerType=SCSI) のターゲットになる。
+func (c *Client) AddScsiController(ctx context.Context, vmName string) (*AddControllerResult, error) {
+	if vmName == "" {
+		return nil, fmt.Errorf("AddScsiController: vmName must not be empty")
+	}
+	controller := &Msvm_ResourceAllocationSettingData{
+		ResourceType:    ResourceTypeParallelSCSI,
+		ResourceSubType: ResourceSubTypeSCSIController,
+	}
+	controllerXML, err := marshalEmbeddedInstance(controller, "Msvm_ResourceAllocationSettingData", msvmResourceAllocationSettingDataURI)
+	if err != nil {
+		return nil, fmt.Errorf("AddScsiController: marshal: %w", err)
+	}
+	result, err := c.AddResourceSettings(ctx, vmName, []string{controllerXML})
+	if err != nil {
+		return nil, fmt.Errorf("AddScsiController: %w", err)
+	}
+	return &AddControllerResult{
+		ControllerRef: result.ResultingResourceSettings,
+		JobRef:        result.JobRef,
+	}, nil
 }
 
 // ListAttachedStorage は VM にアタッチされた VHD/ISO ファイルの一覧を返す。

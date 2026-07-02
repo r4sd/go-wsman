@@ -36,11 +36,73 @@ func getIntegrationClient(t *testing.T) *Client {
 		t.Skip("WSMAN_ENDPOINT, WSMAN_USERNAME, WSMAN_PASSWORD must be set")
 	}
 
-	client, err := NewClient(endpoint, wsman.WithNTLM(username, password))
+	// 自己署名証明書のホスト (homelab 等) では WSMAN_INSECURE=true で TLS 検証をスキップする。
+	opts := []wsman.ClientOption{wsman.WithNTLM(username, password)}
+	if os.Getenv("WSMAN_INSECURE") == "true" {
+		opts = append(opts, wsman.WithInsecureSkipVerify())
+	}
+	client, err := NewClient(endpoint, opts...)
 	if err != nil {
 		t.Fatalf("NewClient failed: %v", err)
 	}
 	return client
+}
+
+// TestIntegration_AddScsiController は #88 の修正を実機で検証する。
+//
+// go-wsman の DefineSystem で作った Gen2 VM は SCSI Controller を持たない (0) が、
+// AddScsiController で追加すると ListSCSIControllers に 1 件現れることを確認する。
+// 使い捨て VM を作成→破棄する自己完結テスト (HYPERV_TEST_ALLOW_MUTATION gated)。
+func TestIntegration_AddScsiController(t *testing.T) {
+	if os.Getenv("HYPERV_TEST_ALLOW_MUTATION") == "" {
+		t.Skip("HYPERV_TEST_ALLOW_MUTATION 未設定（VM 作成を伴う破壊的テスト）")
+	}
+	client := getIntegrationClient(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	vmName := fmt.Sprintf("go-wsman-acctest-88-%d", time.Now().UnixNano())
+	def, err := client.DefineSystem(ctx, &Msvm_VirtualSystemSettingData{
+		ElementName:          vmName,
+		VirtualSystemSubType: VirtualSystemSubTypeGen2,
+	})
+	if err != nil {
+		t.Fatalf("DefineSystem: %v", err)
+	}
+	vmGUID := def.ResultingSystem
+	defer func() {
+		if _, err := client.DestroySystem(ctx, vmGUID); err != nil {
+			t.Logf("DestroySystem cleanup 失敗 (手動確認要): %v", err)
+		}
+	}()
+
+	// 追加前: シェル VM なので 0。
+	before, err := client.ListSCSIControllers(ctx, vmGUID)
+	if err != nil {
+		t.Fatalf("ListSCSIControllers(before): %v", err)
+	}
+	t.Logf("追加前 SCSI Controllers = %d", len(before))
+
+	// SCSI Controller を追加。
+	res, err := client.AddScsiController(ctx, vmGUID)
+	if err != nil {
+		t.Fatalf("AddScsiController: %v", err)
+	}
+	if res.JobRef != "" {
+		if err := client.WaitForJob(ctx, res.JobRef); err != nil {
+			t.Fatalf("WaitForJob(AddScsiController): %v", err)
+		}
+	}
+
+	// 追加後: 1 件現れること。
+	after, err := client.ListSCSIControllers(ctx, vmGUID)
+	if err != nil {
+		t.Fatalf("ListSCSIControllers(after): %v", err)
+	}
+	t.Logf("追加後 SCSI Controllers = %d", len(after))
+	if len(after) != len(before)+1 {
+		t.Errorf("AddScsiController 後は Controller が 1 増えるべき: before=%d after=%d", len(before), len(after))
+	}
 }
 
 // TestIntegration_ListComputerSystems は実機から VM 一覧を取得する。
