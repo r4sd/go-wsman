@@ -3,9 +3,18 @@ package hyperv
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/r4sd/go-wsman/wsman"
 )
+
+// sortRASDByInstanceID は Controller/Drive 一覧を InstanceID で安定ソートする。
+// WS-Man 列挙順は無保証なため、ControllerNumber を決定的にするのに使う。
+func sortRASDByInstanceID(items []*Msvm_ResourceAllocationSettingData) {
+	sort.SliceStable(items, func(i, j int) bool {
+		return items[i].InstanceID < items[j].InstanceID
+	})
+}
 
 const (
 	msvmResourceAllocationSettingDataURI = nsVirtV2 + "/Msvm_ResourceAllocationSettingData"
@@ -266,6 +275,9 @@ func (c *Client) attachStorage(ctx context.Context, vmName string, opts attachOp
 	if err != nil {
 		return nil, fmt.Errorf("%s: list controllers: %w", opts.opName, err)
 	}
+	// WS-Man の列挙順は無保証。ControllerNumber を安定させるため InstanceID でソートしてから
+	// index で選ぶ (読み取り側 provider の mapHardDiskDriveRefs と同じ決定的順序に揃える)。
+	sortRASDByInstanceID(controllers)
 	if opts.ControllerNumber < 0 || opts.ControllerNumber >= len(controllers) {
 		return nil, fmt.Errorf("%s: ControllerNumber %d out of range (VM has %d %s controllers)",
 			opts.opName, opts.ControllerNumber, len(controllers), opts.ControllerType)
