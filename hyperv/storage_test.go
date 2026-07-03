@@ -409,9 +409,10 @@ func TestClient_AttachVHD_Validation(t *testing.T) {
 // TestClient_DetachStorage は Drive の InstanceID で削除リクエストを組み立てるテスト。
 func TestClient_DetachStorage(t *testing.T) {
 	respXML := loadGolden(t, "invoke_response_remove_resource_settings.xml")
+	jobResp := loadGolden(t, "get_response_concretejob_completed.xml")
 
 	var bodies []string
-	server := newSequenceServer(t, []string{respXML}, &bodies)
+	server := newSequenceServer(t, []string{respXML, jobResp}, &bodies)
 	defer server.Close()
 
 	client, _ := NewClient(server.URL)

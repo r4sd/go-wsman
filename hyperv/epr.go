@@ -6,6 +6,57 @@ import (
 	"strings"
 )
 
+// wmiObjectPath は embedded instance の string プロパティ (Msvm_*SettingData.Parent や
+// HostResource 等) 用の WMI オブジェクトパス文字列を生成する。
+//
+// これらのプロパティは CIM 上 string 型で、値は WMI オブジェクトパス
+// (\\HOST\namespace:Class.Key="value") を要求する。REF パラメータ (AffectedConfiguration
+// 等) の WS-Addressing EPR (buildEndpointReference) とは形式が別。両者を混同すると
+// AddResourceSettings が「リソースを追加できませんでした」(ErrorCode=32773) で失敗する。
+//
+// host が空なら \\HOST\ 前置を省いた相対パス。値内の \ は WMI パス引用規則で \\ に、" は \" に
+// エスケープする (前置部 \\HOST\namespace はエスケープ対象外)。キーは名前昇順で安定化。
+func wmiObjectPath(host, resourceURI string, keys map[string]string) string {
+	// resourceURI ("http://.../wmi/root/virtualization/v2/Msvm_X") から
+	// namespace ("root/virtualization/v2") と class ("Msvm_X") を取り出す。
+	tail := resourceURI
+	if i := strings.Index(tail, "/wmi/"); i >= 0 {
+		tail = tail[i+len("/wmi/"):]
+	}
+	ns, class := tail, ""
+	if j := strings.LastIndex(tail, "/"); j >= 0 {
+		ns, class = tail[:j], tail[j+1:]
+	}
+
+	names := make([]string, 0, len(keys))
+	for k := range keys {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+
+	var sb strings.Builder
+	if host != "" {
+		fmt.Fprintf(&sb, `\\%s\`, host)
+	}
+	fmt.Fprintf(&sb, "%s:%s", ns, class)
+	for i, k := range names {
+		if i == 0 {
+			sb.WriteByte('.')
+		} else {
+			sb.WriteByte(',')
+		}
+		fmt.Fprintf(&sb, `%s="%s"`, k, wmiPathValueEscape(keys[k]))
+	}
+	return sb.String()
+}
+
+// wmiPathValueEscape は WMI オブジェクトパスのキー値 (引用符内) をエスケープする。
+func wmiPathValueEscape(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `"`, `\"`)
+	return s
+}
+
 // buildEndpointReference は WS-Addressing 形式の EndpointReference (EPR) XML を生成する。
 //
 // CIM Invoke のパラメータで参照型 (REF) を渡す際に使用する。例えば

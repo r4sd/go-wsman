@@ -261,6 +261,16 @@ func (c *Client) AttachDVD(ctx context.Context, vmName string, opts AttachDVDOpt
 	})
 }
 
+// storageAllocationInput は AddResourceSettings で Msvm_StorageAllocationSettingData を送る際の
+// 入力表現。HostResource は CIM 上 string[] なので配列で送る (読み取り用の
+// Msvm_StorageAllocationSettingData は単一値でよいため別 struct にする)。
+type storageAllocationInput struct {
+	ResourceType    uint16   `cim:"ResourceType"`
+	ResourceSubType string   `cim:"ResourceSubType"`
+	HostResource    []string `cim:"HostResource"`
+	Parent          string   `cim:"Parent"`
+}
+
 // attachOpts は VHD/DVD アタッチの内部共通パラメータ。
 type attachOpts struct {
 	ControllerType     ControllerType
@@ -314,7 +324,8 @@ func (c *Client) attachStorage(ctx context.Context, vmName string, opts attachOp
 			opts.opName, opts.ControllerNumber, len(controllers), opts.ControllerType)
 	}
 	controller := controllers[opts.ControllerNumber]
-	controllerEPR := buildEndpointReference(msvmResourceAllocationSettingDataURI, map[string]string{
+	// Parent は CIM string プロパティ = WMI オブジェクトパス (WS-Addressing EPR ではない)。
+	controllerPath := wmiObjectPath(c.hostName, msvmResourceAllocationSettingDataURI, map[string]string{
 		"InstanceID": controller.InstanceID,
 	})
 
@@ -322,7 +333,7 @@ func (c *Client) attachStorage(ctx context.Context, vmName string, opts attachOp
 	drive := &Msvm_ResourceAllocationSettingData{
 		ResourceType:    opts.DriveResType,
 		ResourceSubType: opts.DriveSubType,
-		Parent:          controllerEPR,
+		Parent:          controllerPath,
 		AddressOnParent: fmt.Sprintf("%d", opts.ControllerLocation),
 	}
 	driveXML, err := marshalEmbeddedInstance(drive, "Msvm_ResourceAllocationSettingData", msvmResourceAllocationSettingDataURI)
@@ -345,14 +356,16 @@ func (c *Client) attachStorage(ctx context.Context, vmName string, opts attachOp
 	}
 
 	// 3. ファイル (VHD/ISO) を Drive に紐付け
-	driveEPR := buildEndpointReference(msvmResourceAllocationSettingDataURI, map[string]string{
+	drivePath := wmiObjectPath(c.hostName, msvmResourceAllocationSettingDataURI, map[string]string{
 		"InstanceID": result.DriveRef,
 	})
-	storage := &Msvm_StorageAllocationSettingData{
+	// HostResource は CIM 上 string[] (配列) なので、AddResourceSettings では PROPERTY.ARRAY で
+	// 送る必要がある。読み取り用 struct (HostResource string) と別に、配列表現の入力 struct を使う。
+	storage := &storageAllocationInput{
 		ResourceType:    opts.StorageResType,
 		ResourceSubType: opts.StorageSubType,
-		HostResource:    opts.Path,
-		Parent:          driveEPR,
+		HostResource:    []string{opts.Path},
+		Parent:          drivePath,
 	}
 	storageXML, err := marshalEmbeddedInstance(storage, "Msvm_StorageAllocationSettingData", msvmStorageAllocationSettingDataURI)
 	if err != nil {
@@ -384,5 +397,14 @@ func (c *Client) DetachStorage(ctx context.Context, driveInstanceID string) (str
 	epr := buildEndpointReference(msvmResourceAllocationSettingDataURI, map[string]string{
 		"InstanceID": driveInstanceID,
 	})
-	return c.RemoveResourceSettings(ctx, []string{epr})
+	jobRef, err := c.RemoveResourceSettings(ctx, []string{epr})
+	if err != nil {
+		return "", err
+	}
+	// 非同期 Job (4096) の場合、完了を待って返す (待たないと Detach 未反映のまま後続 Get が
+	// ディスクを見せ続ける)。
+	if err := c.WaitForJob(ctx, jobRef); err != nil {
+		return jobRef, fmt.Errorf("DetachStorage: wait: %w", err)
+	}
+	return jobRef, nil
 }

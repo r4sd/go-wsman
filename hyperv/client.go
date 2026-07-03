@@ -21,6 +21,10 @@ const (
 // Client は Hyper-V CIM クラスへの型付きアクセスを提供する。
 type Client struct {
 	wsman *wsman.Client
+
+	// hostName は WMI オブジェクトパス (embedded の Parent/HostResource) の \\HOST\ 前置に使う
+	// Hyper-V ホストのコンピュータ名。空の場合は相対パスを使う (前置を省く)。
+	hostName string
 }
 
 // NewClient は wsman.Client をラップした hyperv.Client を生成する。
