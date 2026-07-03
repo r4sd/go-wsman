@@ -337,6 +337,12 @@ func (c *Client) attachStorage(ctx context.Context, vmName string, opts attachOp
 		DriveRef: driveResult.ResultingResourceSettings,
 		JobRef:   driveResult.JobRef,
 	}
+	// Drive 追加が非同期 Job の場合、完了を待ってから Storage を紐付ける。待たずに次の
+	// AddResourceSettings で未実体化の Drive を Parent 参照すると、Hyper-V が
+	// 「リソースを追加できませんでした」(Exception, ErrorCode=32773) で失敗する。
+	if err := c.WaitForJob(ctx, driveResult.JobRef); err != nil {
+		return result, fmt.Errorf("%s: wait add drive: %w", opts.opName, err)
+	}
 
 	// 3. ファイル (VHD/ISO) を Drive に紐付け
 	driveEPR := buildEndpointReference(msvmResourceAllocationSettingDataURI, map[string]string{
@@ -359,6 +365,10 @@ func (c *Client) attachStorage(ctx context.Context, vmName string, opts attachOp
 
 	result.StorageRef = storageResult.ResultingResourceSettings
 	result.JobRef = storageResult.JobRef
+	// Storage 追加 Job の完了も待ち、AttachVHD/AttachDVD 返却時にアタッチが完了しているようにする。
+	if err := c.WaitForJob(ctx, storageResult.JobRef); err != nil {
+		return result, fmt.Errorf("%s: wait add storage: %w", opts.opName, err)
+	}
 	return result, nil
 }
 
