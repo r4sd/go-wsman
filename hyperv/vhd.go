@@ -61,9 +61,10 @@ func (c *Client) GetVirtualHardDisk(ctx context.Context, path string) (*Msvm_Vir
 //
 // CIM の慣習でゼロ値フィールドは送信されない（デフォルト値が適用される）。
 //
-// 戻り値は非同期 Job への参照（Msvm_ConcreteJob の InstanceID）。
-// 0 件のリトリーバル要求でも 4096 (Method parameters checked - job started) が返る仕様。
-func (c *Client) CreateVirtualHardDisk(ctx context.Context, settings *Msvm_VirtualHardDiskSettingData) (string, error) {
+// 非同期 Job (Msvm_StorageJob) の完了を内部で待ってから返る (待機済みのため戻り値の
+// Job 参照文字列は常に空)。待機のタイムアウト等は opts (WithJobTimeout 等) で調整できる。
+// 大容量 Fixed VHD 作成が既定の 5 分を超える場合は WithJobTimeout を渡すこと。
+func (c *Client) CreateVirtualHardDisk(ctx context.Context, settings *Msvm_VirtualHardDiskSettingData, opts ...WaitOption) (string, error) {
 	if settings == nil {
 		return "", fmt.Errorf("CreateVirtualHardDisk: settings must not be nil")
 	}
@@ -87,8 +88,7 @@ func (c *Client) CreateVirtualHardDisk(ctx context.Context, settings *Msvm_Virtu
 	if rv != "0" && rv != "4096" {
 		return "", fmt.Errorf("CreateVirtualHardDisk: unexpected ReturnValue=%s", rv)
 	}
-	// 非同期 Job (Msvm_StorageJob) の完了を内部で待つ。戻り値の Job 参照は空 (待機済み)。
-	if err := c.waitImageJob(ctx, resp, "CreateVirtualHardDisk"); err != nil {
+	if err := c.waitImageJob(ctx, resp, "CreateVirtualHardDisk", opts...); err != nil {
 		return "", err
 	}
 	return "", nil
@@ -97,7 +97,8 @@ func (c *Client) CreateVirtualHardDisk(ctx context.Context, settings *Msvm_Virtu
 // waitImageJob は ImageManagementService の非同期メソッド (ReturnValue=4096) が返した Job の
 // 完了を待つ。VHD 系 Job は Msvm_StorageJob (Msvm_ConcreteJob と別クラス) なので、EPR の
 // ResourceURI を使う WaitForJobEPR で待つ。ReturnValue=0 (同期完了) は待つものなし。
-func (c *Client) waitImageJob(ctx context.Context, resp *wsman.InvokeResponse, opName string) error {
+// opts は待機のタイムアウト/ポーリング間隔を呼び出し側から調整するために透過する。
+func (c *Client) waitImageJob(ctx context.Context, resp *wsman.InvokeResponse, opName string, opts ...WaitOption) error {
 	if resp.ReturnValue != "4096" {
 		return nil
 	}
@@ -105,7 +106,7 @@ func (c *Client) waitImageJob(ctx context.Context, resp *wsman.InvokeResponse, o
 	if !ok {
 		return fmt.Errorf("%s: ReturnValue=4096 だが Job EPR が取得できない", opName)
 	}
-	if err := c.WaitForJobEPR(ctx, epr); err != nil {
+	if err := c.WaitForJobEPR(ctx, epr, opts...); err != nil {
 		return fmt.Errorf("%s: %w", opName, err)
 	}
 	return nil
@@ -119,9 +120,9 @@ func (c *Client) waitImageJob(ctx context.Context, resp *wsman.InvokeResponse, o
 //   - Dynamic/Differencing は MaxInternalSize の縮小も可（実データ末尾までに限る）
 //   - VM へアタッチ中の VHD はオフライン状態のみ縮小可
 //
-// 戻り値は非同期 Job 参照 (Msvm_ConcreteJob)。
-// ReturnValue=0 (同期完了) の場合は空文字列、4096 (非同期開始) の場合は Job 参照を返す。
-func (c *Client) ResizeVirtualHardDisk(ctx context.Context, path string, maxInternalSize uint64) (string, error) {
+// 非同期 Job (Msvm_StorageJob) の完了を内部で待ってから返る (戻り値の Job 参照文字列は常に空)。
+// 待機のタイムアウト等は opts (WithJobTimeout 等) で調整できる。
+func (c *Client) ResizeVirtualHardDisk(ctx context.Context, path string, maxInternalSize uint64, opts ...WaitOption) (string, error) {
 	if path == "" {
 		return "", fmt.Errorf("ResizeVirtualHardDisk: path must not be empty")
 	}
@@ -139,8 +140,7 @@ func (c *Client) ResizeVirtualHardDisk(ctx context.Context, path string, maxInte
 	if rv != "0" && rv != "4096" {
 		return "", fmt.Errorf("ResizeVirtualHardDisk: unexpected ReturnValue=%s", rv)
 	}
-	// 非同期 Job (Msvm_StorageJob) の完了を内部で待つ。
-	if err := c.waitImageJob(ctx, resp, "ResizeVirtualHardDisk"); err != nil {
+	if err := c.waitImageJob(ctx, resp, "ResizeVirtualHardDisk", opts...); err != nil {
 		return "", err
 	}
 	return "", nil

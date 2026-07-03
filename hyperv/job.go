@@ -48,42 +48,13 @@ func (c *Client) WaitForJob(ctx context.Context, jobRef string, opts ...WaitOpti
 	if jobRef == "" {
 		return nil // 同期完了 = 待つものなし
 	}
-
-	cfg := waitConfig{pollInterval: defaultJobPollInterval, timeout: defaultJobTimeout}
-	for _, o := range opts {
-		o(&cfg)
-	}
-
-	ctx, cancel := context.WithTimeout(ctx, cfg.timeout)
-	defer cancel()
-
-	ticker := time.NewTicker(cfg.pollInterval)
-	defer ticker.Stop()
-
-	for {
-		job, err := c.getJob(ctx, msvmConcreteJobURI, jobRef)
-		if err != nil {
-			return fmt.Errorf("WaitForJob %s: %w", jobRef, err)
-		}
-
-		switch job.JobState {
-		case JobStateCompleted:
-			return nil
-		case JobStateTerminated, JobStateKilled, JobStateException:
-			return fmt.Errorf("WaitForJob %s: job failed (JobState=%s, ErrorCode=%d): %s",
-				jobRef, jobStateName(job.JobState), job.ErrorCode, job.ErrorDescription)
-		}
-
-		// 進行中: 次のポーリングまで待機 (ctx キャンセル/タイムアウトを監視)。
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("WaitForJob %s: %w", jobRef, ctx.Err())
-		case <-ticker.C:
-		}
-	}
+	// 裸 InstanceID は Msvm_ConcreteJob 前提。EPR に組み立てて共通実装 (WaitForJobEPR) に委譲する。
+	return c.WaitForJobEPR(ctx, &wsman.EndpointReference{
+		ResourceURI: msvmConcreteJobURI,
+		Selectors:   map[string]string{"InstanceID": jobRef},
+	}, opts...)
 }
 
-// getConcreteJob は InstanceID から Msvm_ConcreteJob を取得する。
 // WaitForJobEPR は非同期 CIM 操作が返した Job の EPR を使って完了を待つ。
 //
 // WaitForJob(裸 InstanceID) が Msvm_ConcreteJob を前提とするのと違い、EPR の ResourceURI を
