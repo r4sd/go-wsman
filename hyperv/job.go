@@ -61,7 +61,7 @@ func (c *Client) WaitForJob(ctx context.Context, jobRef string, opts ...WaitOpti
 	defer ticker.Stop()
 
 	for {
-		job, err := c.getConcreteJob(ctx, jobRef)
+		job, err := c.getJob(ctx, msvmConcreteJobURI, jobRef)
 		if err != nil {
 			return fmt.Errorf("WaitForJob %s: %w", jobRef, err)
 		}
@@ -84,8 +84,54 @@ func (c *Client) WaitForJob(ctx context.Context, jobRef string, opts ...WaitOpti
 }
 
 // getConcreteJob は InstanceID から Msvm_ConcreteJob を取得する。
-func (c *Client) getConcreteJob(ctx context.Context, instanceID string) (*Msvm_ConcreteJob, error) {
-	resp, err := c.wsman.Get(ctx, msvmConcreteJobURI,
+// WaitForJobEPR は非同期 CIM 操作が返した Job の EPR を使って完了を待つ。
+//
+// WaitForJob(裸 InstanceID) が Msvm_ConcreteJob を前提とするのと違い、EPR の ResourceURI を
+// 使うため Job の実クラスがメソッドで異なっても正しく Get できる (ImageManagementService は
+// Msvm_StorageJob、VSMS は Msvm_ConcreteJob)。同期完了 (epr==nil) は待つものなしで成功。
+func (c *Client) WaitForJobEPR(ctx context.Context, epr *wsman.EndpointReference, opts ...WaitOption) error {
+	if epr == nil {
+		return nil
+	}
+	instanceID := epr.Selectors["InstanceID"]
+	if instanceID == "" {
+		return fmt.Errorf("WaitForJobEPR: EPR に InstanceID セレクタが無い (%s)", epr.ResourceURI)
+	}
+
+	cfg := waitConfig{pollInterval: defaultJobPollInterval, timeout: defaultJobTimeout}
+	for _, o := range opts {
+		o(&cfg)
+	}
+	ctx, cancel := context.WithTimeout(ctx, cfg.timeout)
+	defer cancel()
+
+	ticker := time.NewTicker(cfg.pollInterval)
+	defer ticker.Stop()
+
+	for {
+		job, err := c.getJob(ctx, epr.ResourceURI, instanceID)
+		if err != nil {
+			return fmt.Errorf("WaitForJobEPR %s: %w", instanceID, err)
+		}
+		switch job.JobState {
+		case JobStateCompleted:
+			return nil
+		case JobStateTerminated, JobStateKilled, JobStateException:
+			return fmt.Errorf("WaitForJobEPR %s: job failed (JobState=%s, ErrorCode=%d): %s",
+				instanceID, jobStateName(job.JobState), job.ErrorCode, job.ErrorDescription)
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("WaitForJobEPR %s: %w", instanceID, ctx.Err())
+		case <-ticker.C:
+		}
+	}
+}
+
+// getJob は指定 ResourceURI + InstanceID の Job を取得する。Msvm_StorageJob は JobState 等を
+// Msvm_ConcreteJob(CIM_ConcreteJob)から継承しているため、同じ struct/Unmarshal で扱える。
+func (c *Client) getJob(ctx context.Context, resourceURI, instanceID string) (*Msvm_ConcreteJob, error) {
+	resp, err := c.wsman.Get(ctx, resourceURI,
 		wsman.Selector{Name: "InstanceID", Value: instanceID},
 	)
 	if err != nil {
@@ -93,7 +139,7 @@ func (c *Client) getConcreteJob(ctx context.Context, instanceID string) (*Msvm_C
 	}
 	var job Msvm_ConcreteJob
 	if err := Unmarshal(resp.Properties(), &job); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal Msvm_ConcreteJob: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal job: %w", err)
 	}
 	return &job, nil
 }

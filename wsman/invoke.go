@@ -1,6 +1,8 @@
 package wsman
 
 import (
+	"bytes"
+	"encoding/xml"
 	"fmt"
 	"sort"
 	"strings"
@@ -13,6 +15,62 @@ type InvokeResponse struct {
 	// ReturnValue はメソッドの戻り値。"0" は成功、"4096" は非同期ジョブを示す。
 	ReturnValue string
 	properties  map[string][]string
+	bodyContent []byte // _OUTPUT 直下の生 XML (EPR 出力パラメータの解析用に保持)
+}
+
+// EndpointReference は REF 出力パラメータ (Msvm_*.Job 等) が指す WS-Addressing EPR。
+//
+// ResourceURI は対象リソースのクラス URI (例: .../Msvm_StorageJob)。Property() が
+// SelectorSet 内の InstanceID テキストに畳み込んでクラス情報を失うのと違い、本型は
+// サーバーが返した ResourceURI を保持する。非同期メソッドが返す Job の実クラスは
+// メソッドによって異なる (VSMS=Msvm_ConcreteJob / ImageManagementService=Msvm_StorageJob)
+// ため、待機時に正しい URI で Get するのに必要。
+type EndpointReference struct {
+	ResourceURI string
+	Selectors   map[string]string
+}
+
+// PropertyEPR は REF 出力パラメータ (name) を EPR として返す。ReferenceParameters の
+// ResourceURI と SelectorSet を保持する。該当パラメータが無い/EPR でない場合は false。
+func (r *InvokeResponse) PropertyEPR(name string) (*EndpointReference, bool) {
+	if len(r.bodyContent) == 0 {
+		return nil, false
+	}
+	dec := xml.NewDecoder(bytes.NewReader(r.bodyContent))
+	depth := 0
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			break
+		}
+		switch t := tok.(type) {
+		case xml.StartElement:
+			depth++
+			if depth == 2 && t.Name.Local == name {
+				var raw struct {
+					ResourceURI string `xml:"ReferenceParameters>ResourceURI"`
+					Selectors   []struct {
+						Name  string `xml:"Name,attr"`
+						Value string `xml:",chardata"`
+					} `xml:"ReferenceParameters>SelectorSet>Selector"`
+				}
+				if err := dec.DecodeElement(&raw, &t); err != nil || raw.ResourceURI == "" {
+					return nil, false
+				}
+				epr := &EndpointReference{
+					ResourceURI: strings.TrimSpace(raw.ResourceURI),
+					Selectors:   make(map[string]string, len(raw.Selectors)),
+				}
+				for _, s := range raw.Selectors {
+					epr.Selectors[s.Name] = strings.TrimSpace(s.Value)
+				}
+				return epr, true
+			}
+		case xml.EndElement:
+			depth--
+		}
+	}
+	return nil, false
 }
 
 // Property は指定された出力パラメータの値を返す。存在しない場合は空文字列を返す。
@@ -139,7 +197,8 @@ func ParseInvokeResponse(data []byte) (*InvokeResponse, error) {
 	}
 
 	resp := &InvokeResponse{
-		properties: make(map[string][]string),
+		properties:  make(map[string][]string),
+		bodyContent: env.Body.Content,
 	}
 
 	// extractProperties は depth==2 の子要素のテキストを抽出する。

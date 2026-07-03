@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- recorded: 2026-07-04 host=10.0.0.100 method=Msvm_ImageManagementService/GetVirtualHardDiskSettingData
+     SettingData は実機出力の CIM-XML INSTANCE 形式 (PROPERTY NAME/TYPE + VALUE)。
+     値は代表値に調整 (Path/Format/Type は vhd_test のアサーションに合わせた)。 -->
 <s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_ImageManagementService">
   <s:Header>
     <a:Action>http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_ImageManagementService/GetVirtualHardDiskSettingDataResponse</a:Action>
@@ -6,7 +9,7 @@
   </s:Header>
   <s:Body>
     <p:GetVirtualHardDiskSettingData_OUTPUT>
-      <p:SettingData>&lt;p:Msvm_VirtualHardDiskSettingData xmlns:p=&quot;http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_VirtualHardDiskSettingData&quot;&gt;&lt;p:Path&gt;D:\VMs\test.vhdx&lt;/p:Path&gt;&lt;p:Format&gt;3&lt;/p:Format&gt;&lt;p:Type&gt;3&lt;/p:Type&gt;&lt;p:MaxInternalSize&gt;10737418240&lt;/p:MaxInternalSize&gt;&lt;p:BlockSize&gt;33554432&lt;/p:BlockSize&gt;&lt;p:LogicalSectorSize&gt;512&lt;/p:LogicalSectorSize&gt;&lt;p:PhysicalSectorSize&gt;4096&lt;/p:PhysicalSectorSize&gt;&lt;/p:Msvm_VirtualHardDiskSettingData&gt;</p:SettingData>
+      <p:SettingData>&lt;INSTANCE CLASSNAME=&quot;Msvm_VirtualHardDiskSettingData&quot;&gt;&lt;PROPERTY NAME=&quot;BlockSize&quot; TYPE=&quot;uint32&quot;&gt;&lt;VALUE&gt;33554432&lt;/VALUE&gt;&lt;/PROPERTY&gt;&lt;PROPERTY NAME=&quot;DataAlignment&quot; PROPAGATED=&quot;true&quot; TYPE=&quot;uint64&quot;&gt;&lt;/PROPERTY&gt;&lt;PROPERTY NAME=&quot;ElementName&quot; TYPE=&quot;string&quot;&gt;&lt;VALUE&gt;test.vhdx&lt;/VALUE&gt;&lt;/PROPERTY&gt;&lt;PROPERTY NAME=&quot;Format&quot; TYPE=&quot;uint16&quot;&gt;&lt;VALUE&gt;3&lt;/VALUE&gt;&lt;/PROPERTY&gt;&lt;PROPERTY NAME=&quot;LogicalSectorSize&quot; TYPE=&quot;uint32&quot;&gt;&lt;VALUE&gt;512&lt;/VALUE&gt;&lt;/PROPERTY&gt;&lt;PROPERTY NAME=&quot;MaxInternalSize&quot; TYPE=&quot;uint64&quot;&gt;&lt;VALUE&gt;10737418240&lt;/VALUE&gt;&lt;/PROPERTY&gt;&lt;PROPERTY NAME=&quot;ParentPath&quot; TYPE=&quot;string&quot;&gt;&lt;VALUE&gt;&lt;/VALUE&gt;&lt;/PROPERTY&gt;&lt;PROPERTY NAME=&quot;Path&quot; TYPE=&quot;string&quot;&gt;&lt;VALUE&gt;D:\VMs\test.vhdx&lt;/VALUE&gt;&lt;/PROPERTY&gt;&lt;PROPERTY NAME=&quot;PhysicalSectorSize&quot; TYPE=&quot;uint32&quot;&gt;&lt;VALUE&gt;4096&lt;/VALUE&gt;&lt;/PROPERTY&gt;&lt;PROPERTY NAME=&quot;Type&quot; TYPE=&quot;uint16&quot;&gt;&lt;VALUE&gt;3&lt;/VALUE&gt;&lt;/PROPERTY&gt;&lt;/INSTANCE&gt;</p:SettingData>
       <p:ReturnValue>0</p:ReturnValue>
     </p:GetVirtualHardDiskSettingData_OUTPUT>
   </s:Body>

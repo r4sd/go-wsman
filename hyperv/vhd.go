@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+
+	"github.com/r4sd/go-wsman/wsman"
 )
 
 const (
@@ -11,13 +13,23 @@ const (
 	msvmVirtualHardDiskSettingDataNS = nsVirtV2 + "/Msvm_VirtualHardDiskSettingData"
 )
 
+// imsSelectors は Msvm_ImageManagementService (シングルトンサービス) のメソッド呼び出しに付与する
+// SelectorSet を返す。VSMS (vsmsSelectors) と同じく、Hyper-V WMI プロバイダ (WsmWmiPl.dll) は
+// メソッド実行時に対象サービスインスタンスの特定を要求するため CreationClassName の Selector が要る。
+// これを欠くと Get/Create/Resize VirtualHardDisk が InternalError になる (#89、実機で確認)。
+func imsSelectors() []wsman.Selector {
+	return []wsman.Selector{
+		{Name: "CreationClassName", Value: "Msvm_ImageManagementService"},
+	}
+}
+
 // GetVirtualHardDisk は指定パスの VHD/VHDX ファイルの設定情報を取得する。
 //
 // 内部では Msvm_ImageManagementService.GetVirtualHardDiskSettingData を呼び出し、
 // 戻り値の SettingData (CIM EmbeddedInstance XML) をパースして返す。
 func (c *Client) GetVirtualHardDisk(ctx context.Context, path string) (*Msvm_VirtualHardDiskSettingData, error) {
 	resp, err := c.wsman.Invoke(ctx, msvmImageManagementServiceURI, "GetVirtualHardDiskSettingData",
-		map[string]string{"Path": path})
+		map[string]string{"Path": path}, imsSelectors()...)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +77,7 @@ func (c *Client) CreateVirtualHardDisk(ctx context.Context, settings *Msvm_Virtu
 	}
 
 	resp, err := c.wsman.Invoke(ctx, msvmImageManagementServiceURI, "CreateVirtualHardDisk",
-		map[string]string{"VirtualDiskSettingData": embedded})
+		map[string]string{"VirtualDiskSettingData": embedded}, imsSelectors()...)
 	if err != nil {
 		return "", err
 	}
@@ -75,12 +87,28 @@ func (c *Client) CreateVirtualHardDisk(ctx context.Context, settings *Msvm_Virtu
 	if rv != "0" && rv != "4096" {
 		return "", fmt.Errorf("CreateVirtualHardDisk: unexpected ReturnValue=%s", rv)
 	}
-
-	jobRef := resp.Property("Job")
-	if jobRef == "" && rv == "4096" {
-		return "", fmt.Errorf("CreateVirtualHardDisk: ReturnValue=4096 but no Job reference")
+	// 非同期 Job (Msvm_StorageJob) の完了を内部で待つ。戻り値の Job 参照は空 (待機済み)。
+	if err := c.waitImageJob(ctx, resp, "CreateVirtualHardDisk"); err != nil {
+		return "", err
 	}
-	return jobRef, nil
+	return "", nil
+}
+
+// waitImageJob は ImageManagementService の非同期メソッド (ReturnValue=4096) が返した Job の
+// 完了を待つ。VHD 系 Job は Msvm_StorageJob (Msvm_ConcreteJob と別クラス) なので、EPR の
+// ResourceURI を使う WaitForJobEPR で待つ。ReturnValue=0 (同期完了) は待つものなし。
+func (c *Client) waitImageJob(ctx context.Context, resp *wsman.InvokeResponse, opName string) error {
+	if resp.ReturnValue != "4096" {
+		return nil
+	}
+	epr, ok := resp.PropertyEPR("Job")
+	if !ok {
+		return fmt.Errorf("%s: ReturnValue=4096 だが Job EPR が取得できない", opName)
+	}
+	if err := c.WaitForJobEPR(ctx, epr); err != nil {
+		return fmt.Errorf("%s: %w", opName, err)
+	}
+	return nil
 }
 
 // ResizeVirtualHardDisk は既存の VHD/VHDX ファイルのサイズを変更する。
@@ -102,7 +130,7 @@ func (c *Client) ResizeVirtualHardDisk(ctx context.Context, path string, maxInte
 		map[string]string{
 			"Path":            path,
 			"MaxInternalSize": strconv.FormatUint(maxInternalSize, 10),
-		})
+		}, imsSelectors()...)
 	if err != nil {
 		return "", err
 	}
@@ -111,10 +139,9 @@ func (c *Client) ResizeVirtualHardDisk(ctx context.Context, path string, maxInte
 	if rv != "0" && rv != "4096" {
 		return "", fmt.Errorf("ResizeVirtualHardDisk: unexpected ReturnValue=%s", rv)
 	}
-
-	jobRef := resp.Property("Job")
-	if rv == "4096" && jobRef == "" {
-		return "", fmt.Errorf("ResizeVirtualHardDisk: ReturnValue=4096 but no Job reference")
+	// 非同期 Job (Msvm_StorageJob) の完了を内部で待つ。
+	if err := c.waitImageJob(ctx, resp, "ResizeVirtualHardDisk"); err != nil {
+		return "", err
 	}
-	return jobRef, nil
+	return "", nil
 }

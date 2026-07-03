@@ -46,27 +46,20 @@ func TestClient_GetVirtualHardDisk(t *testing.T) {
 	}
 }
 
-// TestClient_CreateVirtualHardDisk は VHD 作成リクエストが正しく組み立てられるテスト。
+// TestClient_CreateVirtualHardDisk は VHD 作成リクエストが正しく組み立てられ、非同期 Job
+// (Msvm_StorageJob) の完了を内部で待つことを検証する。
+//
+// 想定リクエスト: 1) CreateVirtualHardDisk invoke (4096 + Job EPR)、2) Job の Get (完了)。
+// WaitForJobEPR が Job EPR の ResourceURI (Msvm_StorageJob) を使って Get することも検証する。
 func TestClient_CreateVirtualHardDisk(t *testing.T) {
-	respXML := loadGolden(t, "invoke_response_create_vhd.xml")
+	invokeResp := loadGolden(t, "invoke_response_create_vhd.xml")
+	jobResp := loadGolden(t, "get_response_concretejob_completed.xml")
 
-	var capturedBody string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			t.Errorf("read body: %v", err)
-		}
-		capturedBody = string(body)
-		w.Header().Set("Content-Type", "application/soap+xml; charset=utf-8")
-		_, _ = w.Write([]byte(respXML))
-	}))
+	var bodies []string
+	server := newSequenceServer(t, []string{invokeResp, jobResp}, &bodies)
 	defer server.Close()
 
-	client, err := NewClient(server.URL)
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
-	}
-
+	client, _ := NewClient(server.URL)
 	settings := Msvm_VirtualHardDiskSettingData{
 		VirtualDiskFormat: VHDFormatVHDX,
 		VirtualDiskType:   VHDTypeDynamic,
@@ -78,46 +71,35 @@ func TestClient_CreateVirtualHardDisk(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateVirtualHardDisk: %v", err)
 	}
-
-	// 非同期 Job が返されることを期待（ReturnValue=4096）
-	if jobRef == "" {
-		t.Errorf("expected job reference, got empty string")
+	// 内部で Job 完了まで待つため、戻りの Job 参照は空。
+	if jobRef != "" {
+		t.Errorf("待機済みなので jobRef は空のはず, got %q", jobRef)
+	}
+	if len(bodies) != 2 {
+		t.Fatalf("expected 2 requests (invoke + job get), got %d", len(bodies))
 	}
 
-	// リクエストボディに VirtualDiskSettingData が含まれること
-	if !strings.Contains(capturedBody, "VirtualDiskSettingData") {
-		t.Errorf("request body should contain VirtualDiskSettingData parameter")
+	// 1 番目 (invoke) に VirtualDiskSettingData / Path / メソッド名が含まれること。
+	if !strings.Contains(bodies[0], "VirtualDiskSettingData") || !strings.Contains(bodies[0], `D:\VMs\new.vhdx`) ||
+		!strings.Contains(bodies[0], "CreateVirtualHardDisk") {
+		t.Errorf("invoke body に必要な要素が無い")
 	}
-	if !strings.Contains(capturedBody, `D:\VMs\new.vhdx`) {
-		t.Errorf("request body should contain Path value")
-	}
-	if !strings.Contains(capturedBody, "CreateVirtualHardDisk") {
-		t.Errorf("request body should contain method name")
+	// 2 番目 (Job Get) が Msvm_StorageJob URI を使っていること (ConcreteJob ではない)。
+	if !strings.Contains(bodies[1], "Msvm_StorageJob") {
+		t.Errorf("Job Get は Msvm_StorageJob URI を使うべき; body: %s", bodies[1])
 	}
 }
 
-// TestClient_ResizeVirtualHardDisk は既存 VHD/VHDX のサイズ変更リクエストが
-// 正しく組み立てられ、非同期 Job 参照が返ることを検証する。
+// TestClient_ResizeVirtualHardDisk は Resize リクエストの組み立てと Job (StorageJob) 待機を検証する。
 func TestClient_ResizeVirtualHardDisk(t *testing.T) {
-	respXML := loadGolden(t, "invoke_response_resize_vhd.xml")
+	invokeResp := loadGolden(t, "invoke_response_resize_vhd.xml")
+	jobResp := loadGolden(t, "get_response_concretejob_completed.xml")
 
-	var capturedBody string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			t.Errorf("read body: %v", err)
-		}
-		capturedBody = string(body)
-		w.Header().Set("Content-Type", "application/soap+xml; charset=utf-8")
-		_, _ = w.Write([]byte(respXML))
-	}))
+	var bodies []string
+	server := newSequenceServer(t, []string{invokeResp, jobResp}, &bodies)
 	defer server.Close()
 
-	client, err := NewClient(server.URL)
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
-	}
-
+	client, _ := NewClient(server.URL)
 	const (
 		path    = `D:\VMs\resize.vhdx`
 		newSize = uint64(21474836480) // 20 GiB
@@ -127,19 +109,38 @@ func TestClient_ResizeVirtualHardDisk(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResizeVirtualHardDisk: %v", err)
 	}
+	if jobRef != "" {
+		t.Errorf("待機済みなので jobRef は空のはず, got %q", jobRef)
+	}
+	if len(bodies) != 2 {
+		t.Fatalf("expected 2 requests, got %d", len(bodies))
+	}
+	if !strings.Contains(bodies[0], "ResizeVirtualHardDisk") || !strings.Contains(bodies[0], path) ||
+		!strings.Contains(bodies[0], "21474836480") {
+		t.Errorf("invoke body に必要な要素が無い")
+	}
+	if !strings.Contains(bodies[1], "Msvm_StorageJob") {
+		t.Errorf("Job Get は Msvm_StorageJob URI を使うべき; body: %s", bodies[1])
+	}
+}
 
-	if jobRef == "" {
-		t.Errorf("expected job reference, got empty string")
-	}
+// TestClient_CreateVirtualHardDisk_JobGone は Job の Get が DestinationUnreachable (不在) を返したら
+// エラーになることを検証する (旧 isJobGoneFault ハックの回帰。消えた Job を成功偽装しない)。
+func TestClient_CreateVirtualHardDisk_JobGone(t *testing.T) {
+	invokeResp := loadGolden(t, "invoke_response_create_vhd.xml")
+	faultResp := loadGolden(t, "fault_destination_unreachable.xml")
 
-	if !strings.Contains(capturedBody, "ResizeVirtualHardDisk") {
-		t.Errorf("request body should contain method name")
+	var bodies []string
+	server := newSequenceServer(t, []string{invokeResp, faultResp}, &bodies)
+	defer server.Close()
+
+	client, _ := NewClient(server.URL)
+	settings := Msvm_VirtualHardDiskSettingData{
+		VirtualDiskFormat: VHDFormatVHDX, VirtualDiskType: VHDTypeDynamic,
+		Path: `D:\VMs\new.vhdx`, MaxInternalSize: 1 << 30,
 	}
-	if !strings.Contains(capturedBody, path) {
-		t.Errorf("request body should contain Path %q", path)
-	}
-	if !strings.Contains(capturedBody, "21474836480") {
-		t.Errorf("request body should contain MaxInternalSize value")
+	if _, err := client.CreateVirtualHardDisk(context.Background(), &settings); err == nil {
+		t.Fatal("Job が見つからない場合はエラーになるべき (成功偽装しない)")
 	}
 }
 

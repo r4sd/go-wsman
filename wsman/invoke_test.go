@@ -208,6 +208,37 @@ func TestParseInvokeResponse(t *testing.T) {
 			t.Errorf("Fault.Subcode = %q, want %q", fault.Subcode, "w:AccessDenied")
 		}
 	})
+
+	t.Run("PropertyEPR は REF 出力の ResourceURI と InstanceID を保持する", func(t *testing.T) {
+		// REF 出力 (Job) の EPR。実機は Job 直下に Address + ReferenceParameters を置く。
+		data := []byte(`<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd">` +
+			`<s:Body><p:CreateVirtualHardDisk_OUTPUT xmlns:p="ns">` +
+			`<p:Job><a:Address>anon</a:Address><a:ReferenceParameters>` +
+			`<w:ResourceURI>http://…/Msvm_StorageJob</w:ResourceURI>` +
+			`<w:SelectorSet><w:Selector Name="InstanceID">JOB-GUID-123</w:Selector></w:SelectorSet>` +
+			`</a:ReferenceParameters></p:Job>` +
+			`<p:ReturnValue>4096</p:ReturnValue>` +
+			`</p:CreateVirtualHardDisk_OUTPUT></s:Body></s:Envelope>`)
+
+		resp, err := ParseInvokeResponse(data)
+		if err != nil {
+			t.Fatalf("ParseInvokeResponse: %v", err)
+		}
+		epr, ok := resp.PropertyEPR("Job")
+		if !ok {
+			t.Fatal("PropertyEPR(Job) が取得できない")
+		}
+		if !strings.Contains(epr.ResourceURI, "Msvm_StorageJob") {
+			t.Errorf("ResourceURI: got %q, want …/Msvm_StorageJob", epr.ResourceURI)
+		}
+		if epr.Selectors["InstanceID"] != "JOB-GUID-123" {
+			t.Errorf("InstanceID: got %q", epr.Selectors["InstanceID"])
+		}
+		// Property() は従来どおり InstanceID テキストに畳み込む (後方互換)。
+		if resp.Property("Job") != "JOB-GUID-123" {
+			t.Errorf("Property(Job): got %q", resp.Property("Job"))
+		}
+	})
 }
 
 func TestClient_Invoke(t *testing.T) {
