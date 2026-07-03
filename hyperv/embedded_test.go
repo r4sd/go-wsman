@@ -5,20 +5,28 @@ import (
 	"testing"
 )
 
-// TestParseEmbeddedInstance は CIM EmbeddedInstance XML 文字列を
+// TestParseEmbeddedInstance は CIM-XML INSTANCE 形式 (実機 Hyper-V の出力) を
 // map[string]string に変換できることを検証する。
+//
+// 入力は 2026-07-04 に homelab (10.0.0.100) の GetVirtualHardDiskSettingData 出力から
+// 採取した実形式に基づく (旧テストは手書き WS-CIM ツリー形式で実機と乖離しており #89 の
+// 遠因になった)。
 func TestParseEmbeddedInstance(t *testing.T) {
-	t.Run("単純な要素のパース", func(t *testing.T) {
-		xml := `<p:Msvm_VirtualHardDiskSettingData xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_VirtualHardDiskSettingData"><p:Path>D:\vm.vhdx</p:Path><p:MaxInternalSize>10737418240</p:MaxInternalSize><p:Format>3</p:Format></p:Msvm_VirtualHardDiskSettingData>`
+	t.Run("INSTANCE形式(実機)のパース", func(t *testing.T) {
+		xml := `<INSTANCE CLASSNAME="Msvm_VirtualHardDiskSettingData">` +
+			`<PROPERTY NAME="Path" TYPE="string"><VALUE>D:\Hyper-V\vm.vhdx</VALUE></PROPERTY>` +
+			`<PROPERTY NAME="MaxInternalSize" TYPE="uint64"><VALUE>53687091200</VALUE></PROPERTY>` +
+			`<PROPERTY NAME="Format" TYPE="uint16"><VALUE>3</VALUE></PROPERTY>` +
+			`</INSTANCE>`
 
 		got, err := parseEmbeddedInstance(xml)
 		if err != nil {
 			t.Fatalf("parseEmbeddedInstance: %v", err)
 		}
-		if got["Path"] != `D:\vm.vhdx` {
+		if got["Path"] != `D:\Hyper-V\vm.vhdx` {
 			t.Errorf("Path: got %q", got["Path"])
 		}
-		if got["MaxInternalSize"] != "10737418240" {
+		if got["MaxInternalSize"] != "53687091200" {
 			t.Errorf("MaxInternalSize: got %q", got["MaxInternalSize"])
 		}
 		if got["Format"] != "3" {
@@ -26,8 +34,13 @@ func TestParseEmbeddedInstance(t *testing.T) {
 		}
 	})
 
-	t.Run("空要素を含むパース", func(t *testing.T) {
-		xml := `<p:Msvm_VirtualHardDiskSettingData xmlns:p="ns"><p:Path>D:\a.vhdx</p:Path><p:ParentPath/></p:Msvm_VirtualHardDiskSettingData>`
+	t.Run("VALUE無し/空のプロパティは空文字", func(t *testing.T) {
+		// DataAlignment は PROPAGATED で VALUE 無し、ParentPath は空 VALUE (実機で出る形)。
+		xml := `<INSTANCE CLASSNAME="X">` +
+			`<PROPERTY NAME="Path" TYPE="string"><VALUE>D:\a.vhdx</VALUE></PROPERTY>` +
+			`<PROPERTY NAME="DataAlignment" PROPAGATED="true" TYPE="uint64"></PROPERTY>` +
+			`<PROPERTY NAME="ParentPath" TYPE="string"><VALUE></VALUE></PROPERTY>` +
+			`</INSTANCE>`
 
 		got, err := parseEmbeddedInstance(xml)
 		if err != nil {
@@ -36,8 +49,34 @@ func TestParseEmbeddedInstance(t *testing.T) {
 		if got["Path"] != `D:\a.vhdx` {
 			t.Errorf("Path: got %q", got["Path"])
 		}
+		if got["DataAlignment"] != "" {
+			t.Errorf("DataAlignment: got %q, want empty", got["DataAlignment"])
+		}
 		if got["ParentPath"] != "" {
-			t.Errorf("ParentPath: got %q, want empty string", got["ParentPath"])
+			t.Errorf("ParentPath: got %q, want empty", got["ParentPath"])
+		}
+	})
+
+	t.Run("marshal→parse 往復", func(t *testing.T) {
+		// marshalEmbeddedInstance の出力 (CDATA 除去後) を parse で戻せること = 対称性。
+		type sd struct {
+			Path            string `cim:"Path"`
+			MaxInternalSize uint64 `cim:"MaxInternalSize"`
+			Format          uint16 `cim:"Format"`
+		}
+		in := &sd{Path: `D:\round.vhdx`, MaxInternalSize: 12345, Format: 3}
+		marshaled, err := marshalEmbeddedInstance(in, "Msvm_VirtualHardDiskSettingData", "")
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		// CDATA ラッパを外して INSTANCE ツリーだけ取り出す。
+		inner := strings.TrimSuffix(strings.TrimPrefix(marshaled, "<![CDATA["), "]]>")
+		got, err := parseEmbeddedInstance(inner)
+		if err != nil {
+			t.Fatalf("parse: %v", err)
+		}
+		if got["Path"] != `D:\round.vhdx` || got["MaxInternalSize"] != "12345" || got["Format"] != "3" {
+			t.Errorf("往復不一致: %+v", got)
 		}
 	})
 

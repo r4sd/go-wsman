@@ -160,6 +160,62 @@ func TestIntegration_GetVirtualHardDisk(t *testing.T) {
 	}
 }
 
+// TestIntegration_CreateAndGetVirtualHardDisk は VHD を新規作成し GetVirtualHardDisk で
+// 読み戻せることを実機で検証する (#89 の write 経路)。
+//
+// go-wsman は CIM 専用でファイル削除ができないため、作成した VHD ファイルは残留する
+// (パスをログ出力。手動削除する)。HYPERV_TEST_ALLOW_MUTATION=1 で有効。
+func TestIntegration_CreateAndGetVirtualHardDisk(t *testing.T) {
+	if os.Getenv("HYPERV_TEST_ALLOW_MUTATION") == "" {
+		t.Skip("HYPERV_TEST_ALLOW_MUTATION 未設定（VHD 作成を伴う破壊的テスト）")
+	}
+	client := getIntegrationClient(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	vhdDir := os.Getenv("HYPERV_TEST_VHD_DIR")
+	if vhdDir == "" {
+		vhdDir = `D:\Hyper-V`
+	}
+	vhdPath := fmt.Sprintf(`%s\go-wsman-acctest-89-%d.vhdx`, vhdDir, time.Now().UnixNano())
+	t.Logf("CreateVirtualHardDisk: %s (残留・手動削除要)", vhdPath)
+
+	jobRef, err := client.CreateVirtualHardDisk(ctx, &Msvm_VirtualHardDiskSettingData{
+		Path:              vhdPath,
+		VirtualDiskFormat: VHDFormatVHDX,
+		VirtualDiskType:   VHDTypeDynamic,
+		MaxInternalSize:   1 << 30, // 1 GiB
+	})
+	if err != nil {
+		t.Fatalf("CreateVirtualHardDisk: %v", err)
+	}
+	if jobRef != "" {
+		if err := client.WaitForJob(ctx, jobRef); err != nil {
+			t.Fatalf("WaitForJob(CreateVHD): %v", err)
+		}
+	}
+
+	// 作成した VHD を読み戻して設定が一致すること。
+	settings, err := client.GetVirtualHardDisk(ctx, vhdPath)
+	if err != nil {
+		t.Fatalf("GetVirtualHardDisk(作成直後): %v", err)
+	}
+	t.Logf("読み戻し: Path=%s Format=%d Type=%d MaxSize=%d",
+		settings.Path, settings.VirtualDiskFormat, settings.VirtualDiskType, settings.MaxInternalSize)
+	if settings.Path != vhdPath {
+		t.Errorf("Path: got %q, want %q", settings.Path, vhdPath)
+	}
+	if settings.VirtualDiskFormat != VHDFormatVHDX {
+		t.Errorf("Format: got %d, want VHDX(3)", settings.VirtualDiskFormat)
+	}
+	if settings.VirtualDiskType != VHDTypeDynamic {
+		t.Errorf("Type: got %d, want Dynamic(3)", settings.VirtualDiskType)
+	}
+	if settings.MaxInternalSize != 1<<30 {
+		t.Errorf("MaxInternalSize: got %d, want %d", settings.MaxInternalSize, 1<<30)
+	}
+}
+
 // TestIntegration_GetMemoryAndProcessorSettings は ListComputerSystems で取得した最初の
 // VM のメモリ・CPU 設定を読み取る (read-only)。
 func TestIntegration_GetMemoryAndProcessorSettings(t *testing.T) {

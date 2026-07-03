@@ -8,22 +8,29 @@ import (
 	"strings"
 )
 
-// parseEmbeddedInstance は CIM EmbeddedInstance の XML 文字列を
-// プロパティ map に変換する。
+// parseEmbeddedInstance は CIM-XML EmbeddedInstance の XML 文字列を
+// プロパティ map に変換する。marshalEmbeddedInstance の逆変換で、実機 Hyper-V が
+// GetVirtualHardDiskSettingData 等で返す出力形式と対称。
 //
-// 入力形式（namespace prefix は任意）:
+// 入力形式 (DSP0201 CIM-XML の INSTANCE ツリー):
 //
-//	<p:ClassName xmlns:p="...">
-//	  <p:Property1>value1</p:Property1>
-//	  <p:Property2>value2</p:Property2>
-//	</p:ClassName>
+//	<INSTANCE CLASSNAME="ClassName">
+//	  <PROPERTY NAME="Prop1" TYPE="string"><VALUE>value1</VALUE></PROPERTY>
+//	  <PROPERTY NAME="Prop2" TYPE="uint16"><VALUE>3</VALUE></PROPERTY>
+//	  <PROPERTY.ARRAY NAME="Arr" TYPE="string"><VALUE.ARRAY><VALUE>a</VALUE>...</VALUE.ARRAY></PROPERTY.ARRAY>
+//	</INSTANCE>
+//
+// キーは PROPERTY の NAME 属性、値は入れ子の VALUE のテキスト。VALUE が無い
+// (PROPAGATED や空) プロパティは空文字になる。配列 (PROPERTY.ARRAY) の複数 VALUE は
+// 連結される (現状 map[string]string の用途はスカラのみ)。
 func parseEmbeddedInstance(xmlStr string) (map[string]string, error) {
 	props := make(map[string]string)
 	dec := xml.NewDecoder(strings.NewReader(xmlStr))
 
-	var depth int
-	var currentKey string
-	var currentValue strings.Builder
+	var curName string // 現在の PROPERTY / PROPERTY.ARRAY の NAME
+	var inValue bool   // <VALUE> の内側か
+	var haveProp bool  // 有効な PROPERTY を処理中か
+	var val strings.Builder
 
 	for {
 		tok, err := dec.Token()
@@ -32,20 +39,28 @@ func parseEmbeddedInstance(xmlStr string) (map[string]string, error) {
 		}
 		switch t := tok.(type) {
 		case xml.StartElement:
-			depth++
-			if depth == 2 {
-				currentKey = t.Name.Local
-				currentValue.Reset()
+			switch t.Name.Local {
+			case "PROPERTY", "PROPERTY.ARRAY":
+				curName = attrValue(t.Attr, "NAME")
+				val.Reset()
+				haveProp = curName != ""
+			case "VALUE":
+				inValue = true
+			}
+		case xml.CharData:
+			if inValue {
+				val.Write(t)
 			}
 		case xml.EndElement:
-			if depth == 2 && currentKey != "" {
-				props[currentKey] = currentValue.String()
-				currentKey = ""
-			}
-			depth--
-		case xml.CharData:
-			if depth == 2 && currentKey != "" {
-				currentValue.Write(t)
+			switch t.Name.Local {
+			case "VALUE":
+				inValue = false
+			case "PROPERTY", "PROPERTY.ARRAY":
+				if haveProp {
+					props[curName] = val.String()
+				}
+				curName = ""
+				haveProp = false
 			}
 		}
 	}
@@ -54,6 +69,16 @@ func parseEmbeddedInstance(xmlStr string) (map[string]string, error) {
 		return nil, fmt.Errorf("parseEmbeddedInstance: no properties found in %q", xmlStr)
 	}
 	return props, nil
+}
+
+// attrValue は XML 属性リストから指定名 (大文字小文字無視) の値を返す。
+func attrValue(attrs []xml.Attr, name string) string {
+	for _, a := range attrs {
+		if strings.EqualFold(a.Name.Local, name) {
+			return a.Value
+		}
+	}
+	return ""
 }
 
 // marshalEmbeddedInstance は cim タグ付き構造体を CIM-XML の EmbeddedInstance に変換し、
