@@ -210,11 +210,12 @@ func TestClient_AttachVHD(t *testing.T) {
 	sysEnum := loadGolden(t, "enumerate_response_systemsettingdata.xml")
 	sysPull := loadGolden(t, "pull_response_systemsettingdata.xml")
 	addResp := loadGolden(t, "invoke_response_add_resource_settings.xml")
+	jobResp := loadGolden(t, "get_response_concretejob_completed.xml")
 
 	responses := []string{
 		ideEnum, idePull, // ListIDEControllers
-		sysEnum, sysPull, addResp, // Drive 追加
-		sysEnum, sysPull, addResp, // Storage 追加
+		sysEnum, sysPull, addResp, jobResp, // Drive 追加 + Job 完了待ち
+		sysEnum, sysPull, addResp, jobResp, // Storage 追加 + Job 完了待ち
 	}
 
 	var bodies []string
@@ -240,8 +241,8 @@ func TestClient_AttachVHD(t *testing.T) {
 		t.Errorf("StorageRef should not be empty")
 	}
 
-	if len(bodies) != 8 {
-		t.Fatalf("expected 8 requests, got %d", len(bodies))
+	if len(bodies) != 10 {
+		t.Fatalf("expected 10 requests, got %d", len(bodies))
 	}
 
 	// 5 番目 (Drive 追加 invoke) に Synthetic Disk Drive が含まれる
@@ -254,8 +255,8 @@ func TestClient_AttachVHD(t *testing.T) {
 		t.Errorf("drive body should contain AddressOnParent=0")
 	}
 
-	// 8 番目 (Storage 追加 invoke) に VHD パスが含まれる
-	storageBody := bodies[7]
+	// Storage 追加 invoke (bodies[8]) に VHD パスが含まれる
+	storageBody := bodies[8]
 	if !strings.Contains(storageBody, ResourceSubTypeVirtualHardDisk) {
 		t.Errorf("storage body should contain Virtual Hard Disk subtype")
 	}
@@ -274,11 +275,12 @@ func TestClient_AttachVHD_SCSI(t *testing.T) {
 	sysEnum := loadGolden(t, "enumerate_response_systemsettingdata.xml")
 	sysPull := loadGolden(t, "pull_response_systemsettingdata.xml")
 	addResp := loadGolden(t, "invoke_response_add_resource_settings.xml")
+	jobResp := loadGolden(t, "get_response_concretejob_completed.xml")
 
 	responses := []string{
 		scsiEnum, scsiPull, // ListSCSIControllers
-		sysEnum, sysPull, addResp, // Drive 追加
-		sysEnum, sysPull, addResp, // Storage 追加
+		sysEnum, sysPull, addResp, jobResp, // Drive 追加 + Job 完了待ち
+		sysEnum, sysPull, addResp, jobResp, // Storage 追加 + Job 完了待ち
 	}
 
 	var bodies []string
@@ -300,8 +302,8 @@ func TestClient_AttachVHD_SCSI(t *testing.T) {
 	if got.DriveRef == "" || got.StorageRef == "" {
 		t.Errorf("DriveRef/StorageRef should not be empty")
 	}
-	if len(bodies) != 8 {
-		t.Fatalf("expected 8 requests, got %d", len(bodies))
+	if len(bodies) != 10 {
+		t.Fatalf("expected 10 requests, got %d", len(bodies))
 	}
 
 	// Drive 追加 invoke に SCSI レンジの AddressOnParent が入ること。
@@ -317,7 +319,7 @@ func TestClient_AttachVHD_SCSI(t *testing.T) {
 		t.Errorf("drive body Parent should reference the SCSI controller")
 	}
 
-	storageBody := bodies[7]
+	storageBody := bodies[8]
 	if !strings.Contains(storageBody, `D:\VMs\talos.vhdx`) {
 		t.Errorf("storage body should contain VHD path")
 	}
@@ -332,11 +334,12 @@ func TestClient_AttachDVD(t *testing.T) {
 	sysEnum := loadGolden(t, "enumerate_response_systemsettingdata.xml")
 	sysPull := loadGolden(t, "pull_response_systemsettingdata.xml")
 	addResp := loadGolden(t, "invoke_response_add_resource_settings.xml")
+	jobResp := loadGolden(t, "get_response_concretejob_completed.xml")
 
 	responses := []string{
 		ideEnum, idePull,
-		sysEnum, sysPull, addResp,
-		sysEnum, sysPull, addResp,
+		sysEnum, sysPull, addResp, jobResp,
+		sysEnum, sysPull, addResp, jobResp,
 	}
 
 	var bodies []string
@@ -360,11 +363,11 @@ func TestClient_AttachDVD(t *testing.T) {
 	if !strings.Contains(bodies[4], ResourceSubTypeSyntheticDVDDrive) {
 		t.Errorf("drive body should contain Synthetic DVD Drive subtype")
 	}
-	// Storage subtype は CD/DVD
-	if !strings.Contains(bodies[7], ResourceSubTypeVirtualCDDVDDisk) {
+	// Storage subtype は CD/DVD (bodies[8])
+	if !strings.Contains(bodies[8], ResourceSubTypeVirtualCDDVDDisk) {
 		t.Errorf("storage body should contain Virtual CD/DVD Disk subtype")
 	}
-	if !strings.Contains(bodies[7], `D:\ISOs\install.iso`) {
+	if !strings.Contains(bodies[8], `D:\ISOs\install.iso`) {
 		t.Errorf("storage body should contain ISO path")
 	}
 }
@@ -406,9 +409,10 @@ func TestClient_AttachVHD_Validation(t *testing.T) {
 // TestClient_DetachStorage は Drive の InstanceID で削除リクエストを組み立てるテスト。
 func TestClient_DetachStorage(t *testing.T) {
 	respXML := loadGolden(t, "invoke_response_remove_resource_settings.xml")
+	jobResp := loadGolden(t, "get_response_concretejob_completed.xml")
 
 	var bodies []string
-	server := newSequenceServer(t, []string{respXML}, &bodies)
+	server := newSequenceServer(t, []string{respXML, jobResp}, &bodies)
 	defer server.Close()
 
 	client, _ := NewClient(server.URL)
