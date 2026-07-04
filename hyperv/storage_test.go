@@ -406,18 +406,22 @@ func TestClient_AttachVHD_Validation(t *testing.T) {
 	}
 }
 
-// TestClient_DetachStorage は Drive の InstanceID で削除リクエストを組み立てるテスト。
+// TestClient_DetachStorage は「Storage (SASD) を先に削除 → Drive (RASD) を削除」の
+// 2段・別リクエストを、それぞれ正しい ResourceURI の EPR で組み立てることを検証する。
+// 子 SASD を残したまま Drive を削除すると VMMS が 0x80041001 で拒否するため、順序が重要 (#97)。
 func TestClient_DetachStorage(t *testing.T) {
 	respXML := loadGolden(t, "invoke_response_remove_resource_settings.xml")
 	jobResp := loadGolden(t, "get_response_concretejob_completed.xml")
 
 	var bodies []string
-	server := newSequenceServer(t, []string{respXML, jobResp}, &bodies)
+	// SASD 削除 (remove + job wait) → RASD 削除 (remove + job wait) の 4 レスポンス。
+	server := newSequenceServer(t, []string{respXML, jobResp, respXML, jobResp}, &bodies)
 	defer server.Close()
 
 	client, _ := NewClient(server.URL)
 	jobRef, err := client.DetachStorage(context.Background(),
-		`Microsoft:11111111-aaaa-bbbb-cccc-000000000001\DRIVE-001`)
+		`Microsoft:11111111-aaaa-bbbb-cccc-000000000001\DRIVE-001`,
+		`Microsoft:11111111-aaaa-bbbb-cccc-000000000001\STORAGE-001`)
 	if err != nil {
 		t.Fatalf("DetachStorage: %v", err)
 	}
@@ -425,19 +429,53 @@ func TestClient_DetachStorage(t *testing.T) {
 		t.Error("jobRef should not be empty")
 	}
 
-	body := bodies[0]
-	if !strings.Contains(body, "RemoveResourceSettings") {
-		t.Errorf("body should call RemoveResourceSettings")
+	// 1発目の RemoveResourceSettings は Storage (SASD) を対象にする。
+	storageBody := bodies[0]
+	if !strings.Contains(storageBody, "RemoveResourceSettings") {
+		t.Errorf("1st body should call RemoveResourceSettings")
 	}
-	if !strings.Contains(body, "Msvm_ResourceAllocationSettingData") {
-		t.Errorf("body EPR should reference ResourceAllocationSettingData")
+	if !strings.Contains(storageBody, "Msvm_StorageAllocationSettingData") {
+		t.Errorf("1st body EPR should reference StorageAllocationSettingData (SASD first), got: %s", storageBody)
+	}
+	if !strings.Contains(storageBody, `STORAGE-001`) {
+		t.Errorf("1st body should target the storage InstanceID")
+	}
+
+	// 3発目の RemoveResourceSettings は Drive (RASD) を対象にする。
+	driveBody := bodies[2]
+	if !strings.Contains(driveBody, "Msvm_ResourceAllocationSettingData") {
+		t.Errorf("3rd body EPR should reference ResourceAllocationSettingData (RASD second), got: %s", driveBody)
+	}
+	if !strings.Contains(driveBody, `DRIVE-001`) {
+		t.Errorf("3rd body should target the drive InstanceID")
+	}
+}
+
+// TestClient_DetachStorage_DriveOnly は storageInstanceID 空文字のとき Drive 単独削除に
+// フォールバックすること (attach rollback の空 Drive 掃除用途) を検証する。
+func TestClient_DetachStorage_DriveOnly(t *testing.T) {
+	respXML := loadGolden(t, "invoke_response_remove_resource_settings.xml")
+	jobResp := loadGolden(t, "get_response_concretejob_completed.xml")
+
+	var bodies []string
+	// Storage 削除をスキップするので remove + job wait の 2 レスポンスのみ。
+	server := newSequenceServer(t, []string{respXML, jobResp}, &bodies)
+	defer server.Close()
+
+	client, _ := NewClient(server.URL)
+	if _, err := client.DetachStorage(context.Background(),
+		`Microsoft:11111111-aaaa-bbbb-cccc-000000000001\DRIVE-001`, ""); err != nil {
+		t.Fatalf("DetachStorage: %v", err)
+	}
+	if !strings.Contains(bodies[0], "Msvm_ResourceAllocationSettingData") {
+		t.Errorf("drive-only detach should target ResourceAllocationSettingData")
 	}
 }
 
 // TestClient_DetachStorage_Empty はバリデーション。
 func TestClient_DetachStorage_Empty(t *testing.T) {
 	client, _ := NewClient("http://localhost")
-	if _, err := client.DetachStorage(context.Background(), ""); err == nil {
+	if _, err := client.DetachStorage(context.Background(), "", ""); err == nil {
 		t.Error("expected error for empty driveInstanceID")
 	}
 }
