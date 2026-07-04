@@ -63,7 +63,9 @@ type AttachDVDOptions struct {
 //
 // DriveRef は作成された Drive (Msvm_ResourceAllocationSettingData) の参照、
 // StorageRef は作成された Storage (Msvm_StorageAllocationSettingData) の参照。
-// Detach 時は DriveRef を InstanceID として削除すれば Storage も連鎖削除される。
+// Detach は「Storage (SASD) を先に削除 → Drive (RASD) を削除」の2段が必須
+// (子→親の逆順)。Drive 単独削除では子 SASD が残っているため VMMS が拒否する
+// (0x80041001)。連鎖削除は起きない。DetachStorage を参照。
 type AttachResult struct {
 	DriveRef   string
 	StorageRef string
@@ -385,26 +387,49 @@ func (c *Client) attachStorage(ctx context.Context, vmName string, opts attachOp
 	return result, nil
 }
 
-// DetachStorage は Drive を VM から取り外す (VHD/DVD 共通)。
+// DetachStorage は VHD/DVD をアタッチした Drive を VM から取り外す。
 //
-// driveInstanceID は Msvm_ResourceAllocationSettingData (Disk Drive or DVD Drive) の InstanceID。
-// Drive を削除すると、その Drive に紐づく Storage (Msvm_StorageAllocationSettingData) も
-// Hyper-V 側で連鎖削除される。
-func (c *Client) DetachStorage(ctx context.Context, driveInstanceID string) (string, error) {
+// storageInstanceID は Drive に紐づく Storage (Msvm_StorageAllocationSettingData)
+// の InstanceID。空文字なら Storage 削除をスキップし Drive 単独を削除する
+// (アタッチ失敗時に生じた VHD 未接続の空 Drive を掃除する rollback 用途)。
+//
+// 削除順は「Storage (SASD) → Drive (RASD)」の2段・別呼び出しが必須。子 SASD が
+// 付いたまま Drive RASD を削除すると VMMS が 0x80041001 で拒否する (attach の逆順)。
+// os-win (OpenStack Hyper-V) の detach_vm_disk も同順・別呼び出しで実装しており、
+// 配列一括 (RemoveResourceSettings に両 EPR) は配列内処理順が無保証のため使わない。
+// 各段の非同期 Job (4096) は完了を待つ (待たないと後続 Get がディスクを見せ続ける)。
+//
+// 戻り値は Drive 削除 Job の参照。
+func (c *Client) DetachStorage(ctx context.Context, driveInstanceID, storageInstanceID string) (string, error) {
 	if driveInstanceID == "" {
 		return "", fmt.Errorf("DetachStorage: driveInstanceID must not be empty")
 	}
-	epr := buildEndpointReference(msvmResourceAllocationSettingDataURI, map[string]string{
+
+	// ① Storage (SASD) を先に削除。EPR の ResourceURI は Msvm_StorageAllocationSettingData
+	// (RASD の URI を使うと解決に失敗する)。
+	if storageInstanceID != "" {
+		storageEPR := buildEndpointReference(msvmStorageAllocationSettingDataURI, map[string]string{
+			"InstanceID": storageInstanceID,
+		})
+		storageJob, err := c.RemoveResourceSettings(ctx, []string{storageEPR})
+		if err != nil {
+			return "", fmt.Errorf("DetachStorage: remove storage: %w", err)
+		}
+		if err := c.WaitForJob(ctx, storageJob); err != nil {
+			return storageJob, fmt.Errorf("DetachStorage: wait storage: %w", err)
+		}
+	}
+
+	// ② Drive (RASD) を削除。
+	driveEPR := buildEndpointReference(msvmResourceAllocationSettingDataURI, map[string]string{
 		"InstanceID": driveInstanceID,
 	})
-	jobRef, err := c.RemoveResourceSettings(ctx, []string{epr})
+	jobRef, err := c.RemoveResourceSettings(ctx, []string{driveEPR})
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("DetachStorage: remove drive: %w", err)
 	}
-	// 非同期 Job (4096) の場合、完了を待って返す (待たないと Detach 未反映のまま後続 Get が
-	// ディスクを見せ続ける)。
 	if err := c.WaitForJob(ctx, jobRef); err != nil {
-		return jobRef, fmt.Errorf("DetachStorage: wait: %w", err)
+		return jobRef, fmt.Errorf("DetachStorage: wait drive: %w", err)
 	}
 	return jobRef, nil
 }

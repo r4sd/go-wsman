@@ -661,8 +661,8 @@ func TestIntegration_AttachDetachVHD(t *testing.T) {
 	if result.DriveRef == "" {
 		t.Fatal("DriveRef empty, cannot cleanup")
 	}
-	t.Logf("Detaching: %s", result.DriveRef)
-	jobRef, err := client.DetachStorage(ctx, result.DriveRef)
+	t.Logf("Detaching: %s (storage=%s)", result.DriveRef, result.StorageRef)
+	jobRef, err := client.DetachStorage(ctx, result.DriveRef, result.StorageRef)
 	if err != nil {
 		t.Fatalf("DetachStorage: %v", err)
 	}
@@ -828,7 +828,7 @@ func TestIntegration_ScsiVhdLifecycle(t *testing.T) {
 	}
 
 	t.Logf("[5] DetachStorage")
-	if _, err := client.DetachStorage(ctx, attach.DriveRef); err != nil {
+	if _, err := client.DetachStorage(ctx, attach.DriveRef, attach.StorageRef); err != nil {
 		t.Errorf("DetachStorage: %v", err)
 	}
 }
