@@ -148,3 +148,86 @@ func TestClient_WaitForJob_ContextCancel(t *testing.T) {
 		t.Errorf("expected errors.Is(err, context.Canceled), got %v", err)
 	}
 }
+
+// newFlakyJobServer は最初の failCount 回を HTTP 500 (過渡的エラー) で返し、
+// 以降は response を返すテストサーバーを作る。
+func newFlakyJobServer(t *testing.T, failCount int, response string) (*httptest.Server, *int) {
+	t.Helper()
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := calls
+		calls++
+		if n < failCount {
+			http.Error(w, "transient", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/soap+xml; charset=utf-8")
+		_, _ = w.Write([]byte(response))
+	}))
+	return server, &calls
+}
+
+// TestClient_WaitForJob_TransientErrorThenCompleted は poll 中の過渡的エラー(WinRM 断相当)を
+// maxPollErrors まで許容し、回復後に完了を検出できることを検証する (#92)。
+func TestClient_WaitForJob_TransientErrorThenCompleted(t *testing.T) {
+	// 最初の 3 回失敗 → 4 回目で完了。デフォルト maxPollErrors=5 の範囲内なので成功するはず。
+	server, calls := newFlakyJobServer(t, 3, loadGolden(t, "get_response_concretejob_completed.xml"))
+	defer server.Close()
+
+	client, err := NewClient(server.URL)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	if err := client.WaitForJob(context.Background(), "9C7D3E22-AAAA-BBBB-CCCC-111122223333",
+		WithPollInterval(1*time.Millisecond)); err != nil {
+		t.Fatalf("WaitForJob: 過渡的エラーを吸収して成功するはず, got %v", err)
+	}
+	if *calls < 4 {
+		t.Errorf("expected at least 4 polls (3 fail + 1 success), got %d", *calls)
+	}
+}
+
+// TestClient_WaitForJob_ExhaustsPollErrors は連続失敗が maxPollErrors を超えたら
+// 諦めてエラーを返すことを検証する (#92)。
+func TestClient_WaitForJob_ExhaustsPollErrors(t *testing.T) {
+	// 常に失敗。maxPollErrors=2 なので 3 回目の失敗で諦める。
+	server, calls := newFlakyJobServer(t, 1000, "")
+	defer server.Close()
+
+	client, err := NewClient(server.URL)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	err = client.WaitForJob(context.Background(), "9C7D3E22-AAAA-BBBB-CCCC-111122223333",
+		WithPollInterval(1*time.Millisecond), WithMaxPollErrors(2), WithJobTimeout(5*time.Second))
+	if err == nil {
+		t.Fatal("expected error after exhausting poll retries, got nil")
+	}
+	if !strings.Contains(err.Error(), "連続") {
+		t.Errorf("expected '連続で失敗' error, got %v", err)
+	}
+	// maxPollErrors=2 → 3 回失敗で諦め (consecErrors > 2)。過剰にリトライしていないこと。
+	if *calls > 4 {
+		t.Errorf("expected to give up around 3 polls, got %d", *calls)
+	}
+}
+
+// TestClient_WaitForJob_ZeroMaxPollErrors は WithMaxPollErrors(0) で従来挙動
+// (1 回の失敗で即座に諦める) になることを検証する。
+func TestClient_WaitForJob_ZeroMaxPollErrors(t *testing.T) {
+	server, calls := newFlakyJobServer(t, 1000, "")
+	defer server.Close()
+
+	client, err := NewClient(server.URL)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	err = client.WaitForJob(context.Background(), "9C7D3E22-AAAA-BBBB-CCCC-111122223333",
+		WithPollInterval(1*time.Millisecond), WithMaxPollErrors(0), WithJobTimeout(5*time.Second))
+	if err == nil {
+		t.Fatal("expected immediate error with maxPollErrors=0, got nil")
+	}
+	if *calls != 1 {
+		t.Errorf("expected exactly 1 poll (no retry), got %d", *calls)
+	}
+}
