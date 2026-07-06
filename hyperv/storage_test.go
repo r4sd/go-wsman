@@ -133,6 +133,41 @@ func TestClient_AddScsiController_Validation(t *testing.T) {
 // 親 Controller の EPR、AddressOnParent に Controller 内 location を持つ。mixed golden は
 // 対象 VM の Disk Drive / 対象 VM の SCSI Controller(別 SubType) / 別 VM の Disk Drive を
 // 含み、対象 VM の Disk Drive 1 件だけを選べることを検証する。
+// TestClient_ListDvdDrives は対象 VM の Synthetic DVD Drive のみを返し、Disk Drive・別 VM を
+// 除外することを検証する (逆引きに必要な Parent/AddressOnParent も取れること)。
+func TestClient_ListDvdDrives(t *testing.T) {
+	enum := loadGolden(t, "enumerate_response_idecontroller.xml")
+	pull := loadGolden(t, "pull_response_dvddrive_mixed.xml")
+
+	var bodies []string
+	server := newSequenceServer(t, []string{enum, pull}, &bodies)
+	defer server.Close()
+
+	client, _ := NewClient(server.URL)
+	got, err := client.ListDvdDrives(context.Background(), "11111111-aaaa-bbbb-cccc-000000000001")
+	if err != nil {
+		t.Fatalf("ListDvdDrives: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("len: got %d, want 1 (Disk Drive / 別 VM を含めてはいけない)", len(got))
+	}
+	if got[0].ResourceType != ResourceTypeDVDDrive {
+		t.Errorf("ResourceType: got %d, want %d", got[0].ResourceType, ResourceTypeDVDDrive)
+	}
+	if got[0].ResourceSubType != ResourceSubTypeSyntheticDVDDrive {
+		t.Errorf("ResourceSubType: %q", got[0].ResourceSubType)
+	}
+	if got[0].AddressOnParent != "1" {
+		t.Errorf("AddressOnParent: got %q, want 1", got[0].AddressOnParent)
+	}
+	if !strings.Contains(got[0].Parent, `SCSI-CTRL-0`) {
+		t.Errorf("Parent should reference the SCSI controller; got %q", got[0].Parent)
+	}
+	if strings.Contains(bodies[0], "Filter") || strings.Contains(bodies[0], "SELECT") {
+		t.Errorf("enumerate should be unfiltered (no WQL Filter); body: %s", bodies[0])
+	}
+}
+
 func TestClient_ListDiskDrives(t *testing.T) {
 	enum := loadGolden(t, "enumerate_response_idecontroller.xml")
 	pull := loadGolden(t, "pull_response_diskdrive_mixed.xml")
