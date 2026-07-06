@@ -14,12 +14,18 @@ const msvmConcreteJobURI = nsVirtV2 + "/Msvm_ConcreteJob"
 const (
 	defaultJobPollInterval = 500 * time.Millisecond
 	defaultJobTimeout      = 5 * time.Minute
+	// defaultMaxJobPollErrors は getJob の連続失敗をどこまで許容するか。poll 中の一時的な
+	// WinRM 断・過渡的 Fault で即座に待機を諦めると、非同期操作(特に detach の 2 段削除や
+	// 連鎖ジョブ)が中途半端な state を残す。連続失敗がこの回数を超えたら本当の失敗として扱う。
+	// 1 回でも成功すればカウンタはリセットするので、散発的な blip は吸収する。
+	defaultMaxJobPollErrors = 5
 )
 
 // waitConfig は WaitForJob の挙動設定。
 type waitConfig struct {
-	pollInterval time.Duration
-	timeout      time.Duration
+	pollInterval  time.Duration
+	timeout       time.Duration
+	maxPollErrors int
 }
 
 // WaitOption は WaitForJob のオプション。
@@ -33,6 +39,12 @@ func WithPollInterval(d time.Duration) WaitOption {
 // WithJobTimeout は Job 完了待ちのタイムアウトを設定する。
 func WithJobTimeout(d time.Duration) WaitOption {
 	return func(c *waitConfig) { c.timeout = d }
+}
+
+// WithMaxPollErrors は Job 状態取得(getJob)の連続失敗を許容する回数を設定する。
+// 0 以下を渡すと過渡的エラーを一切許容しない(従来挙動: 1 回の失敗で即座に諦める)。
+func WithMaxPollErrors(n int) WaitOption {
+	return func(c *waitConfig) { c.maxPollErrors = n }
 }
 
 // WaitForJob は非同期 CIM 操作 (ReturnValue=4096) が返した Job の完了を待つ。
@@ -69,7 +81,7 @@ func (c *Client) WaitForJobEPR(ctx context.Context, epr *wsman.EndpointReference
 		return fmt.Errorf("WaitForJobEPR: EPR に InstanceID セレクタが無い (%s)", epr.ResourceURI)
 	}
 
-	cfg := waitConfig{pollInterval: defaultJobPollInterval, timeout: defaultJobTimeout}
+	cfg := waitConfig{pollInterval: defaultJobPollInterval, timeout: defaultJobTimeout, maxPollErrors: defaultMaxJobPollErrors}
 	for _, o := range opts {
 		o(&cfg)
 	}
@@ -79,11 +91,27 @@ func (c *Client) WaitForJobEPR(ctx context.Context, epr *wsman.EndpointReference
 	ticker := time.NewTicker(cfg.pollInterval)
 	defer ticker.Stop()
 
+	consecErrors := 0
 	for {
 		job, err := c.getJob(ctx, epr.ResourceURI, instanceID)
 		if err != nil {
-			return fmt.Errorf("WaitForJobEPR %s: %w", instanceID, err)
+			// poll 中の過渡的エラー(WinRM 断等)は maxPollErrors まで許容し、次の tick で再試行する。
+			// ctx キャンセル/タイムアウトは過渡的でないので即座に返す。
+			if ctx.Err() != nil {
+				return fmt.Errorf("WaitForJobEPR %s: %w", instanceID, ctx.Err())
+			}
+			consecErrors++
+			if consecErrors > cfg.maxPollErrors {
+				return fmt.Errorf("WaitForJobEPR %s: %d 回連続で job 状態取得に失敗: %w", instanceID, consecErrors, err)
+			}
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("WaitForJobEPR %s: %w", instanceID, ctx.Err())
+			case <-ticker.C:
+			}
+			continue
 		}
+		consecErrors = 0 // 成功したら連続失敗カウンタをリセット(散発 blip を吸収)
 		switch job.JobState {
 		case JobStateCompleted:
 			return nil
