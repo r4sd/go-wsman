@@ -198,6 +198,36 @@ func (c *Client) ListDiskDrives(ctx context.Context, vmName string) ([]*Msvm_Res
 	return result, nil
 }
 
+// ListDvdDrives は VM の DVD Drive (Msvm_ResourceAllocationSettingData,
+// ResourceSubType="Synthetic DVD Drive") の一覧を返す。
+//
+// ListDiskDrives が Disk Drive を返すのと対で、DVD の逆引き (storage→drive→controller) に使う。
+// Gen2 は DVD も SCSI Controller に、Gen1 は IDE に接続する。
+func (c *Client) ListDvdDrives(ctx context.Context, vmName string) ([]*Msvm_ResourceAllocationSettingData, error) {
+	if vmName == "" {
+		return nil, fmt.Errorf("ListDvdDrives: vmName must not be empty")
+	}
+
+	// Controller/Disk 列挙と同じく WQL フィルタは Hyper-V が拒否する (#80) ため、無フィルタ列挙 +
+	// Go 側フィルタ (対象 VM かつ Synthetic DVD Drive) で絞る。
+	instances, err := c.enumerateFiltered(ctx, msvmResourceAllocationSettingDataURI, func(inst *wsman.Instance) bool {
+		return matchSettingDataVM(inst.Property("InstanceID"), vmName) &&
+			inst.Property("ResourceSubType") == ResourceSubTypeSyntheticDVDDrive
+	})
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*Msvm_ResourceAllocationSettingData, 0, len(instances))
+	for _, inst := range instances {
+		var r Msvm_ResourceAllocationSettingData
+		if err := Unmarshal(inst.Properties(), &r); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal Msvm_ResourceAllocationSettingData: %w", err)
+		}
+		result = append(result, &r)
+	}
+	return result, nil
+}
+
 // ListAttachedStorage は VM にアタッチされた VHD/ISO ファイルの一覧を返す。
 //
 // terraform の差分計算や、アタッチ済みディスクの確認に使う。
