@@ -184,6 +184,43 @@ func TestClient_FindComputerSystemByElementName_NotFound(t *testing.T) {
 	}
 }
 
+// TestClient_FindComputerSystemByElementName_CaseInsensitive は表示名の照合が大小文字を
+// 区別しないこと (PowerShell Get-VM との parity) を検証する。
+//
+// Hyper-V / PowerShell の VM 名照合は大小文字非依存。ここを case-sensitive にすると、実在する
+// VM "vm-2" を "VM-2" で引いたときに ErrVMNotFound となり、terraform-provider の Read が
+// 「実在 VM を不在扱い→state 除去→orphan/重複作成」する破壊経路を生む。よって最終照合は
+// case-insensitive とし、大小文字だけ異なる表示名でも同一 VM を解決する。
+func TestClient_FindComputerSystemByElementName_CaseInsensitive(t *testing.T) {
+	enumXML := loadGolden(t, "enumerate_response_computersystem.xml")
+	pullXML := loadGolden(t, "pull_response_computersystem.xml")
+
+	callCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		w.Header().Set("Content-Type", "application/soap+xml; charset=utf-8")
+		if callCount == 1 {
+			_, _ = w.Write([]byte(enumXML))
+		} else {
+			_, _ = w.Write([]byte(pullXML))
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(server.URL)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	// golden は vm-1 / vm-2 を返す。大文字 "VM-2" でも実在 VM "vm-2" を解決できること。
+	got, err := client.FindComputerSystemByElementName(context.Background(), "VM-2")
+	if err != nil {
+		t.Fatalf("case-insensitive 照合で VM-2 は vm-2 に解決される想定、got err %v", err)
+	}
+	if got.ElementName != "vm-2" {
+		t.Errorf("ElementName: got %q, want vm-2", got.ElementName)
+	}
+}
+
 // TestClient_FindComputerSystemByElementName_SpecialChars は表示名に特殊文字 (& / ")
 // が含まれていても安全に扱えることを検証する。
 //
