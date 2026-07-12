@@ -55,8 +55,9 @@ func (c *Client) GetComputerSystem(ctx context.Context, name string) (*Msvm_Comp
 // 戻り値の Msvm_ComputerSystem.Name が GUID で、CIM の各操作はこの GUID を要求する。
 //
 // 複数一致は曖昧としてエラー、不在は ErrVMNotFound を返す。
-// elementName は大小文字まで一致させること: WQL の比較は大小文字を区別しないが、
-// クライアント側の最終照合は区別するため、ケース違いは ErrVMNotFound になる。
+// 照合は大小文字非依存 (strings.EqualFold): PowerShell Get-VM と Hyper-V の名前解決が
+// 大小文字を区別しないため、それに合わせる。case-sensitive にすると、大小文字だけ異なる
+// 表示名で実在 VM を不在扱いし、provider Read が state 除去→orphan/重複作成する破壊経路を生む。
 func (c *Client) FindComputerSystemByElementName(ctx context.Context, elementName string) (*Msvm_ComputerSystem, error) {
 	if elementName == "" {
 		return nil, fmt.Errorf("FindComputerSystemByElementName: elementName must not be empty")
@@ -65,7 +66,7 @@ func (c *Client) FindComputerSystemByElementName(ctx context.Context, elementNam
 	// (MS WS-Man Hyper-V は WQL フィルタ列挙を CannotProcessFilter で拒否するため、
 	// 実機で動く無フィルタ列挙を使う。実機 acc test で確認。#80)
 	instances, err := c.enumerateFiltered(ctx, msvmComputerSystemURI, func(inst *wsman.Instance) bool {
-		return inst.Property("ElementName") == elementName
+		return strings.EqualFold(inst.Property("ElementName"), elementName)
 	})
 	if err != nil {
 		return nil, err
