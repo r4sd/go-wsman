@@ -220,3 +220,13 @@ func TestCIMCompliance_ConcreteJob(t *testing.T) {
 		nil, // 許容逸脱なし
 	)
 }
+
+// TestCIMCompliance_GpuPartitionSettingData は #59 (Read) で追加した GPU パーティション設定 struct の
+// cim タグが MOF と整合するか検証する。12 プロパティ全て uint64 (MOF 準拠)。
+func TestCIMCompliance_GpuPartitionSettingData(t *testing.T) {
+	assertCIMCompliance(t,
+		&Msvm_GpuPartitionSettingData{},
+		"msvm_gpupartitionsettingdata.txt",
+		nil, // 許容逸脱なし
+	)
+}
