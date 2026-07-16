@@ -183,6 +183,30 @@ type Msvm_ProcessorSettingData struct {
 	ExposeVirtualizationExtensions bool   `cim:"ExposeVirtualizationExtensions"` // ネステッド仮想化
 }
 
+// Msvm_GpuPartitionSettingData は VM に割り当てられた GPU パーティション (GPU-PV) の設定を表す CIM クラス。
+//
+// CIM_ResourceAllocationSettingData を継承する (RASD)。GPU パーティション分割の割当範囲を
+// VRAM/Encode/Decode/Compute の Min/Max/Optimal で表す。全プロパティ uint64 (MOF 準拠)。
+// InstanceID は基底クラス由来で、VM 単位の絞り込み (matchSettingDataVM) に使う。
+//
+// enumerate はホスト能力定義 (InstanceID="Microsoft:Definition\<GPU_GUID>\Default|Minimum|Maximum|
+// Increment") も返すが、これらは VM_GUID 前方一致で自然に除外される (2026-07-16 実機プローブで確認)。
+type Msvm_GpuPartitionSettingData struct {
+	InstanceID              string `cim:"InstanceID"`
+	MinPartitionVRAM        uint64 `cim:"MinPartitionVRAM"`
+	MaxPartitionVRAM        uint64 `cim:"MaxPartitionVRAM"`
+	OptimalPartitionVRAM    uint64 `cim:"OptimalPartitionVRAM"`
+	MinPartitionEncode      uint64 `cim:"MinPartitionEncode"`
+	MaxPartitionEncode      uint64 `cim:"MaxPartitionEncode"`
+	OptimalPartitionEncode  uint64 `cim:"OptimalPartitionEncode"`
+	MinPartitionDecode      uint64 `cim:"MinPartitionDecode"`
+	MaxPartitionDecode      uint64 `cim:"MaxPartitionDecode"`
+	OptimalPartitionDecode  uint64 `cim:"OptimalPartitionDecode"`
+	MinPartitionCompute     uint64 `cim:"MinPartitionCompute"`
+	MaxPartitionCompute     uint64 `cim:"MaxPartitionCompute"`
+	OptimalPartitionCompute uint64 `cim:"OptimalPartitionCompute"`
+}
+
 // Msvm_VirtualEthernetSwitch は Hyper-V 仮想スイッチを表す CIM クラス。
 type Msvm_VirtualEthernetSwitch struct {
 	Name        string `cim:"Name"`        // スイッチ GUID

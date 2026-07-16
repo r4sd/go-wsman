@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:e="http://schemas.xmlsoap.org/ws/2004/09/enumeration" xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_GpuPartitionSettingData">
+  <s:Header>
+    <a:Action>http://schemas.xmlsoap.org/ws/2004/09/enumeration/PullResponse</a:Action>
+    <a:MessageID>uuid:pull-gpupartition-mixed-001</a:MessageID>
+  </s:Header>
+  <s:Body>
+    <e:PullResponse>
+      <e:Items>
+        <p:Msvm_GpuPartitionSettingData>
+          <p:InstanceID>Microsoft:Definition\0DCC3FD1-21BD-423E-AB0B-A3A7451CE985\Default</p:InstanceID>
+          <p:MinPartitionVRAM>0</p:MinPartitionVRAM>
+          <p:MaxPartitionVRAM>1000000000</p:MaxPartitionVRAM>
+        </p:Msvm_GpuPartitionSettingData>
+        <p:Msvm_GpuPartitionSettingData>
+          <p:InstanceID>Microsoft:Definition\0DCC3FD1-21BD-423E-AB0B-A3A7451CE985\Maximum</p:InstanceID>
+          <p:MaxPartitionVRAM>18446744073709551615</p:MaxPartitionVRAM>
+        </p:Msvm_GpuPartitionSettingData>
+        <p:Msvm_GpuPartitionSettingData>
+          <p:InstanceID>Microsoft:11111111-aaaa-bbbb-cccc-000000000001\GPUP-0</p:InstanceID>
+          <p:MinPartitionVRAM>80000000</p:MinPartitionVRAM>
+          <p:MaxPartitionVRAM>100000000</p:MaxPartitionVRAM>
+          <p:OptimalPartitionVRAM>90000000</p:OptimalPartitionVRAM>
+          <p:MinPartitionEncode>0</p:MinPartitionEncode>
+          <p:MaxPartitionEncode>18446744073709551615</p:MaxPartitionEncode>
+          <p:OptimalPartitionEncode>18446744073709551615</p:OptimalPartitionEncode>
+          <p:MinPartitionDecode>0</p:MinPartitionDecode>
+          <p:MaxPartitionDecode>18446744073709551615</p:MaxPartitionDecode>
+          <p:OptimalPartitionDecode>18446744073709551615</p:OptimalPartitionDecode>
+          <p:MinPartitionCompute>0</p:MinPartitionCompute>
+          <p:MaxPartitionCompute>18446744073709551615</p:MaxPartitionCompute>
+          <p:OptimalPartitionCompute>18446744073709551615</p:OptimalPartitionCompute>
+        </p:Msvm_GpuPartitionSettingData>
+        <p:Msvm_GpuPartitionSettingData>
+          <p:InstanceID>Microsoft:22222222-aaaa-bbbb-cccc-000000000002\GPUP-0</p:InstanceID>
+          <p:MinPartitionVRAM>1</p:MinPartitionVRAM>
+          <p:MaxPartitionVRAM>2</p:MaxPartitionVRAM>
+        </p:Msvm_GpuPartitionSettingData>
+      </e:Items>
+      <e:EndOfSequence/>
+    </e:PullResponse>
+  </s:Body>
+</s:Envelope>

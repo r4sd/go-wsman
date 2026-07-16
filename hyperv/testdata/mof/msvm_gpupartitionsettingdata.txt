@@ -1,0 +1,28 @@
+# Msvm_GpuPartitionSettingData CIM プロパティ
+#
+# Source: https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/msvm-gpupartitionsettingdata
+# Fetched: 2026-07-16
+# 形式: <CIM プロパティ名> <CIM 型>
+#
+# fixture ポリシー: go-wsman の Msvm_GpuPartitionSettingData struct が cim タグで参照する
+# プロパティのみ列挙する (MOF 全プロパティ網羅は不要)。
+#
+# 継承: Msvm_GpuPartitionSettingData : CIM_ResourceAllocationSettingData。
+# InstanceID は RASD 基底クラス由来 (GPU 固有の簡略 MOF 構文には現れないが実体は存在)。
+# VM 単位の絞り込み (matchSettingDataVM) に使うため struct が参照する。
+#
+# 鮮度: Fetched から 1 年以上経過した場合は再取得を検討。
+
+InstanceID string
+MinPartitionVRAM uint64
+MaxPartitionVRAM uint64
+OptimalPartitionVRAM uint64
+MinPartitionEncode uint64
+MaxPartitionEncode uint64
+OptimalPartitionEncode uint64
+MinPartitionDecode uint64
+MaxPartitionDecode uint64
+OptimalPartitionDecode uint64
+MinPartitionCompute uint64
+MaxPartitionCompute uint64
+OptimalPartitionCompute uint64
