@@ -18,6 +18,10 @@
           <p:LimitProcessorFeatures>FALSE</p:LimitProcessorFeatures>
           <p:LimitCPUID>FALSE</p:LimitCPUID>
           <p:ExposeVirtualizationExtensions>FALSE</p:ExposeVirtualizationExtensions>
+          <p:HwThreadsPerCore>2</p:HwThreadsPerCore>
+          <p:MaxProcessorsPerNumaNode>4</p:MaxProcessorsPerNumaNode>
+          <p:MaxNumaNodesPerSocket>1</p:MaxNumaNodesPerSocket>
+          <p:EnableHostResourceProtection>TRUE</p:EnableHostResourceProtection>
         </p:Msvm_ProcessorSettingData>
       </e:Items>
       <e:EndOfSequence/>

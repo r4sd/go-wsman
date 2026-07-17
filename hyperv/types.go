@@ -181,6 +181,10 @@ type Msvm_ProcessorSettingData struct {
 	LimitProcessorFeatures         bool   `cim:"LimitProcessorFeatures"`         // 機能制限 (移行時の互換性)
 	LimitCPUID                     bool   `cim:"LimitCPUID"`                     // CPUID 制限
 	ExposeVirtualizationExtensions bool   `cim:"ExposeVirtualizationExtensions"` // ネステッド仮想化
+	HwThreadsPerCore               uint64 `cim:"HwThreadsPerCore"`               // コアあたり SMT スレッド数 (0=ホスト既定)
+	MaxProcessorsPerNumaNode       uint64 `cim:"MaxProcessorsPerNumaNode"`       // 仮想 NUMA ノードあたり最大 vCPU 数
+	MaxNumaNodesPerSocket          uint64 `cim:"MaxNumaNodesPerSocket"`          // ソケットあたり最大 NUMA ノード数
+	EnableHostResourceProtection   bool   `cim:"EnableHostResourceProtection"`   // ホストリソース保護
 }
 
 // Msvm_GpuPartitionSettingData は VM に割り当てられた GPU パーティション (GPU-PV) の設定を表す CIM クラス。

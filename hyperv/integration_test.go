@@ -250,6 +250,59 @@ func TestIntegration_GetMemoryAndProcessorSettings(t *testing.T) {
 	if cpu.ResourceType != ResourceTypeProcessor {
 		t.Errorf("Processor.ResourceType: got %d, want %d", cpu.ResourceType, ResourceTypeProcessor)
 	}
+	// #55 Read 部分で追加した NUMA / 互換性フィールドが fault なく読めること (provider #79 が写す)。
+	t.Logf("VM %q: HwThreadsPerCore=%d MaxProcPerNumaNode=%d MaxNumaNodesPerSocket=%d HostResProtection=%v",
+		target.ElementName, cpu.HwThreadsPerCore, cpu.MaxProcessorsPerNumaNode,
+		cpu.MaxNumaNodesPerSocket, cpu.EnableHostResourceProtection)
+}
+
+// TestIntegration_ListIntegrationServices は実機で統合サービスの状態取得が fault しないことを検証する (#56 Read 部分)。
+//
+// 6 つの Component SettingData クラスを列挙し、PowerShell Get-VMIntegrationService と同じ
+// 表示名 (Heartbeat / Key-Value Pair Exchange / Shutdown / Time Synchronization / VSS /
+// Guest Service Interface) と有効状態を返すことを確認する。provider #78 の Read シャドウが
+// PS 実装と同一結果を得られる前提の裏取り。read-only。
+func TestIntegration_ListIntegrationServices(t *testing.T) {
+	client := getIntegrationClient(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	vms, err := client.ListComputerSystems(ctx)
+	if err != nil {
+		t.Fatalf("ListComputerSystems: %v", err)
+	}
+	if len(vms) == 0 {
+		t.Skip("Hyper-V ホストに VM が存在しない")
+	}
+	target := vms[0]
+
+	svcs, err := client.ListIntegrationServices(ctx, target.Name)
+	if err != nil {
+		t.Fatalf("ListIntegrationServices: %v", err)
+	}
+	for _, s := range svcs {
+		if s.Name == "" {
+			t.Errorf("統合サービスの Name (ElementName) が空 (Unmarshal or 列挙の前提崩れ)")
+		}
+		t.Logf("VM %q: 統合サービス %-25q Enabled=%v", target.ElementName, s.Name, s.Enabled)
+	}
+	// 通常の VM は 6 つの統合サービスを持つ。0 件なら列挙 URI か VM GUID 絞り込みの前提を見直す。
+	if len(svcs) == 0 {
+		t.Errorf("統合サービスが 0 件。列挙 URI or VM GUID 絞り込みの前提崩れの可能性")
+	}
+	// ElementName は PS Get-VMIntegrationService.Name と同一だが、ホスト OS 言語にローカライズ
+	// される。英語ホストでは下記集合に収まるはず。ローカライズホスト (非英語) では別言語になるため
+	// 「未知の名前」は失敗ではなく情報ログに留める (パリティは名前の一致ではなく PS と同一値を返す
+	// ことで保証される)。
+	knownEnglish := map[string]bool{
+		"Heartbeat": true, "Key-Value Pair Exchange": true, "Shutdown": true,
+		"Time Synchronization": true, "VSS": true, "Guest Service Interface": true,
+	}
+	for _, s := range svcs {
+		if !knownEnglish[s.Name] {
+			t.Logf("注記: 統合サービス表示名 %q は英語既知集合に含まれない (ローカライズホストの可能性)", s.Name)
+		}
+	}
 }
 
 // TestIntegration_SetMemorySettings は対象 VM のメモリ設定を読み取り、同じ値で

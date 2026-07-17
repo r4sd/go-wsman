@@ -1,0 +1,34 @@
+# Msvm_ProcessorSettingData CIM プロパティ
+#
+# Source: https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/msvm-processorsettingdata
+# Fetched: 2026-07-17
+# 形式: <CIM プロパティ名> <CIM 型>
+#
+# fixture ポリシー: go-wsman の Msvm_ProcessorSettingData struct が cim タグで参照する
+# プロパティのみ列挙する (MOF 全プロパティ網羅は不要)。
+#
+# 継承: Msvm_ProcessorSettingData : CIM_ResourceAllocationSettingData。
+#
+# 単位・範囲の注記 (provider #79 の単位変換の根拠):
+#   - AllocationUnits = "percent / 1000"。Limit / Reservation は 0..100000 で、
+#     PowerShell Get-VMProcessor の Maximum / Reserve (0..100 %) は CIM 値 / 1000。
+#   - Weight は 0..10000。PS RelativeWeight と 1:1 (変換なし)。
+#   - HwThreadsPerCore / MaxProcessorsPerNumaNode / MaxNumaNodesPerSocket は Windows 10 1703+。
+#   - EnableHostResourceProtection は Windows 10+。
+#
+# 鮮度: Fetched から 1 年以上経過した場合は再取得を検討。
+
+InstanceID string
+ElementName string
+ResourceType uint16
+VirtualQuantity uint64
+Reservation uint64
+Limit uint64
+Weight uint32
+LimitProcessorFeatures boolean
+LimitCPUID boolean
+ExposeVirtualizationExtensions boolean
+HwThreadsPerCore uint64
+MaxProcessorsPerNumaNode uint64
+MaxNumaNodesPerSocket uint64
+EnableHostResourceProtection boolean

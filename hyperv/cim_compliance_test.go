@@ -230,3 +230,25 @@ func TestCIMCompliance_GpuPartitionSettingData(t *testing.T) {
 		nil, // 許容逸脱なし
 	)
 }
+
+// TestCIMCompliance_ProcessorSettingData は #55 Read 部分で追加した NUMA / 互換性
+// フィールド (HwThreadsPerCore / MaxProcessorsPerNumaNode / MaxNumaNodesPerSocket /
+// EnableHostResourceProtection) を含む cim タグが MOF と整合するか検証する。
+func TestCIMCompliance_ProcessorSettingData(t *testing.T) {
+	assertCIMCompliance(t,
+		&Msvm_ProcessorSettingData{},
+		"msvm_processorsettingdata.txt",
+		nil, // 許容逸脱なし
+	)
+}
+
+// TestCIMCompliance_IntegrationComponentSettingData は ListIntegrationServices が
+// 6 クラス共通で参照する内部 struct の cim タグ (InstanceID / ElementName / EnabledState)
+// が MOF と整合するか検証する (#56 Read 部分)。
+func TestCIMCompliance_IntegrationComponentSettingData(t *testing.T) {
+	assertCIMCompliance(t,
+		&integrationComponentSettingData{},
+		"msvm_integrationcomponentsettingdata.txt",
+		nil, // 許容逸脱なし
+	)
+}
