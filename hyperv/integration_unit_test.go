@@ -116,9 +116,11 @@ func TestClient_ListIntegrationServices(t *testing.T) {
 		}
 	}
 
-	// Hyper-V は WQL フィルタ列挙を拒否するため、Enumerate は無フィルタで送ること (#80)。
-	if strings.Contains(bodies[0], "Filter") || strings.Contains(bodies[0], "SELECT") {
-		t.Errorf("enumerate should be unfiltered (no WQL Filter); body: %s", bodies[0])
+	// Hyper-V は WQL フィルタ列挙を拒否するため、全 6 クラスの Enumerate を無フィルタで送ること (#80)。
+	for i, b := range bodies {
+		if strings.Contains(b, "Filter") || strings.Contains(b, "SELECT") {
+			t.Errorf("enumerate should be unfiltered (no WQL Filter); bodies[%d]: %s", i, b)
+		}
 	}
 }
 

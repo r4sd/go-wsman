@@ -11,15 +11,23 @@ import (
 // 統合サービス (Integration Services) を表す 6 つの Component SettingData クラスの URI。
 //
 // 各クラスは CIM_ResourceAllocationSettingData を継承し、ElementName (表示名) と
-// EnabledState (2=Enabled / 3=Disabled) を持つ。表示名は PowerShell
-// Get-VMIntegrationService の Name と一致する (MOF の ElementName 既定値で確認):
+// EnabledState (2=Enabled / 3=Disabled) を持つ。
 //
-//	Msvm_HeartbeatComponentSettingData             → "Heartbeat"
-//	Msvm_KvpExchangeComponentSettingData           → "Key-Value Pair Exchange"
-//	Msvm_ShutdownComponentSettingData              → "Shutdown"
-//	Msvm_TimeSyncComponentSettingData              → "Time Synchronization"
-//	Msvm_VssComponentSettingData                   → "VSS"
-//	Msvm_GuestServiceInterfaceComponentSettingData → "Guest Service Interface"
+// 表示名 (ElementName) は PowerShell Get-VMIntegrationService の Name と「同一の文字列」を返す。
+// よって Read シャドウは PS 実装とロケールに関わらず同一結果になり、provider の refresh/plan
+// パリティが保たれる。ただし ElementName は MOF が [AMENDMENT] 修飾子付きで、ホスト OS の
+// 言語にローカライズされる (英語ホスト以外では別言語の文字列)。英語ホストでの値:
+//
+//	Msvm_HeartbeatComponentSettingData             → "Heartbeat"                (MOF 既定値あり)
+//	Msvm_KvpExchangeComponentSettingData           → "Key-Value Pair Exchange"  (MOF 既定値あり)
+//	Msvm_ShutdownComponentSettingData              → "Shutdown"                 (MOF 既定値あり)
+//	Msvm_TimeSyncComponentSettingData              → "Time Synchronization"     (MOF 既定値あり)
+//	Msvm_VssComponentSettingData                   → "VSS"                      (MOF 既定値あり)
+//	Msvm_GuestServiceInterfaceComponentSettingData → "Guest Service Interface"  (MOF に既定値なし・実行時設定)
+//
+// 例: ドイツ語ホストでは "Gastdienstschnittstelle" 等 (dsccommunity/HyperVDsc #76)。
+// ロケール非依存の識別が必要になったら InstanceID 末尾の component GUID かクラス名で判定する
+// (書き込みプリミティブ #56 v2.1 で検討)。
 //
 // Source: https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/msvm-*componentsettingdata
 var integrationComponentURIs = []string{
@@ -33,8 +41,9 @@ var integrationComponentURIs = []string{
 
 // IntegrationService は VM の統合サービス 1 件の有効/無効状態を表す。
 //
-// Name は CIM ElementName (= PowerShell Get-VMIntegrationService の Name)。
-// Enabled は EnabledState==2 を true に写したもの。
+// Name は CIM ElementName (= PowerShell Get-VMIntegrationService の Name)。両者は同一文字列を
+// 返すため Read パリティが保たれるが、ElementName はホスト OS 言語にローカライズされる点に注意
+// (integrationComponentURIs のコメント参照)。Enabled は EnabledState==2 を true に写したもの。
 type IntegrationService struct {
 	Name    string
 	Enabled bool

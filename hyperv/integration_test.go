@@ -281,20 +281,26 @@ func TestIntegration_ListIntegrationServices(t *testing.T) {
 		t.Fatalf("ListIntegrationServices: %v", err)
 	}
 	for _, s := range svcs {
+		if s.Name == "" {
+			t.Errorf("統合サービスの Name (ElementName) が空 (Unmarshal or 列挙の前提崩れ)")
+		}
 		t.Logf("VM %q: 統合サービス %-25q Enabled=%v", target.ElementName, s.Name, s.Enabled)
 	}
 	// 通常の VM は 6 つの統合サービスを持つ。0 件なら列挙 URI か VM GUID 絞り込みの前提を見直す。
 	if len(svcs) == 0 {
 		t.Errorf("統合サービスが 0 件。列挙 URI or VM GUID 絞り込みの前提崩れの可能性")
 	}
-	// 表示名は PS Get-VMIntegrationService.Name と一致するはず。既知の集合に含まれることを確認する。
-	known := map[string]bool{
+	// ElementName は PS Get-VMIntegrationService.Name と同一だが、ホスト OS 言語にローカライズ
+	// される。英語ホストでは下記集合に収まるはず。ローカライズホスト (非英語) では別言語になるため
+	// 「未知の名前」は失敗ではなく情報ログに留める (パリティは名前の一致ではなく PS と同一値を返す
+	// ことで保証される)。
+	knownEnglish := map[string]bool{
 		"Heartbeat": true, "Key-Value Pair Exchange": true, "Shutdown": true,
 		"Time Synchronization": true, "VSS": true, "Guest Service Interface": true,
 	}
 	for _, s := range svcs {
-		if !known[s.Name] {
-			t.Errorf("未知の統合サービス表示名 %q (ElementName↔PS Name 写像の前提崩れ)", s.Name)
+		if !knownEnglish[s.Name] {
+			t.Logf("注記: 統合サービス表示名 %q は英語既知集合に含まれない (ローカライズホストの可能性)", s.Name)
 		}
 	}
 }

@@ -13,13 +13,16 @@
 # fixture ポリシー: ListIntegrationServices が参照する共通 3 プロパティのみ列挙する。
 # 6 クラスはいずれも CIM_ResourceAllocationSettingData を継承し、下記を共有する。
 #
-# ElementName の既定値 (= PowerShell Get-VMIntegrationService の Name と一致):
-#   Msvm_HeartbeatComponentSettingData             ElementName = "Heartbeat"
-#   Msvm_KvpExchangeComponentSettingData           ElementName = "Key-Value Pair Exchange"
-#   Msvm_ShutdownComponentSettingData              ElementName = "Shutdown"
-#   Msvm_TimeSyncComponentSettingData              ElementName = "Time Synchronization"
-#   Msvm_VssComponentSettingData                   ElementName = "VSS"
-#   Msvm_GuestServiceInterfaceComponentSettingData ElementName = "Guest Service Interface"
+# ElementName は PowerShell Get-VMIntegrationService の Name と同一文字列を返す。ただし MOF が
+# [AMENDMENT] 修飾子付きで、ホスト OS の言語にローカライズされる (英語ホスト以外では別言語)。
+# 英語ホストでの MOF 既定値:
+#   Msvm_HeartbeatComponentSettingData             ElementName = "Heartbeat"                (既定値あり)
+#   Msvm_KvpExchangeComponentSettingData           ElementName = "Key-Value Pair Exchange"  (既定値あり)
+#   Msvm_ShutdownComponentSettingData              ElementName = "Shutdown"                 (既定値あり)
+#   Msvm_TimeSyncComponentSettingData              ElementName = "Time Synchronization"     (既定値あり)
+#   Msvm_VssComponentSettingData                   ElementName = "VSS"                      (既定値あり)
+#   Msvm_GuestServiceInterfaceComponentSettingData ElementName = <MOF に既定値なし・実行時設定>
+# (例: ドイツ語ホストでは "Gastdienstschnittstelle" 等。dsccommunity/HyperVDsc #76)
 #
 # EnabledState: 2 = Enabled, 3 = Disabled。ListIntegrationServices は EnabledState==2 を
 # Enabled=true に写す。
