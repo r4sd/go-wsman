@@ -1,0 +1,31 @@
+# 統合サービス (Integration Services) Component SettingData の共通 CIM プロパティ
+#
+# Source:
+#   https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/msvm-heartbeatcomponentsettingdata
+#   https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/msvm-kvpexchangecomponentsettingdata
+#   https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/msvm-shutdowncomponentsettingdata
+#   https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/msvm-timesynccomponentsettingdata
+#   https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/msvm-vsscomponentsettingdata
+#   https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/msvm-guestserviceinterfacecomponentsettingdata
+# Fetched: 2026-07-17
+# 形式: <CIM プロパティ名> <CIM 型>
+#
+# fixture ポリシー: ListIntegrationServices が参照する共通 3 プロパティのみ列挙する。
+# 6 クラスはいずれも CIM_ResourceAllocationSettingData を継承し、下記を共有する。
+#
+# ElementName の既定値 (= PowerShell Get-VMIntegrationService の Name と一致):
+#   Msvm_HeartbeatComponentSettingData             ElementName = "Heartbeat"
+#   Msvm_KvpExchangeComponentSettingData           ElementName = "Key-Value Pair Exchange"
+#   Msvm_ShutdownComponentSettingData              ElementName = "Shutdown"
+#   Msvm_TimeSyncComponentSettingData              ElementName = "Time Synchronization"
+#   Msvm_VssComponentSettingData                   ElementName = "VSS"
+#   Msvm_GuestServiceInterfaceComponentSettingData ElementName = "Guest Service Interface"
+#
+# EnabledState: 2 = Enabled, 3 = Disabled。ListIntegrationServices は EnabledState==2 を
+# Enabled=true に写す。
+#
+# 鮮度: Fetched から 1 年以上経過した場合は再取得を検討。
+
+InstanceID string
+ElementName string
+EnabledState uint16

@@ -176,6 +176,19 @@ func TestClient_GetProcessorSettings(t *testing.T) {
 	if got.ExposeVirtualizationExtensions {
 		t.Errorf("ExposeVirtualizationExtensions: want false")
 	}
+	// #55 Read 部分で追加した NUMA / 互換性フィールド (provider #79 が写す)。
+	if got.HwThreadsPerCore != 2 {
+		t.Errorf("HwThreadsPerCore: got %d, want 2", got.HwThreadsPerCore)
+	}
+	if got.MaxProcessorsPerNumaNode != 4 {
+		t.Errorf("MaxProcessorsPerNumaNode: got %d, want 4", got.MaxProcessorsPerNumaNode)
+	}
+	if got.MaxNumaNodesPerSocket != 1 {
+		t.Errorf("MaxNumaNodesPerSocket: got %d, want 1", got.MaxNumaNodesPerSocket)
+	}
+	if !got.EnableHostResourceProtection {
+		t.Errorf("EnableHostResourceProtection: want true")
+	}
 }
 
 // TestClient_SetProcessorSettings
