@@ -5,6 +5,11 @@
 WS-Management (WS-Man) プロトコルの Go 実装。
 最終目標: terraform-provider-hyperv の完全代替。
 
+> **shadow 移行の DoD**: provider の PS→go-wsman 移行を 1 機能=1 縦スライスで進める際の「完了の
+> 定義」は terraform-provider-hyperv リポジトリの `CLAUDE.md`(シャドウ移行 DoD)を参照。
+> go-wsman 側 primitive を足す時は、その ①MOF 一次資料検証 → ②TDD → provider 側 ③shadow の
+> 流れの一部を担う。
+
 ## アーキテクチャ
 
 ```
