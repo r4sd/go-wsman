@@ -1,7 +1,10 @@
 name: Dependabot auto-merge
 
-# dependabot の PR のうち patch/minor 更新を CI 通過後に自動マージする。
-# major 更新は breaking の可能性があるため自動マージせず手動レビューに回す。
+# dependabot の PR を CI 通過後に自動マージする。範囲は ecosystem で分ける:
+#   - github-actions (CI 実行環境。ワークフローファイルのみ変更、SHA 固定運用): patch/minor/major 全て自動。
+#     CI ツールの更新はアプリの実行時依存ではなく、影響範囲が CI 実行環境に閉じるため。
+#   - それ以外 (gomod 等、基盤 OSS = アプリが実行時に link する依存): patch/minor のみ自動。
+#     major は breaking の可能性があるため引き続き手動レビュー。
 # auto-merge は ruleset (main-protection) の required status checks 通過を待ってから実行される。
 
 on: pull_request
@@ -20,8 +23,11 @@ jobs:
         id: meta
         uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
 
-      - name: Enable auto-merge for patch/minor
-        if: steps.meta.outputs.update-type == 'version-update:semver-patch' || steps.meta.outputs.update-type == 'version-update:semver-minor'
+      - name: Enable auto-merge for patch/minor (any ecosystem) or major (github-actions only)
+        if: |
+          steps.meta.outputs.update-type == 'version-update:semver-patch' ||
+          steps.meta.outputs.update-type == 'version-update:semver-minor' ||
+          (steps.meta.outputs.package-ecosystem == 'github_actions' && steps.meta.outputs.update-type == 'version-update:semver-major')
         run: gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
