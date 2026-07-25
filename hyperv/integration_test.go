@@ -305,6 +305,62 @@ func TestIntegration_ListIntegrationServices(t *testing.T) {
 	}
 }
 
+// TestIntegration_SetIntegrationServiceEnabled は Heartbeat の現在値を読み取り、同じ値で
+// 書き戻す (no-op 相当) ことで CIM 経由の EnabledState 変更が実機で動作することを確認する。
+// GetIntegrationServiceEnabled (component 指定、ロケール非依存) で読むため、homelab が
+// 日本語 Windows(ElementName がローカライズされる、2026-07-18 実機確認済み)でもスキップされず
+// 検証できる。非破壊 (既存値と同じ値を書くだけ) だが、実際に ModifyResourceSettings →
+// Job 完了までの経路を通す点が unit test (mock) との違い。
+//
+// HYPERV_TEST_ALLOW_MUTATION + HYPERV_TEST_TARGET_VM_NAME が必要 (SetMemorySettings と同じ
+// ガード。既定では実機に書き込まない)。
+func TestIntegration_SetIntegrationServiceEnabled(t *testing.T) {
+	if os.Getenv("HYPERV_TEST_ALLOW_MUTATION") == "" {
+		t.Skip("HYPERV_TEST_ALLOW_MUTATION 未設定")
+	}
+	target := os.Getenv("HYPERV_TEST_TARGET_VM_NAME")
+	if target == "" {
+		t.Skip("HYPERV_TEST_TARGET_VM_NAME 未設定")
+	}
+
+	client := getIntegrationClient(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	vms, err := client.ListComputerSystems(ctx)
+	if err != nil {
+		t.Fatalf("ListComputerSystems: %v", err)
+	}
+	var vmGUID string
+	for _, vm := range vms {
+		if vm.ElementName == target {
+			vmGUID = vm.Name
+			break
+		}
+	}
+	if vmGUID == "" {
+		t.Fatalf("VM %q が見つからない", target)
+	}
+
+	before, err := client.GetIntegrationServiceEnabled(ctx, vmGUID, IntegrationServiceHeartbeat)
+	if err != nil {
+		t.Fatalf("GetIntegrationServiceEnabled (before): %v", err)
+	}
+
+	if err := client.SetIntegrationServiceEnabled(ctx, vmGUID, IntegrationServiceHeartbeat, before); err != nil {
+		t.Fatalf("SetIntegrationServiceEnabled (no-op 書き戻し): %v", err)
+	}
+
+	after, err := client.GetIntegrationServiceEnabled(ctx, vmGUID, IntegrationServiceHeartbeat)
+	if err != nil {
+		t.Fatalf("GetIntegrationServiceEnabled (after): %v", err)
+	}
+	if after != before {
+		t.Errorf("no-op 書き戻し後に値が変わった: got Enabled=%v, want %v", after, before)
+	}
+	t.Logf("✅ Heartbeat EnabledState no-op 書き戻し確認 (ロケール非依存): Enabled=%v", after)
+}
+
 // TestIntegration_SetMemorySettings は対象 VM のメモリ設定を読み取り、同じ値で
 // 書き戻す (no-op 相当)。CIM 経由の Modify が動作することを確認する。
 //
