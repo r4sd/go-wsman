@@ -305,15 +305,19 @@ func TestIntegration_ListIntegrationServices(t *testing.T) {
 	}
 }
 
-// TestIntegration_SetIntegrationServiceEnabled は Heartbeat の現在値を読み取り、同じ値で
-// 書き戻す (no-op 相当) ことで CIM 経由の EnabledState 変更が実機で動作することを確認する。
-// GetIntegrationServiceEnabled (component 指定、ロケール非依存) で読むため、homelab が
-// 日本語 Windows(ElementName がローカライズされる、2026-07-18 実機確認済み)でもスキップされず
-// 検証できる。非破壊 (既存値と同じ値を書くだけ) だが、実際に ModifyResourceSettings →
-// Job 完了までの経路を通す点が unit test (mock) との違い。
+// TestIntegration_SetIntegrationServiceEnabled は Heartbeat を実際に反転 (Enable⇄Disable) して
+// 変化を確認し、元の値へ復元する。GetIntegrationServiceEnabled (component 指定、ロケール非依存)
+// で読むため、homelab が日本語 Windows(ElementName がローカライズされる、2026-07-18 実機確認済み)
+// でもスキップされず検証できる。
+//
+// no-op 書き戻し (before と同じ値を書く) だけでは「Set が受理されたが実はサイレントに無視された」
+// ケースを区別できない (Fable レビュー指摘、PR#112)。真の状態遷移を検証するため、①現在値を保存
+// ②反転して Set ③Get で反転後の値を確認 ④元の値へ Set で復元 ⑤Get で復元を確認、の順で行う。
+// 復元は defer で保証し、途中のアサーション失敗でも VM の状態を変えたまま終わらせない。
 //
 // HYPERV_TEST_ALLOW_MUTATION + HYPERV_TEST_TARGET_VM_NAME が必要 (SetMemorySettings と同じ
-// ガード。既定では実機に書き込まない)。
+// ガード。既定では実機に書き込まない)。Heartbeat は host 側監視コンポーネントで guest workload
+// に影響しない (VM の状態表示が一時的に "No Contact" になるだけで数秒〜十数秒で復帰、#63 実測)。
 func TestIntegration_SetIntegrationServiceEnabled(t *testing.T) {
 	if os.Getenv("HYPERV_TEST_ALLOW_MUTATION") == "" {
 		t.Skip("HYPERV_TEST_ALLOW_MUTATION 未設定")
@@ -342,23 +346,43 @@ func TestIntegration_SetIntegrationServiceEnabled(t *testing.T) {
 		t.Fatalf("VM %q が見つからない", target)
 	}
 
-	before, err := client.GetIntegrationServiceEnabled(ctx, vmGUID, IntegrationServiceHeartbeat)
+	original, err := client.GetIntegrationServiceEnabled(ctx, vmGUID, IntegrationServiceHeartbeat)
 	if err != nil {
-		t.Fatalf("GetIntegrationServiceEnabled (before): %v", err)
+		t.Fatalf("GetIntegrationServiceEnabled (original): %v", err)
 	}
+	t.Logf("Heartbeat 元の状態: Enabled=%v", original)
 
-	if err := client.SetIntegrationServiceEnabled(ctx, vmGUID, IntegrationServiceHeartbeat, before); err != nil {
-		t.Fatalf("SetIntegrationServiceEnabled (no-op 書き戻し): %v", err)
+	// 途中で t.Fatal しても元の値へ復元する (defer は Fatal 経由の runtime.Goexit でも実行される)。
+	defer func() {
+		if err := client.SetIntegrationServiceEnabled(context.Background(), vmGUID, IntegrationServiceHeartbeat, original); err != nil {
+			t.Errorf("復元に失敗 (手動で Heartbeat=%v に戻すこと): %v", original, err)
+			return
+		}
+		restored, err := client.GetIntegrationServiceEnabled(context.Background(), vmGUID, IntegrationServiceHeartbeat)
+		if err != nil {
+			t.Errorf("復元後の確認取得に失敗: %v", err)
+			return
+		}
+		if restored != original {
+			t.Errorf("復元後の値が元の値と一致しない: got %v, want %v", restored, original)
+			return
+		}
+		t.Logf("✅ Heartbeat を元の状態 (Enabled=%v) へ復元確認", original)
+	}()
+
+	// 反転: original が true なら false へ、false なら true へ。
+	flipped := !original
+	if err := client.SetIntegrationServiceEnabled(ctx, vmGUID, IntegrationServiceHeartbeat, flipped); err != nil {
+		t.Fatalf("SetIntegrationServiceEnabled (反転): %v", err)
 	}
-
-	after, err := client.GetIntegrationServiceEnabled(ctx, vmGUID, IntegrationServiceHeartbeat)
+	got, err := client.GetIntegrationServiceEnabled(ctx, vmGUID, IntegrationServiceHeartbeat)
 	if err != nil {
-		t.Fatalf("GetIntegrationServiceEnabled (after): %v", err)
+		t.Fatalf("GetIntegrationServiceEnabled (反転後): %v", err)
 	}
-	if after != before {
-		t.Errorf("no-op 書き戻し後に値が変わった: got Enabled=%v, want %v", after, before)
+	if got != flipped {
+		t.Fatalf("反転が反映されていない (サイレント黙殺の疑い): got Enabled=%v, want %v", got, flipped)
 	}
-	t.Logf("✅ Heartbeat EnabledState no-op 書き戻し確認 (ロケール非依存): Enabled=%v", after)
+	t.Logf("✅ Heartbeat 状態遷移を実機で確認: Enabled=%v → %v", original, flipped)
 }
 
 // TestIntegration_SetMemorySettings は対象 VM のメモリ設定を読み取り、同じ値で
