@@ -21,11 +21,22 @@ const DefaultMaxPullIterations = 1000
 type Client struct {
 	endpoint           string
 	transport          *HTTPTransport
-	timeout            time.Duration // 0 の場合はデフォルト（60s）を使用、明示的に設定された場合は上書き
-	timeoutSet         bool          // WithTimeout が呼ばれたかどうか
-	retryConfig        *retryConfig  // nil の場合はリトライなし
-	insecureSkipVerify bool          // WithInsecureSkipVerify で true に。デフォルト false。
-	optErr             error         // オプション適用時のエラー（遅延チェック用）
+	pool               *pooledTransport // NewPooledClient 経由の場合のみ非 nil (#117)
+	timeout            time.Duration    // 0 の場合はデフォルト（60s）を使用、明示的に設定された場合は上書き
+	timeoutSet         bool             // WithTimeout が呼ばれたかどうか
+	retryConfig        *retryConfig     // nil の場合はリトライなし
+	insecureSkipVerify bool             // WithInsecureSkipVerify で true に。デフォルト false。
+	optErr             error            // オプション適用時のエラー（遅延チェック用）
+}
+
+// send は transport (単一) または pool (NewPooledClient) のどちらか設定されている方で
+// SOAP リクエストを送信する。Client の全メソッドはこの関数経由で送信すること
+// (c.transport.Send を直接呼ぶと NewPooledClient で構築した Client のプールが効かない)。
+func (c *Client) send(ctx context.Context, requestData []byte) ([]byte, error) {
+	if c.pool != nil {
+		return c.pool.Send(ctx, requestData)
+	}
+	return c.transport.Send(ctx, requestData)
 }
 
 // ClientOption はクライアント構築時のオプション
@@ -286,7 +297,7 @@ func (c *Client) Put(ctx context.Context, resourceURI string, properties map[str
 		return nil, fmt.Errorf("failed to build Put request: %w", err)
 	}
 
-	respData, err := c.transport.Send(ctx, reqData)
+	respData, err := c.send(ctx, reqData)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send Put request: %w", err)
 	}
@@ -301,7 +312,7 @@ func (c *Client) Get(ctx context.Context, resourceURI string, selectors ...Selec
 		return nil, fmt.Errorf("failed to build Get request: %w", err)
 	}
 
-	respData, err := c.transport.Send(ctx, reqData)
+	respData, err := c.send(ctx, reqData)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send Get request: %w", err)
 	}
@@ -329,7 +340,7 @@ func (c *Client) Enumerate(ctx context.Context, resourceURI string, opts ...Enum
 		return nil, fmt.Errorf("failed to build Enumerate request: %w", err)
 	}
 
-	enumRespData, err := c.transport.Send(ctx, enumReqData)
+	enumRespData, err := c.send(ctx, enumReqData)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send Enumerate request: %w", err)
 	}
@@ -348,7 +359,7 @@ func (c *Client) Enumerate(ctx context.Context, resourceURI string, opts ...Enum
 			return nil, fmt.Errorf("failed to build Pull request: %w", err)
 		}
 
-		pullRespData, err := c.transport.Send(ctx, pullReqData)
+		pullRespData, err := c.send(ctx, pullReqData)
 		if err != nil {
 			return nil, fmt.Errorf("failed to send Pull request: %w", err)
 		}
@@ -378,7 +389,7 @@ func (c *Client) Create(ctx context.Context, resourceURI string, properties map[
 		return nil, fmt.Errorf("failed to build Create request: %w", err)
 	}
 
-	respData, err := c.transport.Send(ctx, reqData)
+	respData, err := c.send(ctx, reqData)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send Create request: %w", err)
 	}
@@ -398,7 +409,7 @@ func (c *Client) Invoke(ctx context.Context, resourceURI, methodName string, par
 		return nil, fmt.Errorf("failed to build Invoke request: %w", err)
 	}
 
-	respData, err := c.transport.Send(ctx, reqData)
+	respData, err := c.send(ctx, reqData)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send Invoke request: %w", err)
 	}
@@ -416,7 +427,7 @@ func (c *Client) InvokeMulti(ctx context.Context, resourceURI, methodName string
 		return nil, fmt.Errorf("failed to build Invoke request: %w", err)
 	}
 
-	respData, err := c.transport.Send(ctx, reqData)
+	respData, err := c.send(ctx, reqData)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send Invoke request: %w", err)
 	}
@@ -432,7 +443,7 @@ func (c *Client) Delete(ctx context.Context, resourceURI string, selectors ...Se
 		return fmt.Errorf("failed to build Delete request: %w", err)
 	}
 
-	respData, err := c.transport.Send(ctx, reqData)
+	respData, err := c.send(ctx, reqData)
 	if err != nil {
 		return fmt.Errorf("failed to send Delete request: %w", err)
 	}
