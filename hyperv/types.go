@@ -465,3 +465,29 @@ type Msvm_SettingDataComponent struct {
 	GroupComponent string `cim:"GroupComponent"` // 親 NIC (Port SettingData) の InstanceID
 	PartComponent  string `cim:"PartComponent"`  // Msvm_GuestNetworkAdapterConfiguration の InstanceID
 }
+
+// BootSourceType 定数 (CIM 仕様: Msvm_BootSourceSettingData.BootSourceType)。
+const (
+	BootSourceTypeUnknown uint32 = 0
+	BootSourceTypeDrive   uint32 = 1
+	BootSourceTypeNetwork uint32 = 2
+	BootSourceTypeFile    uint32 = 3
+)
+
+// Msvm_BootSourceSettingData は Gen2 VM のファームウェアブートソース 1 件を表す。
+// 名前空間: root/virtualization/v2。Msvm_VirtualSystemSettingData.BootSourceOrder[] の各要素
+// (WMI オブジェクトパス文字列) が指す先。
+//
+// 実機確認 (2026-07-26、日本語ホスト): ElementName/Caption/Description はホスト言語で
+// ローカライズされる (日本語ホストで「ブート ソース」「ファームウェア ブート ソースの設定」)。
+// **BootSourceDescription はロケール非依存で英語のまま残る**(実機で "EFI Network" /
+// "EFI SCSI Device" を確認)。種別判定には BootSourceType (数値) と BootSourceDescription を使い、
+// ElementName/Caption/Description には依存しないこと。
+type Msvm_BootSourceSettingData struct {
+	InstanceID            string `cim:"InstanceID"`
+	ElementName           string `cim:"ElementName"`           // ローカライズされる、種別判定に使わない
+	BootSourceType        uint32 `cim:"BootSourceType"`        // 0=Unknown, 1=Drive, 2=Network, 3=File
+	BootSourceDescription string `cim:"BootSourceDescription"` // ロケール非依存 (実機確認済み)
+	FirmwareDevicePath    string `cim:"FirmwareDevicePath"`
+	OtherLocation         string `cim:"OtherLocation"`
+}

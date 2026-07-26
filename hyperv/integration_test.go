@@ -965,3 +965,31 @@ func TestIntegration_ScsiVhdLifecycle(t *testing.T) {
 		t.Errorf("DetachStorage: %v", err)
 	}
 }
+
+// TestIntegration_ListBootSources は Msvm_BootSourceSettingData の列挙を実機で検証する
+// (read-only、Slice D firmware Gen2 READ の土台)。既存 VM を対象にする。Gen1 VM は
+// BootSourceSettingData を持たない (0 件) 想定 (Gen2 専用機能のため)。
+func TestIntegration_ListBootSources(t *testing.T) {
+	client := getIntegrationClient(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	vms, err := client.ListComputerSystems(ctx)
+	if err != nil {
+		t.Fatalf("ListComputerSystems: %v", err)
+	}
+	if len(vms) == 0 {
+		t.Skip("Hyper-V ホストに VM が存在しない")
+	}
+
+	for _, vm := range vms {
+		sources, err := client.ListBootSources(ctx, vm.Name)
+		if err != nil {
+			t.Fatalf("ListBootSources(%s): %v", vm.ElementName, err)
+		}
+		t.Logf("VM %q: BootSources = %d", vm.ElementName, len(sources))
+		for i, s := range sources {
+			t.Logf("  [%d] Type=%d Description=%q InstanceID=%s", i, s.BootSourceType, s.BootSourceDescription, s.InstanceID)
+		}
+	}
+}
