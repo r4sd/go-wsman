@@ -424,3 +424,34 @@ type Msvm_ConcreteJob struct {
 	ErrorCode        uint16 `cim:"ErrorCode"`
 	ErrorDescription string `cim:"ErrorDescription"`
 }
+
+// Msvm_GuestNetworkAdapterConfiguration はゲスト OS 内の NIC 設定 (IP アドレス等) を表す。
+// 名前空間: root/virtualization/v2。
+//
+// wait_for_ips (PS の Wait-VM -For IPAddress 相当) の go-wsman 化に使う。IPAddresses は
+// ゲスト OS から報告された実際の IP (DHCP/静的問わず)。InstanceID の形式はゲスト内 NIC 由来で
+// VM GUID を含まないため (実機確認要)、単体では VM に絞り込めない。どの NIC (Msvm_
+// SyntheticEthernetPortSettingData) に属するかは Msvm_SettingDataComponent 経由で辿る。
+type Msvm_GuestNetworkAdapterConfiguration struct {
+	InstanceID       string   `cim:"InstanceID"`
+	ProtocolIFType   uint16   `cim:"ProtocolIFType"`
+	DHCPEnabled      bool     `cim:"DHCPEnabled"`
+	IPAddresses      []string `cim:"IPAddresses"`
+	Subnets          []string `cim:"Subnets"`
+	DefaultGateways  []string `cim:"DefaultGateways"`
+	DNSServers       []string `cim:"DNSServers"`
+	IPAddressOrigins []uint16 `cim:"IPAddressOrigins"`
+}
+
+// Msvm_SettingDataComponent は Msvm_SyntheticEthernetPortSettingData (または
+// Msvm_EmulatedEthernetPortSettingData) と Msvm_GuestNetworkAdapterConfiguration を結ぶ
+// association。名前空間: root/virtualization/v2。
+//
+// GroupComponent/PartComponent は CIM の REF プロパティだが、他の SettingData 参照
+// (Msvm_EthernetPortAllocationSettingData.Parent/HostResource 等) と同じく WMI オブジェクト
+// パス文字列として表現される想定 (実機確認要)。呼び出し側は Parent/HostResource と同じ
+// InstanceID 抽出ロジックで GroupComponent/PartComponent から対象の InstanceID を取り出す。
+type Msvm_SettingDataComponent struct {
+	GroupComponent string `cim:"GroupComponent"` // 親 NIC (Port SettingData) の EPR
+	PartComponent  string `cim:"PartComponent"`  // Msvm_GuestNetworkAdapterConfiguration の EPR
+}
