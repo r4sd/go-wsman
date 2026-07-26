@@ -13,9 +13,11 @@ const (
 // ListGuestNetworkAdapterConfigurations は全 VM のゲスト OS 内 NIC 設定 (IP アドレス等) を
 // 無フィルタで列挙する。
 //
-// InstanceID がゲスト内 NIC 由来で VM GUID を含まない (実機確認要、types.go 参照) ため、この
-// primitive は go-wsman 側で VM 絞り込みをしない。呼び出し側が ListSettingDataComponents の
-// 結果 (Port InstanceID → この InstanceID への対応) で目的の VM/NIC に絞り込む。
+// InstanceID は "Microsoft:GuestNetwork\<VM GUID>\<NIC 側 GUID>" 形式で VM GUID を含むが
+// (実機確認済み、types.go 参照)、対応する Port SettingData の InstanceID とは "GuestNetwork\" の
+// 有無だけが違い単純な文字列操作では対応が取りづらいため、この primitive は go-wsman 側で
+// VM 絞り込みをしない。呼び出し側が ListSettingDataComponents の結果 (Port InstanceID → この
+// InstanceID への対応) で目的の VM/NIC に絞り込む。
 func (c *Client) ListGuestNetworkAdapterConfigurations(ctx context.Context) ([]*Msvm_GuestNetworkAdapterConfiguration, error) {
 	instances, err := c.wsman.Enumerate(ctx, msvmGuestNetworkAdapterConfigurationURI)
 	if err != nil {
@@ -35,8 +37,9 @@ func (c *Client) ListGuestNetworkAdapterConfigurations(ctx context.Context) ([]*
 // ListSettingDataComponents は Port SettingData (Msvm_SyntheticEthernetPortSettingData 等) と
 // Msvm_GuestNetworkAdapterConfiguration を結ぶ association を無フィルタで列挙する。
 //
-// GroupComponent/PartComponent の EPR 文字列から対象 InstanceID を取り出すのは呼び出し側の責務
-// (Msvm_EthernetPortAllocationSettingData.Parent/HostResource と同じ抽出ロジックを使う)。
+// GroupComponent/PartComponent は Parent/HostResource と違い WMI オブジェクトパス文字列ではなく
+// 素の InstanceID がそのまま返る (実機確認済み、types.go 参照)。呼び出し側は Port/
+// GuestNetworkAdapterConfiguration の InstanceID とそのまま突き合わせられる。
 func (c *Client) ListSettingDataComponents(ctx context.Context) ([]*Msvm_SettingDataComponent, error) {
 	instances, err := c.wsman.Enumerate(ctx, msvmSettingDataComponentURI)
 	if err != nil {

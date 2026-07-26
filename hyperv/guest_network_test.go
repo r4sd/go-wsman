@@ -26,8 +26,8 @@ func guestNetInstance(instanceID string, dhcpEnabled bool, ips ...string) string
 }
 
 // sdcInstance は Msvm_SettingDataComponent (association) 1 件分の XML を組み立てる。
-// GroupComponent/PartComponent は Parent/HostResource と同じ WMI オブジェクトパス文字列と仮定する
-// (実機確認要、hyperv/types.go の Msvm_SettingDataComponent コメント参照)。
+// GroupComponent/PartComponent は素の InstanceID がそのまま返る (実機確認済み、hyperv/types.go の
+// Msvm_SettingDataComponent コメント参照。Parent/HostResource の WMI オブジェクトパス文字列とは違う)。
 func sdcInstance(groupComponentRef, partComponentRef string) string {
 	return `        <p:Msvm_SettingDataComponent>
           <p:GroupComponent>` + groupComponentRef + `</p:GroupComponent>
@@ -90,8 +90,9 @@ func TestClient_ListGuestNetworkAdapterConfigurations_Empty(t *testing.T) {
 }
 
 func TestClient_ListSettingDataComponents(t *testing.T) {
-	const groupRef = `\\HOST\root\virtualization\v2:Msvm_SyntheticEthernetPortSettingData.InstanceID="Microsoft:11111111-aaaa-bbbb-cccc-000000000001\\port-1"`
-	const partRef = `\\HOST\root\virtualization\v2:Msvm_GuestNetworkAdapterConfiguration.InstanceID="guest-nic-1"`
+	// 実機確認済みの形式: 素の InstanceID (WMI オブジェクトパス文字列ではない)。
+	const groupRef = `Microsoft:11111111-aaaa-bbbb-cccc-000000000001\port-1`
+	const partRef = `Microsoft:GuestNetwork\11111111-aaaa-bbbb-cccc-000000000001\port-1`
 	pull := compPull("Msvm_SettingDataComponent", sdcInstance(groupRef, partRef))
 
 	var bodies []string
