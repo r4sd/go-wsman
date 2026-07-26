@@ -11,9 +11,11 @@ const msvmBootSourceSettingDataURI = nsVirtV2 + "/Msvm_BootSourceSettingData"
 
 // ListBootSources は指定 VM のファームウェアブートソース (Msvm_BootSourceSettingData) を列挙する。
 //
-// Gen2 VM の Msvm_VirtualSystemSettingData.BootSourceOrder[] が参照する先。順序は
-// BootSourceOrder[] 側 (WMI オブジェクトパス文字列、既存の EPR 抽出ロジックで InstanceID化) の
-// 並びで決まり、本メソッドの戻り値の並び順に意味はない (呼び出し側で BootSourceOrder と突き合わせる)。
+// Gen2 VM の Msvm_VirtualSystemSettingData.BootSourceOrder[] が参照する先。BootSourceOrder[] の
+// 各要素は WMI オブジェクトパス文字列 (Parent/HostResource と同形式) で、この InstanceID を指す。
+// 順序は BootSourceOrder[] 側の並びで決まり、本メソッドの戻り値の並び順に意味はない。パス文字列
+// から InstanceID を取り出す処理は go-wsman にはまだ無く (未実装、Slice D 本実装で追加予定)、
+// 呼び出し側で BootSourceOrder と突き合わせる。
 func (c *Client) ListBootSources(ctx context.Context, vmGUID string) ([]*Msvm_BootSourceSettingData, error) {
 	if vmGUID == "" {
 		return nil, fmt.Errorf("ListBootSources: vmGUID must not be empty")
