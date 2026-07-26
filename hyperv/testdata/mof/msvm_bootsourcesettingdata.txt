@@ -1,0 +1,8 @@
+# Msvm_BootSourceSettingData (root/virtualization/v2)
+# 出典: https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/msvm-bootsourcesettingdata
+InstanceID string
+ElementName string
+BootSourceType uint32
+BootSourceDescription string
+FirmwareDevicePath string
+OtherLocation string

@@ -252,3 +252,13 @@ func TestCIMCompliance_IntegrationComponentSettingData(t *testing.T) {
 		nil, // 許容逸脱なし
 	)
 }
+
+// TestCIMCompliance_BootSourceSettingData は Slice D (firmware Gen2) の
+// ListBootSources が返す cim タグが MOF と整合するか検証する (#80)。
+func TestCIMCompliance_BootSourceSettingData(t *testing.T) {
+	assertCIMCompliance(t,
+		&Msvm_BootSourceSettingData{},
+		"msvm_bootsourcesettingdata.txt",
+		nil, // 許容逸脱なし
+	)
+}
