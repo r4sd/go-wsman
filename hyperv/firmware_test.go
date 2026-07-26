@@ -73,3 +73,15 @@ func TestClient_ListBootSources_EmptyVMGUID(t *testing.T) {
 		t.Fatal("空 vmGUID はエラーになるべき")
 	}
 }
+
+// TestClient_BootSourceRef は BootSourceOrder[] へ書き込む WMI オブジェクトパス参照文字列の形式を
+// 検証する (resolveBootOrders の実機確認済み対応規則の逆変換、deviceInstanceID + "\B")。
+func TestClient_BootSourceRef(t *testing.T) {
+	client, _ := NewClient("http://example.invalid/wsman")
+	deviceInstanceID := `Microsoft:11111111-aaaa-bbbb-cccc-000000000001\nic-guid`
+	got := client.BootSourceRef(deviceInstanceID)
+	want := `Msvm_BootSourceSettingData.InstanceID="Microsoft:11111111-aaaa-bbbb-cccc-000000000001\\nic-guid\\B"`
+	if !strings.HasSuffix(got, want) {
+		t.Errorf("BootSourceRef:\ngot  %s\nwant suffix %s", got, want)
+	}
+}
