@@ -37,3 +37,16 @@ func (c *Client) ListBootSources(ctx context.Context, vmGUID string) ([]*Msvm_Bo
 	}
 	return result, nil
 }
+
+// BootSourceRef は BootSourceOrder[] に書き込む WMI オブジェクトパス参照文字列を生成する。
+//
+// deviceInstanceID (NIC/Drive の Msvm_SyntheticEthernetPortSettingData や
+// Msvm_ResourceAllocationSettingData の InstanceID) に "\B" を付けたものが対象
+// Msvm_BootSourceSettingData.InstanceID と一致する実機確認済みの対応規則 (ListBootSources 側で
+// 読み取り時に検証済み、resolveBootOrders 参照)。この関数はその逆変換で、
+// Msvm_VirtualSystemSettingData.BootSourceOrder[] に書き込む参照文字列を組み立てる。
+func (c *Client) BootSourceRef(deviceInstanceID string) string {
+	return wmiObjectPath(c.hostName, msvmBootSourceSettingDataURI, map[string]string{
+		"InstanceID": deviceInstanceID + `\B`,
+	})
+}
