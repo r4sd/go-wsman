@@ -61,6 +61,34 @@ func TestClient_GetComputerSystem(t *testing.T) {
 	}
 }
 
+// TestNewPooledClient は wsman.NewPooledClient をラップした hyperv.NewPooledClient が
+// 通常の Client と同じ API で機能することを検証する (#117 の並行 NTLM 401 対策)。
+func TestNewPooledClient(t *testing.T) {
+	respXML := loadGolden(t, "get_response_computersystem.xml")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, err := io.ReadAll(r.Body); err != nil {
+			t.Errorf("failed to read request body: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/soap+xml; charset=utf-8")
+		_, _ = w.Write([]byte(respXML))
+	}))
+	defer server.Close()
+
+	client, err := NewPooledClient(3, server.URL)
+	if err != nil {
+		t.Fatalf("NewPooledClient: %v", err)
+	}
+
+	got, err := client.GetComputerSystem(context.Background(), "5C5E2D70-1111-2222-3333-444455556666")
+	if err != nil {
+		t.Fatalf("GetComputerSystem: %v", err)
+	}
+	if got.Name != "5C5E2D70-1111-2222-3333-444455556666" {
+		t.Errorf("Name: got %q", got.Name)
+	}
+}
+
 // TestClient_ListComputerSystems は Enumerate で全 VM を取得するテスト。
 func TestClient_ListComputerSystems(t *testing.T) {
 	enumXML := loadGolden(t, "enumerate_response_computersystem.xml")

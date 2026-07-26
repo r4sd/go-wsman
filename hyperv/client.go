@@ -36,6 +36,18 @@ func NewClient(endpoint string, opts ...wsman.ClientOption) (*Client, error) {
 	return &Client{wsman: wc}, nil
 }
 
+// NewPooledClient は wsman.NewPooledClient をラップした hyperv.Client を生成する。
+// size 個の独立したコネクションプールを使い分けることで、NTLM 認証時の並行リクエストが
+// ハンドシェイクの干渉で 401 になる問題 (#117) を避ける。Terraform 等 size を超える並行数の
+// 呼び出し元では、超過分は空きスロット待ちでブロックする。
+func NewPooledClient(size int, endpoint string, opts ...wsman.ClientOption) (*Client, error) {
+	wc, err := wsman.NewPooledClient(size, endpoint, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &Client{wsman: wc}, nil
+}
+
 // GetComputerSystem は Name（VM GUID）で単一 VM を取得する。
 func (c *Client) GetComputerSystem(ctx context.Context, name string) (*Msvm_ComputerSystem, error) {
 	resp, err := c.wsman.Get(ctx, msvmComputerSystemURI,
