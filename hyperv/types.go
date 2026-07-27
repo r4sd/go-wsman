@@ -109,6 +109,18 @@ const (
 	NetworkBootPreferredProtocolIPv6 uint16 = 4097
 )
 
+// UserSnapshotType 定数（Msvm_VirtualSystemSettingData.UserSnapshotType）。
+//
+// チェックポイント種別。PowerShell の Microsoft.HyperV.PowerShell.CheckpointType
+// (Disabled/Production/ProductionOnly/Standard) と数値は一致するが CIM 側の
+// メンバー名は異なる (#106 MOF 一次資料確認)。
+const (
+	UserSnapshotTypeDisable                  uint16 = 2 // PS: Disabled
+	UserSnapshotTypeProductionFallbackToTest uint16 = 3 // PS: Production (アプリ整合スナップショット、失敗時 Standard にフォールバック)
+	UserSnapshotTypeProductionNoFallback     uint16 = 4 // PS: ProductionOnly (フォールバックなし)
+	UserSnapshotTypeTest                     uint16 = 5 // PS: Standard (メモリ/デバイス状態を含む)
+)
+
 // ConsoleMode 定数（Msvm_VirtualSystemSettingData.ConsoleMode）。
 //
 // VM のコンソール出力先。COM1/COM2 を指定するとシリアル経由で OS の
@@ -355,6 +367,7 @@ type Msvm_VirtualSystemSettingData struct {
 	PauseAfterBootFailure        bool   `cim:"PauseAfterBootFailure"`        // BIOS が boot 失敗で一時停止 (MOF は boolean、OnOffState ではない)
 	Version                      string `cim:"Version"`                      // 構成バージョン（例: "10.0"）
 	CreationTime                 string `cim:"CreationTime"`                 // CIM DateTime（文字列）
+	UserSnapshotType             uint16 `cim:"UserSnapshotType"`             // チェックポイント種別 (#106、値は UserSnapshotType* 定数参照)
 }
 
 // VlanOperationMode 定数群 (Msvm_EthernetSwitchPortVlanSettingData.OperationMode、CIM 型 uint32)。

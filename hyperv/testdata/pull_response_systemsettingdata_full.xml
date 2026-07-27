@@ -34,6 +34,7 @@
           <p:NetworkBootPreferredProtocol>4097</p:NetworkBootPreferredProtocol>
           <p:ConsoleMode>1</p:ConsoleMode>
           <p:PauseAfterBootFailure>TRUE</p:PauseAfterBootFailure>
+          <p:UserSnapshotType>4</p:UserSnapshotType>
           <p:Version>10.0</p:Version>
         </p:Msvm_VirtualSystemSettingData>
       </e:Items>
