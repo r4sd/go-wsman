@@ -399,6 +399,10 @@ func TestClient_GetSystemSettingData_FullFields(t *testing.T) {
 	if !got.PauseAfterBootFailure {
 		t.Errorf("PauseAfterBootFailure: want true")
 	}
+	if got.UserSnapshotType != UserSnapshotTypeProductionNoFallback {
+		t.Errorf("UserSnapshotType: got %d, want %d (ProductionNoFallback)",
+			got.UserSnapshotType, UserSnapshotTypeProductionNoFallback)
+	}
 
 	// Gen2 ファームウェア enum (#51)
 	if got.NetworkBootPreferredProtocol != NetworkBootPreferredProtocolIPv6 {
