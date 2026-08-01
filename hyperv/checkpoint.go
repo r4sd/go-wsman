@@ -147,6 +147,33 @@ func (c *Client) DestroyVmCheckpoint(ctx context.Context, checkpointInstanceID s
 	return jobRef, nil
 }
 
+// RenameVmCheckpoint はチェックポイントの表示名 (ElementName) を変更する (#123)。
+//
+// CreateSnapshot はチェックポイント名を指定する経路を持たない (SnapshotSettings の型
+// Msvm_VirtualSystemSnapshotSettingData は ConsistencyLevel / IgnoreNonSnapshottableDisks /
+// GuestBackupType の 3 つだけで ElementName を含まない)。Hyper-V は既定で
+// "<VM名> - (YYYY/MM/DD - HH:MM:SS)" を付けるため、任意の名前にするには作成後の
+// リネームが必要になる。
+//
+// 実装は VSMS の ModifySystemSettings (UpdateVm と同じ CIM メソッド)。スナップショットの
+// SettingData (VirtualSystemType=Snapshot:Realized) を受理することは一次資料からは
+// 判断できなかったため実機で確認済み (ElementName が実際に書き換わることを読み直して検証)。
+func (c *Client) RenameVmCheckpoint(ctx context.Context, checkpointInstanceID, newName string) (string, error) {
+	if checkpointInstanceID == "" {
+		return "", fmt.Errorf("RenameVmCheckpoint: checkpointInstanceID must not be empty")
+	}
+	if newName == "" {
+		// ElementName はゼロ値だと marshalEmbeddedInstance が送信しない (= 変更なし) ため、
+		// 空名を「リネームした」と誤報告しないよう明示的に弾く。
+		return "", fmt.Errorf("RenameVmCheckpoint: newName must not be empty")
+	}
+
+	return c.UpdateVm(ctx, &Msvm_VirtualSystemSettingData{
+		InstanceID:  checkpointInstanceID,
+		ElementName: newName,
+	})
+}
+
 // ListVmCheckpoints は指定 VM のチェックポイント (Snapshot:Realized) を列挙する。
 //
 // GetSystemSettingData/ListSystemSettingData (vm.go) と同じパターン: Hyper-V は WQL
