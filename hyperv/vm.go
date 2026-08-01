@@ -3,6 +3,7 @@ package hyperv
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/r4sd/go-wsman/wsman"
 )
@@ -15,9 +16,13 @@ const (
 // matchRealizedSettingDataForVM は SettingData が指定 VM の Realized 構成かを判定する純関数。
 //
 // 元の WQL `VirtualSystemIdentifier="<vm>" AND VirtualSystemType="Realized"` と同じ絞り込み。
-// VirtualSystemIdentifier は VM GUID と完全一致 (実機の GUID は常に同一表記)。
+//
+// GUID は大文字小文字を無視して比較する。実機が返す GUID は常に大文字表記だが、呼び出し側が
+// 小文字で渡すと「エラーにならず 0 件」という気付きにくい故障になる (#103 の case-sensitivity
+// 事故、および VirtualSystemType 定数の誤りで ListVmCheckpoints が常に 0 件だった事例と同じ
+// 故障モード)。より寛容にするだけなので既存の一致ケースは壊さない。
 func matchRealizedSettingDataForVM(vmIdentifier, vmType, vmName string) bool {
-	return vmIdentifier == vmName && vmType == VirtualSystemTypeRealized
+	return strings.EqualFold(vmIdentifier, vmName) && vmType == VirtualSystemTypeRealized
 }
 
 // matchRealizedSettingData は SettingData が Realized 構成かを判定する純関数。
@@ -215,9 +220,14 @@ func (c *Client) DestroySystem(ctx context.Context, vmName string) (string, erro
 //
 // clearReadOnlyForModify は ModifySystemSettings に渡してはいけない read-only プロパティを
 // ゼロ値にする。InstanceID (キー) は対象 VM 特定に必須なので残す。read-only 値を送り返すと
-// Hyper-V がジョブを Exception で失敗させる。Read/Write 修飾子は MS 公式 MOF
-// (Msvm_VirtualSystemSettingData) に準拠。ElementName / Notes / Automatic*Action /
-// MMIO / BootSourceOrder 等の変更可能フィールドは保持する。
+// Hyper-V がジョブを Exception で失敗させる。
+//
+// クリア対象は実機検証で決めている。**MOF の Access type は ModifySystemSettings が受理するか
+// の判定基準にならない**: 例えば ElementName / Notes / Automatic*Action は MOF 上 Read-only
+// だが実際には書き換えられる (VM のリネーム・チェックポイントのリネームで実証)。MOF 自身も
+// SecureBootTemplateId の説明で「read-only だが ModifyVirtualSystem で変更できる」と述べており、
+// Access type と書き込み可否が一致しないことを認めている。保持する側 (ElementName / Notes /
+// Automatic*Action / MMIO / BootSourceOrder 等) も同じく実機で書けることを確認した結果。
 func clearReadOnlyForModify(sd *Msvm_VirtualSystemSettingData) {
 	sd.VirtualSystemIdentifier = ""
 	sd.VirtualSystemType = ""

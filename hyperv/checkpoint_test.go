@@ -42,8 +42,11 @@ func TestClient_CreateVmCheckpoint(t *testing.T) {
 	if got.JobRef != "1A2B3C4D-5555-6666-7777-888899990000" {
 		t.Errorf("JobRef: got %q", got.JobRef)
 	}
-	if got.SnapshotRef == "" {
-		t.Errorf("SnapshotRef: got empty, want ResultingSnapshot InstanceID")
+	// 実機は非同期 (4096) のとき ResultingSnapshot を返さない (2026-08-01 実機確認)。
+	// 「SnapshotRef が取れること」を緑の条件にすると、実機に存在しない挙動を仕様として
+	// 固定してしまう。作成したチェックポイントの特定方法は #125 で追跡。
+	if got.SnapshotRef != "" {
+		t.Errorf("SnapshotRef: got %q, want empty (非同期応答に ResultingSnapshot は含まれない)", got.SnapshotRef)
 	}
 
 	if !strings.Contains(capturedBody, "AffectedSystem") {
