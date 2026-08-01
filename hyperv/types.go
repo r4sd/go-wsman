@@ -57,9 +57,13 @@ type Msvm_VirtualHardDiskSettingData struct {
 //
 // 同一 VM に対して複数の SettingData が存在する。VM の現在の構成を取得するには
 // Realized を使う（Snapshot/Planned はチェックポイント・予定設定の表現）。
+// スナップショット系は "System:" セグメントを含まない (VM 本体のみ "System:" が入る)。
+// MOF 一次資料の値一覧と実機ダンプの双方で確認済み。Snapshot: には Realized 以外に
+// Recovery / Planned / Missing / Replica:* があるが、ユーザーが作るチェックポイントは
+// Realized のみのため他は定数化していない。
 const (
 	VirtualSystemTypeRealized         = "Microsoft:Hyper-V:System:Realized"
-	VirtualSystemTypeSnapshotRealized = "Microsoft:Hyper-V:System:Snapshot:Realized"
+	VirtualSystemTypeSnapshotRealized = "Microsoft:Hyper-V:Snapshot:Realized"
 	VirtualSystemTypePlanned          = "Microsoft:Hyper-V:System:Planned"
 )
 

@@ -235,3 +235,60 @@ func TestClient_ListVmCheckpoints_EmptyName(t *testing.T) {
 		t.Error("expected error for empty vmName")
 	}
 }
+
+// TestClient_RenameVmCheckpoint はチェックポイントのリネーム要求が
+// ModifySystemSettings として組み立てられ、InstanceID + ElementName だけの
+// 最小インスタンスが送られることを検証する。
+func TestClient_RenameVmCheckpoint(t *testing.T) {
+	respXML := loadGolden(t, "invoke_response_modify_system_settings.xml")
+
+	var capturedBody string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read body: %v", err)
+		}
+		capturedBody = string(body)
+		w.Header().Set("Content-Type", "application/soap+xml; charset=utf-8")
+		_, _ = w.Write([]byte(respXML))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(server.URL)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	const checkpointID = "Microsoft:C7AA2991-F64D-4B6C-A8AD-D5EB5107B68A"
+	jobRef, err := client.RenameVmCheckpoint(context.Background(), checkpointID, "my-checkpoint")
+	if err != nil {
+		t.Fatalf("RenameVmCheckpoint: %v", err)
+	}
+	if jobRef == "" {
+		t.Error("expected job reference, got empty string")
+	}
+
+	if !strings.Contains(capturedBody, "ModifySystemSettings") {
+		t.Errorf("request body should contain method name ModifySystemSettings")
+	}
+	if !strings.Contains(capturedBody, checkpointID) {
+		t.Errorf("request body should contain checkpoint InstanceID")
+	}
+	if !strings.Contains(capturedBody, "my-checkpoint") {
+		t.Errorf("request body should contain the new ElementName")
+	}
+}
+
+// TestClient_RenameVmCheckpoint_Validation は引数が空のときに即エラーを返す。
+func TestClient_RenameVmCheckpoint_Validation(t *testing.T) {
+	client, err := NewClient("http://localhost")
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	if _, err := client.RenameVmCheckpoint(context.Background(), "", "name"); err == nil {
+		t.Error("expected error for empty checkpointInstanceID")
+	}
+	if _, err := client.RenameVmCheckpoint(context.Background(), "Microsoft:xxx", ""); err == nil {
+		t.Error("expected error for empty newName")
+	}
+}

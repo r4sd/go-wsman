@@ -24,7 +24,7 @@
           <p:InstanceID>Microsoft:11111111-aaaa-bbbb-cccc-000000000001\SNAP-0001</p:InstanceID>
           <p:ElementName>vm-1 checkpoint</p:ElementName>
           <p:VirtualSystemIdentifier>11111111-aaaa-bbbb-cccc-000000000001</p:VirtualSystemIdentifier>
-          <p:VirtualSystemType>Microsoft:Hyper-V:System:Snapshot:Realized</p:VirtualSystemType>
+          <p:VirtualSystemType>Microsoft:Hyper-V:Snapshot:Realized</p:VirtualSystemType>
           <p:VirtualSystemSubType>Microsoft:Hyper-V:SubType:2</p:VirtualSystemSubType>
           <p:ConfigurationID>11111111-aaaa-bbbb-cccc-000000000001</p:ConfigurationID>
           <p:SecureBootEnabled>TRUE</p:SecureBootEnabled>
