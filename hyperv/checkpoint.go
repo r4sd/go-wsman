@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/r4sd/go-wsman/wsman"
 )
@@ -20,9 +21,9 @@ const (
 )
 
 // vssSelectors は Msvm_VirtualSystemSnapshotService (シングルトン) のメソッド呼び出しに
-// 付与する SelectorSet を返す。vsmsSelectors (vm.go) と同じ想定 (CreationClassName だけで
-// シングルトンを一意特定できる) だが、こちらは実機 acc test で未確認 (#57 着手時点)。
-// 実機で WBEM_E_INVALID_METHOD_PARAMETERS になる場合は selector を見直すこと。
+// 付与する SelectorSet を返す。vsmsSelectors (vm.go) と同じく CreationClassName だけで
+// シングルトンを一意特定できることを実機で確認済み (2026-08-01、CreateSnapshot /
+// ApplySnapshot / DestroySnapshot が実際に成功)。
 func vssSelectors() []wsman.Selector {
 	return []wsman.Selector{
 		{Name: "CreationClassName", Value: "Msvm_VirtualSystemSnapshotService"},
@@ -31,15 +32,25 @@ func vssSelectors() []wsman.Selector {
 
 // matchSnapshotSettingDataForVM は SettingData が指定 VM のチェックポイント
 // (VirtualSystemType=Snapshot:Realized) かを判定する純関数。
-// matchRealizedSettingDataForVM (vm.go) の Snapshot 版。
+// matchRealizedSettingDataForVM (vm.go) の Snapshot 版で、GUID の比較も同じく
+// 大文字小文字非依存 (不一致時の故障が「黙って 0 件」になるため)。
 func matchSnapshotSettingDataForVM(vmIdentifier, vmType, vmName string) bool {
-	return vmIdentifier == vmName && vmType == VirtualSystemTypeSnapshotRealized
+	return strings.EqualFold(vmIdentifier, vmName) && vmType == VirtualSystemTypeSnapshotRealized
 }
 
 // CreateVmCheckpointResult は CreateVmCheckpoint の戻り値。
 type CreateVmCheckpointResult struct {
-	JobRef      string // 非同期 Job 参照 (Msvm_ConcreteJob.InstanceID)。同期成功時は空。
-	SnapshotRef string // 作成されたチェックポイントの Msvm_VirtualSystemSettingData.InstanceID
+	JobRef string // 非同期 Job 参照 (Msvm_ConcreteJob.InstanceID)。同期成功時は空。
+
+	// SnapshotRef は作成されたチェックポイントの Msvm_VirtualSystemSettingData.InstanceID。
+	//
+	// ⚠️ 非同期 (ReturnValue="4096") のとき実機は空を返す (2026-08-01 確認)。MOF 上
+	// ResultingSnapshot は [in, out] だが、メソッド応答の時点ではスナップショットが
+	// 確定していないため値が乗らない。CreateSnapshot は実運用でほぼ常に 4096 を返すので、
+	// このフィールドを当てにしないこと。作成したチェックポイントを特定するには
+	// ListVmCheckpoints を作成前後で呼んで差分を取る (#125 で恒久策を追跡)。
+	SnapshotRef string
+
 	ReturnValue string // "0"=同期成功, "4096"=非同期 Job 開始
 }
 
