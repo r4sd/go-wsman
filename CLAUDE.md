@@ -9,6 +9,11 @@ WS-Management (WS-Man) プロトコルの Go 実装。
 > 定義」は terraform-provider-hyperv リポジトリの `CLAUDE.md`(シャドウ移行 DoD)を参照。
 > go-wsman 側 primitive を足す時は、その ①MOF 一次資料検証 → ②TDD → provider 側 ③shadow の
 > 流れの一部を担う。
+>
+> **provider を伴わない go-wsman 単独の PR も DoD ⑥(Fable 批判的レビュー)の対象**。PR 作成と
+> 同時にバックグラウンドで起動し CI と並走させ、**CI green だけでマージしない**。2026-08-01 に
+> 単独 PR でこれを飛ばし、事後レビューで CONFIRMED(手書き golden が実機に無い挙動を仕様として
+> 固定していた)が出た。golden 手書きは本リポジトリ特有の事故源なので、単独 PR ほど効く。
 
 ## アーキテクチャ
 
