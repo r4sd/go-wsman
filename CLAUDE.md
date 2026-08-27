@@ -76,7 +76,7 @@ const (
 
 ## CIM 仕様確認 (新規 Msvm_* クラス実装前 **必須**)
 
-CIM クラスを Go 構造体にバインドする際の一次資料は **Microsoft 公式 MOF**。URL は **アンダースコア除去 + 全小文字** のスラグ形式:
+CIM クラスを Go 構造体にバインドする際の一次資料は **Microsoft 公式 MOF**。URL は **アンダースコアをハイフンに置換 + 全小文字** のスラグ形式:
 
 ```
 https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/msvm-<class-slug>

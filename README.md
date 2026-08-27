@@ -62,7 +62,6 @@ hyperv/  ← Hyper-V CIM バインディング層（Msvm_* の型安全ラッパ
 
 - **Kerberos 認証**(Active Directory ドメイン環境)— Issue #8 で追跡
 - Hyper-V レプリカ、フェールオーバークラスタリング(Windows Server 専用機能)
-- Windows Server Backup(CIM の管理外)
 
 ## 前提条件
 
@@ -130,6 +129,21 @@ if err != nil {
 fmt.Println(resp.Properties())
 ```
 
+### 並行して呼ぶ場合
+
+**NTLM で複数のリクエストを同時に投げるなら `NewPooledClient` を使う。**
+`NewClient` が返すクライアントはコネクションプールを共有するため、
+並行実行すると NTLM のハンドシェイクが互いに割り込んで 401 になる(理由は [ADR-0004](docs/adr/0004-authentication.md))。
+
+```go
+// size は同時に走らせたいリクエスト数に合わせる
+client, err := hyperv.NewPooledClient(10, "https://<hyperv-host>:5986/wsman",
+    wsman.WithNTLM("<user>", "<password>"),
+)
+```
+
+逐次呼び出しだけなら `NewClient` で問題ない。
+
 ### エラーの扱い
 
 失敗した層が型で分かる。
@@ -164,13 +178,14 @@ WSMAN_PASSWORD=<password> \
 go test -race -tags=integration -v ./hyperv/...
 ```
 
+自己署名証明書のホストに繋ぐ場合は `WSMAN_INSECURE=true` で TLS 検証をスキップできる。
+
 **書き込みを伴うテストは既定で skip される。** 実行するには追加のゲートが要る。
 
 | 環境変数 | 役割 |
 |---|---|
 | `HYPERV_TEST_ALLOW_MUTATION` | 実機への書き込みを許可する |
 | `HYPERV_TEST_TARGET_VM_NAME` | 対象 VM の表示名 |
-| `WSMAN_INSECURE` | `true` にすると TLS 証明書の検証をスキップする(自己署名証明書のホスト向け) |
 
 テストフィクスチャの方針(golden file は実機ダンプのみ、手書き禁止)は
 [ADR-0003](docs/adr/0003-test-fixtures.md) を参照。

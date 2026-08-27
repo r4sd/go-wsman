@@ -38,7 +38,11 @@ WS-Man のレスポンスは XML だが、プロパティ部分を取り出せ�
 ### 決定
 
 A を採用。`hyperv/unmarshal.go` の `Unmarshal(props map[string]string, v interface{}) error` が
-`cim` タグを見て型変換する。対応型は `string` / `bool` / `int` / `int64` / `uint16` / `uint32` / `uint64`。
+`cim` タグを見て型変換する。対応型は `string` / `bool` / `uint16` / `uint32` / `uint64`
+(および `UnmarshalList` 経由でそれらのスライス)。
+
+**符号付き整数は対応していない。** CIM の数値プロパティが符号なしなので必要になっていない。
+`int` フィールドを定義すると実行時に `unsupported field kind` エラーになる。
 
 動作ルール:
 
@@ -82,7 +86,7 @@ CIM クラスのプロパティ名・型・列挙値の出典をどこに置く�
 
 ### 決定
 
-**一次資料は Microsoft 公式 MOF ドキュメントのみ。** URL はアンダースコアを除いた全小文字のスラグ形式。
+**一次資料は Microsoft 公式 MOF ドキュメントのみ。** URL はアンダースコアをハイフンに置き換えた全小文字のスラグ形式。
 
 ```
 https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/msvm-<class-slug>

@@ -54,7 +54,8 @@ CI は緑で、そのままマージされた。事後の批判的レビュー�
 
 ### 決定
 
-- golden file は `{package}/testdata/` に置き、`{operation}_response_{class}.xml` の形式で命名する
+- golden file は `{package}/testdata/` に置き、`{operation}_response_{対象}.xml` の形式で命名する
+  (対象は CIM クラス名か、`invoke` の場合はメソッド名。応答のバリアントを区別する接尾辞を足してよい)
 - **実機からダンプしたものだけを使う。** ファイル先頭に採取日と対象メソッドを
   `<!-- recorded: YYYY-MM-DD host=<hyperv-host> method=... -->` の形で残す
 - 実機で確認できない挙動を「こうなるはず」としてテストの緑の条件にしない
@@ -65,8 +66,8 @@ CI は緑で、そのままマージされた。事後の批判的レビュー�
 手書き golden の危険は 2026-04 の時点で分かっていたが、それでも 2026-08-01 に再発した。
 原因は**レビューを飛ばしたこと**で、`CLAUDE.md` に次の一文が足された。
 
-> provider を伴わない go-wsman 単独の PR も DoD ⑥(批判的レビュー)の対象。PR 作成と
-> 同時にバックグラウンドで起動し CI と並走させ、**CI green だけでマージしない**。
+> provider を伴わない go-wsman 単独の PR も DoD ⑥(Fable 批判的レビュー)の対象。PR 作成と
+> 同時にバックグラウンドで起動し CI と並走させ、**CI green だけでマージしない**。(中略)
 > golden 手書きは本リポジトリ特有の事故源なので、単独 PR ほど効く。
 
 **golden file が間違っていると CI は緑になる。** だから CI は防波堤にならず、

@@ -52,7 +52,7 @@ WS-Management (WinRM が話しているプロトコル) は SOAP/XML なので�
 | 項目 | 値 |
 |---|---|
 | 最新コミット | 2024-03-27 |
-| open issue | 30 件 |
+| open issue | 21 件(open PR 9 件を含めると 30 件) |
 | star | 263 |
 | アーカイブ | されていない |
 
@@ -66,8 +66,8 @@ star 数から広く使われていることは分かるが、**2 年以上コ�
 
 > "Embedded PowerShell with a JSON contract. Each operation ships an embedded `.ps1` through the chosen transport and round-trips JSON via stdin/stdout."
 
-必要要件として **Windows PowerShell 5.1 または PowerShell 7.4+** を挙げており、
-transport は local PowerShell / OpenSSH / WinRM から選ぶ。
+必要要件として **Windows PowerShell 5.1**(Windows に同梱)を挙げ、PowerShell 7.4+ も
+サポート対象としている(必須ではない)。transport は local PowerShell / OpenSSH / WinRM から選ぶ。
 つまり JSON 契約で型崩れは改善しているが、**PowerShell 実行環境への依存そのものは残る**。
 本 ADR が避けたかった点は解消されていない。
 
