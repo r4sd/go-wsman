@@ -37,7 +37,7 @@ func sdcInstance(groupComponentRef, partComponentRef string) string {
 
 func TestClient_ListGuestNetworkAdapterConfigurations(t *testing.T) {
 	pull := compPull("Msvm_GuestNetworkAdapterConfiguration",
-		guestNetInstance("guest-nic-1", true, "192.168.1.50", "fe80::1"),
+		guestNetInstance("guest-nic-1", true, "203.0.113.50", "fe80::1"),
 		guestNetInstance("guest-nic-2", false),
 	)
 	var bodies []string
@@ -55,7 +55,7 @@ func TestClient_ListGuestNetworkAdapterConfigurations(t *testing.T) {
 	if got[0].InstanceID != "guest-nic-1" || !got[0].DHCPEnabled {
 		t.Errorf("got[0]: %+v", got[0])
 	}
-	if len(got[0].IPAddresses) != 2 || got[0].IPAddresses[0] != "192.168.1.50" || got[0].IPAddresses[1] != "fe80::1" {
+	if len(got[0].IPAddresses) != 2 || got[0].IPAddresses[0] != "203.0.113.50" || got[0].IPAddresses[1] != "fe80::1" {
 		t.Errorf("got[0].IPAddresses: %v", got[0].IPAddresses)
 	}
 	if got[1].InstanceID != "guest-nic-2" || got[1].DHCPEnabled {

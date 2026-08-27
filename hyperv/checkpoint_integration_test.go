@@ -11,7 +11,7 @@ package hyperv
 //
 // 実行:
 //
-//	WSMAN_ENDPOINT=https://10.0.0.100:5986/wsman WSMAN_USERNAME=terraform \
+//	WSMAN_ENDPOINT=https://<hyperv-host>:5986/wsman WSMAN_USERNAME=<user> \
 //	WSMAN_PASSWORD=... go test -tags=integration -v ./hyperv/ -run TestCheckpointRename
 
 import (
