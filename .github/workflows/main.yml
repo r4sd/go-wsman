@@ -5,6 +5,14 @@ on:
     branches: [main]
   push:
     branches: [main]
+  # 新しく公開された脆弱性は push が無い限り検知されない。
+  # govulncheck は「コードが変わったか」ではなく「脆弱性データベースが更新されたか」で
+  # 結果が変わるため、定期実行が無いと静かに古い状態のまま放置される。
+  # 実際に terraform-provider-hyperv 側では週次実行がこれを拾い、
+  # go-wsman 側は同じ脆弱性を抱えたまま気付けなかった。
+  schedule:
+    # 毎週月曜 09:00 UTC (18:00 JST)
+    - cron: "0 9 * * 1"
 
 permissions:
   contents: read
@@ -28,5 +36,10 @@ jobs:
 
   security-scan:
     name: Security Scan
-    if: github.actor == github.repository_owner || github.actor == 'dependabot[bot]'
+    # 定期実行 (schedule) では github.actor が期待どおりにならないことがあるため、
+    # 脆弱性スキャンだけは actor 条件で落とさない。
+    if: >-
+      github.event_name == 'schedule'
+      || github.actor == github.repository_owner
+      || github.actor == 'dependabot[bot]'
     uses: ./.github/workflows/_security-scan.yml
