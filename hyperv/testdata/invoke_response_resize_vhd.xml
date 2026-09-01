@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- recorded: 2026-07-04 host=10.0.0.100 method=Msvm_ImageManagementService/ResizeVirtualHardDisk
+<!-- recorded: 2026-07-04 host=<hyperv-host> method=Msvm_ImageManagementService/ResizeVirtualHardDisk
      Job は実機形式 (EndpointReference ラッパー無し)。VHD 系 Job は Msvm_StorageJob。 -->
 <s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_ImageManagementService">
   <s:Header>

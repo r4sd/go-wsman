@@ -13,8 +13,8 @@ import (
 //
 // 実行方法:
 //
-//	WSMAN_ENDPOINT=https://10.0.0.100:5986/wsman \
-//	WSMAN_USERNAME=terraform \
+//	WSMAN_ENDPOINT=https://<hyperv-host>:5986/wsman \
+//	WSMAN_USERNAME=<user> \
 //	WSMAN_PASSWORD=yourpassword \
 //	go test -race -tags=integration -v ./wsman/...
 //

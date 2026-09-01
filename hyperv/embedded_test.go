@@ -8,7 +8,7 @@ import (
 // TestParseEmbeddedInstance は CIM-XML INSTANCE 形式 (実機 Hyper-V の出力) を
 // map[string]string に変換できることを検証する。
 //
-// 入力は 2026-07-04 に homelab (10.0.0.100) の GetVirtualHardDiskSettingData 出力から
+// 入力は 2026-07-04 に実機 Hyper-V ホストの GetVirtualHardDiskSettingData 出力から
 // 採取した実形式に基づく (旧テストは手書き WS-CIM ツリー形式で実機と乖離しており #89 の
 // 遠因になった)。
 func TestParseEmbeddedInstance(t *testing.T) {

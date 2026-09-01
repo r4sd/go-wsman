@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- recorded: 2026-07-04 host=10.0.0.100 method=Msvm_ImageManagementService/GetVirtualHardDiskSettingData
+<!-- recorded: 2026-07-04 host=<hyperv-host> method=Msvm_ImageManagementService/GetVirtualHardDiskSettingData
      SettingData は実機出力の CIM-XML INSTANCE 形式 (PROPERTY NAME/TYPE + VALUE)。
      値は代表値に調整 (Path/Format/Type は vhd_test のアサーションに合わせた)。 -->
 <s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_ImageManagementService">
