@@ -45,7 +45,7 @@ func (c *Client) GetVirtualHardDisk(ctx context.Context, path string) (*Msvm_Vir
 	}
 
 	var settings Msvm_VirtualHardDiskSettingData
-	if err := Unmarshal(props, &settings); err != nil {
+	if err := UnmarshalList(props, &settings); err != nil {
 		return nil, fmt.Errorf("GetVirtualHardDisk: Unmarshal 失敗: %w", err)
 	}
 	return &settings, nil

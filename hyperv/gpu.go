@@ -36,7 +36,7 @@ func (c *Client) ListGpuAdapters(ctx context.Context, vmGUID string) ([]*Msvm_Gp
 	result := make([]*Msvm_GpuPartitionSettingData, 0, len(instances))
 	for _, inst := range instances {
 		var g Msvm_GpuPartitionSettingData
-		if err := Unmarshal(inst.Properties(), &g); err != nil {
+		if err := UnmarshalList(inst.PropertiesList(), &g); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal Msvm_GpuPartitionSettingData: %w", err)
 		}
 		result = append(result, &g)

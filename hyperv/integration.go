@@ -118,7 +118,7 @@ func (c *Client) ListIntegrationServices(ctx context.Context, vmGUID string) ([]
 		}
 		for _, inst := range instances {
 			var comp integrationComponentSettingData
-			if err := Unmarshal(inst.Properties(), &comp); err != nil {
+			if err := UnmarshalList(inst.PropertiesList(), &comp); err != nil {
 				return nil, fmt.Errorf("ListIntegrationServices: unmarshal %s: %w", uri, err)
 			}
 			result = append(result, IntegrationService{
@@ -146,7 +146,7 @@ func (c *Client) resolveIntegrationServiceInstance(ctx context.Context, vmGUID s
 		return nil, fmt.Errorf("%s not found for VM %q", class.className, vmGUID)
 	}
 	var comp integrationComponentSettingData
-	if err := Unmarshal(instances[0].Properties(), &comp); err != nil {
+	if err := UnmarshalList(instances[0].PropertiesList(), &comp); err != nil {
 		return nil, fmt.Errorf("unmarshal %s: %w", class.className, err)
 	}
 	return &comp, nil

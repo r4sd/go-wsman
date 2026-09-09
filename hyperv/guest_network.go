@@ -48,7 +48,7 @@ func (c *Client) ListSettingDataComponents(ctx context.Context) ([]*Msvm_Setting
 	result := make([]*Msvm_SettingDataComponent, 0, len(instances))
 	for _, inst := range instances {
 		var s Msvm_SettingDataComponent
-		if err := Unmarshal(inst.Properties(), &s); err != nil {
+		if err := UnmarshalList(inst.PropertiesList(), &s); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal Msvm_SettingDataComponent: %w", err)
 		}
 		result = append(result, &s)

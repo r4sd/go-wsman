@@ -93,7 +93,7 @@ func (c *Client) ListIDEControllers(ctx context.Context, vmName string) ([]*Msvm
 	result := make([]*Msvm_ResourceAllocationSettingData, 0, len(instances))
 	for _, inst := range instances {
 		var r Msvm_ResourceAllocationSettingData
-		if err := Unmarshal(inst.Properties(), &r); err != nil {
+		if err := UnmarshalList(inst.PropertiesList(), &r); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal Msvm_ResourceAllocationSettingData: %w", err)
 		}
 		result = append(result, &r)
@@ -126,7 +126,7 @@ func (c *Client) ListSCSIControllers(ctx context.Context, vmName string) ([]*Msv
 	result := make([]*Msvm_ResourceAllocationSettingData, 0, len(instances))
 	for _, inst := range instances {
 		var r Msvm_ResourceAllocationSettingData
-		if err := Unmarshal(inst.Properties(), &r); err != nil {
+		if err := UnmarshalList(inst.PropertiesList(), &r); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal Msvm_ResourceAllocationSettingData: %w", err)
 		}
 		result = append(result, &r)
@@ -190,7 +190,7 @@ func (c *Client) ListDiskDrives(ctx context.Context, vmName string) ([]*Msvm_Res
 	result := make([]*Msvm_ResourceAllocationSettingData, 0, len(instances))
 	for _, inst := range instances {
 		var r Msvm_ResourceAllocationSettingData
-		if err := Unmarshal(inst.Properties(), &r); err != nil {
+		if err := UnmarshalList(inst.PropertiesList(), &r); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal Msvm_ResourceAllocationSettingData: %w", err)
 		}
 		result = append(result, &r)
@@ -220,7 +220,7 @@ func (c *Client) ListDvdDrives(ctx context.Context, vmName string) ([]*Msvm_Reso
 	result := make([]*Msvm_ResourceAllocationSettingData, 0, len(instances))
 	for _, inst := range instances {
 		var r Msvm_ResourceAllocationSettingData
-		if err := Unmarshal(inst.Properties(), &r); err != nil {
+		if err := UnmarshalList(inst.PropertiesList(), &r); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal Msvm_ResourceAllocationSettingData: %w", err)
 		}
 		result = append(result, &r)
@@ -247,7 +247,7 @@ func (c *Client) ListAttachedStorage(ctx context.Context, vmName string) ([]*Msv
 	result := make([]*Msvm_StorageAllocationSettingData, 0, len(instances))
 	for _, inst := range instances {
 		var s Msvm_StorageAllocationSettingData
-		if err := Unmarshal(inst.Properties(), &s); err != nil {
+		if err := UnmarshalList(inst.PropertiesList(), &s); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal Msvm_StorageAllocationSettingData: %w", err)
 		}
 		result = append(result, &s)

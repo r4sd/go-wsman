@@ -68,7 +68,7 @@ func (c *Client) ListExternalEthernetPorts(ctx context.Context) ([]*Msvm_Externa
 	result := make([]*Msvm_ExternalEthernetPort, 0, len(instances))
 	for _, inst := range instances {
 		var p Msvm_ExternalEthernetPort
-		if err := Unmarshal(inst.Properties(), &p); err != nil {
+		if err := UnmarshalList(inst.PropertiesList(), &p); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal Msvm_ExternalEthernetPort: %w", err)
 		}
 		result = append(result, &p)
