@@ -27,6 +27,7 @@
           <p:VirtualSystemType>Microsoft:Hyper-V:Snapshot:Realized</p:VirtualSystemType>
           <p:VirtualSystemSubType>Microsoft:Hyper-V:SubType:2</p:VirtualSystemSubType>
           <p:ConfigurationID>33333333-aaaa-bbbb-cccc-000000000011</p:ConfigurationID>
+          <p:Notes>ckpt-crud</p:Notes>
           <p:CreationTime>2026-09-09T16:20:31.444762Z</p:CreationTime>
           <p:UserSnapshotType>5</p:UserSnapshotType>
           <p:Parent>\\HOST\root\virtualization\v2:Msvm_VirtualSystemSettingData.InstanceID="Microsoft:44444444-aaaa-bbbb-cccc-000000000012"</p:Parent>

@@ -251,6 +251,13 @@ func TestClient_ListVmCheckpoints(t *testing.T) {
 	if got[0].Parent != wantParent {
 		t.Errorf("Parent: got %q, want %q", got[0].Parent, wantParent)
 	}
+	// Notes は配列プロパティ。Unmarshal (スカラー専用) を使っていると
+	// "unsupported field kind: slice" で失敗する。notes を設定した VM の
+	// チェックポイントは Notes を引き継ぐため実運用では必ず踏む経路で、
+	// golden に Notes が無かったせいで長らく検出できていなかった。
+	if len(got[0].Notes) != 1 || got[0].Notes[0] != "ckpt-crud" {
+		t.Errorf("Notes: got %v, want [ckpt-crud]", got[0].Notes)
+	}
 }
 
 // TestClient_ListVmCheckpoints_EmptyName は vmName が空のときに即エラーを返す。
