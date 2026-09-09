@@ -211,3 +211,26 @@ func (c *Client) ListVmCheckpoints(ctx context.Context, vmName string) ([]*Msvm_
 	}
 	return result, nil
 }
+
+// ParentSnapshotID は Msvm_VirtualSystemSettingData.Parent (WMI オブジェクトパス) から
+// 親スナップショットの GUID を取り出す。
+//
+// 実機の値は次の形 (2026-09-10 確認):
+//
+//	\\<HOST>\root\virtualization\v2:Msvm_VirtualSystemSettingData.InstanceID="Microsoft:<GUID>"
+//
+// PowerShell の Get-VMSnapshot.ParentSnapshotId / Get-VM.ParentCheckpointId に相当する。
+// 親が無い (チェックポイント未取得、またはツリーの根) 場合は空文字を返す。
+func ParentSnapshotID(parent string) string {
+	const marker = `InstanceID="Microsoft:`
+	i := strings.Index(parent, marker)
+	if i < 0 {
+		return ""
+	}
+	rest := parent[i+len(marker):]
+	j := strings.Index(rest, `"`)
+	if j < 0 {
+		return ""
+	}
+	return rest[:j]
+}

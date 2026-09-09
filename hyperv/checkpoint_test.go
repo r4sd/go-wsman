@@ -320,3 +320,30 @@ func TestClient_RenameVmCheckpoint_Validation(t *testing.T) {
 		t.Error("expected error for empty newName")
 	}
 }
+
+// TestParentSnapshotID は Parent (WMI オブジェクトパス) からの GUID 抽出を検証する。
+// 期待値の元は 2026-09-10 の実機ダンプ。
+func TestParentSnapshotID(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "実機の形",
+			in:   `\\DESKTOP-HOST\root\virtualization\v2:Msvm_VirtualSystemSettingData.InstanceID="Microsoft:A36B631F-7F85-44DC-82EE-7043EC948526"`,
+			want: "A36B631F-7F85-44DC-82EE-7043EC948526",
+		},
+		{"空 (親なし)", "", ""},
+		{"Microsoft: 接頭辞が無い", `...InstanceID="A36B631F"`, ""},
+		{"閉じ引用符が無い", `...InstanceID="Microsoft:A36B631F`, ""},
+		{"InstanceID を含まない", `\\HOST\root\virtualization\v2:Msvm_ComputerSystem.Name="X"`, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := ParentSnapshotID(tc.in); got != tc.want {
+				t.Errorf("ParentSnapshotID(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}

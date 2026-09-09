@@ -240,6 +240,10 @@ func clearReadOnlyForModify(sd *Msvm_VirtualSystemSettingData) {
 	sd.SwapFileDataRoot = ""
 	sd.LogDataRoot = ""
 	sd.CreationTime = ""
+	// Parent はチェックポイントを持つ VM 本体にも入る (2026-09-10 実機確認)。
+	// Read-only なので送ると ModifySystemSettings が Exception になりうる。
+	// スナップショット木の変更は ApplySnapshot 経路であり、ここで書く正当なケースは無い。
+	sd.Parent = ""
 	sd.Version = ""
 	sd.Caption = ""
 	sd.Description = ""

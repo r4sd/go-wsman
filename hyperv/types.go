@@ -371,8 +371,14 @@ type Msvm_VirtualSystemSettingData struct {
 	PauseAfterBootFailure        bool   `cim:"PauseAfterBootFailure"`        // BIOS が boot 失敗で一時停止 (MOF は boolean、OnOffState ではない)
 	Version                      string `cim:"Version"`                      // 構成バージョン（例: "10.0"）
 	CreationTime                 string `cim:"CreationTime"`                 // CIM DateTime（文字列）
-	// Parent はスナップショットの親スナップショットへの参照。VM 本体の SettingData では空。
-	// 実機の値は WMI オブジェクトパス形式 (2026-09-10 確認):
+	// Parent は「このインスタンスが基づくスナップショット」への参照。
+	//
+	// スナップショット自身では親スナップショットを指す。**VM 本体 (System:Realized) でも、
+	// チェックポイントを 1 つでも持てば直近のものを指して非空になる** (2026-09-10 実機確認。
+	// 作成前は空、CreateVmCheckpoint 後に値が入ることを確認済み)。
+	// Read-only なので書き戻し時は clearReadOnlyForModify が除去する。
+	//
+	// 実機の値は WMI オブジェクトパス形式:
 	//   \\<HOST>\root\virtualization\v2:Msvm_VirtualSystemSettingData.InstanceID="Microsoft:<GUID>"
 	// PS の Get-VMSnapshot.ParentSnapshotId に相当する GUID を取り出すには InstanceID 部分を抜く。
 	Parent           string `cim:"Parent"`
