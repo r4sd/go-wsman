@@ -204,7 +204,11 @@ func (c *Client) ListVmCheckpoints(ctx context.Context, vmName string) ([]*Msvm_
 	result := make([]*Msvm_VirtualSystemSettingData, 0, len(instances))
 	for _, inst := range instances {
 		var settings Msvm_VirtualSystemSettingData
-		if err := Unmarshal(inst.Properties(), &settings); err != nil {
+		// UnmarshalList / PropertiesList を使う (GetSystemSettingData と同じ)。
+		// Unmarshal (スカラー専用) だと Notes のような配列プロパティで
+		// "unsupported field kind: slice" になる。notes を設定した VM の
+		// チェックポイントは Notes を引き継ぐため、実運用では必ず踏む。
+		if err := UnmarshalList(inst.PropertiesList(), &settings); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal Msvm_VirtualSystemSettingData: %w", err)
 		}
 		result = append(result, &settings)
