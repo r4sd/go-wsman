@@ -43,4 +43,5 @@ ConsoleMode uint16
 PauseAfterBootFailure boolean
 Version string
 CreationTime datetime
+Parent string
 UserSnapshotType uint16

@@ -530,3 +530,71 @@ func stringSlicesEqual(a, b []string) bool {
 	}
 	return true
 }
+
+// TestClearReadOnlyForModify は ModifySystemSettings へ送ってはいけない read-only
+// プロパティが全て除去されることを検証する。
+//
+// 送ると Job が Exception になる (実機で確認済み)。フィールドを追加したときに
+// ここへ足し忘れると「Get した SettingData を書き戻す」経路が壊れるため、
+// 全項目を明示的に検証する。
+func TestClearReadOnlyForModify(t *testing.T) {
+	sd := &Msvm_VirtualSystemSettingData{
+		// 残すべきもの
+		InstanceID:  "Microsoft:11111111-1111-1111-1111-111111111111",
+		ElementName: "vm-1",
+		Notes:       []string{"keep"},
+		// 除去すべきもの
+		VirtualSystemIdentifier: "11111111-1111-1111-1111-111111111111",
+		VirtualSystemType:       VirtualSystemTypeRealized,
+		VirtualSystemSubType:    VirtualSystemSubTypeGen2,
+		ConfigurationID:         "22222222-2222-2222-2222-222222222222",
+		ConfigurationDataRoot:   `C:\vms`,
+		ConfigurationFile:       `vm.vmcx`,
+		SnapshotDataRoot:        `C:\vms\snap`,
+		SuspendDataRoot:         `C:\vms\suspend`,
+		SwapFileDataRoot:        `C:\vms\swap`,
+		LogDataRoot:             `C:\vms\log`,
+		CreationTime:            "2026-09-09T16:20:31.444762Z",
+		// Parent はチェックポイントを持つ VM 本体にも入る (2026-09-10 実機確認)。
+		Parent:      `\\HOST\root\virtualization\v2:Msvm_VirtualSystemSettingData.InstanceID="Microsoft:33333333-3333-3333-3333-333333333333"`,
+		Version:     "12.0",
+		Caption:     "仮想マシンの設定",
+		Description: "アクティブな設定",
+	}
+
+	clearReadOnlyForModify(sd)
+
+	cleared := map[string]string{
+		"VirtualSystemIdentifier": sd.VirtualSystemIdentifier,
+		"VirtualSystemType":       sd.VirtualSystemType,
+		"VirtualSystemSubType":    sd.VirtualSystemSubType,
+		"ConfigurationID":         sd.ConfigurationID,
+		"ConfigurationDataRoot":   sd.ConfigurationDataRoot,
+		"ConfigurationFile":       sd.ConfigurationFile,
+		"SnapshotDataRoot":        sd.SnapshotDataRoot,
+		"SuspendDataRoot":         sd.SuspendDataRoot,
+		"SwapFileDataRoot":        sd.SwapFileDataRoot,
+		"LogDataRoot":             sd.LogDataRoot,
+		"CreationTime":            sd.CreationTime,
+		"Parent":                  sd.Parent,
+		"Version":                 sd.Version,
+		"Caption":                 sd.Caption,
+		"Description":             sd.Description,
+	}
+	for name, got := range cleared {
+		if got != "" {
+			t.Errorf("%s が除去されていない: %q", name, got)
+		}
+	}
+
+	// 送るべきものは残っていること。
+	if sd.InstanceID == "" {
+		t.Error("InstanceID が消えている (ModifySystemSettings のキー)")
+	}
+	if sd.ElementName != "vm-1" {
+		t.Errorf("ElementName = %q, want vm-1", sd.ElementName)
+	}
+	if len(sd.Notes) != 1 || sd.Notes[0] != "keep" {
+		t.Errorf("Notes = %v, want [keep]", sd.Notes)
+	}
+}

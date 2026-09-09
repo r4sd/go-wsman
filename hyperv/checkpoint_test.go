@@ -226,6 +226,31 @@ func TestClient_ListVmCheckpoints(t *testing.T) {
 	if got[0].VirtualSystemType != VirtualSystemTypeSnapshotRealized {
 		t.Errorf("VirtualSystemType: got %q", got[0].VirtualSystemType)
 	}
+	// 以下は 2026-09-10 の実機観測に合わせた形。golden は元々
+	// InstanceID に "\\SNAP-0001" 接尾辞を付け、ConfigurationID に VM GUID を入れていたが、
+	// 実機では InstanceID = "Microsoft:<スナップショット GUID>"、
+	// ConfigurationID = スナップショット自身の GUID (VM GUID とは別) だった。
+	if got[0].InstanceID != "Microsoft:33333333-aaaa-bbbb-cccc-000000000011" {
+		t.Errorf("InstanceID: got %q", got[0].InstanceID)
+	}
+	// ConfigurationID は PS の Get-VMSnapshot.Id に相当し、VM GUID とは異なる。
+	if got[0].ConfigurationID != "33333333-aaaa-bbbb-cccc-000000000011" {
+		t.Errorf("ConfigurationID: got %q (VM GUID と同じになっていないか)", got[0].ConfigurationID)
+	}
+	if got[0].ConfigurationID == got[0].VirtualSystemIdentifier {
+		t.Error("ConfigurationID が VM GUID と一致している。実機ではスナップショット固有の GUID になる")
+	}
+	if got[0].CreationTime != "2026-09-09T16:20:31.444762Z" {
+		t.Errorf("CreationTime: got %q", got[0].CreationTime)
+	}
+	if got[0].UserSnapshotType != UserSnapshotTypeTest {
+		t.Errorf("UserSnapshotType: got %d, want %d", got[0].UserSnapshotType, UserSnapshotTypeTest)
+	}
+	// Parent は WMI オブジェクトパス形式で親スナップショットを指す (VM 本体では空)。
+	wantParent := `\\HOST\root\virtualization\v2:Msvm_VirtualSystemSettingData.InstanceID="Microsoft:44444444-aaaa-bbbb-cccc-000000000012"`
+	if got[0].Parent != wantParent {
+		t.Errorf("Parent: got %q, want %q", got[0].Parent, wantParent)
+	}
 }
 
 // TestClient_ListVmCheckpoints_EmptyName は vmName が空のときに即エラーを返す。
@@ -293,5 +318,32 @@ func TestClient_RenameVmCheckpoint_Validation(t *testing.T) {
 	}
 	if _, err := client.RenameVmCheckpoint(context.Background(), "Microsoft:xxx", ""); err == nil {
 		t.Error("expected error for empty newName")
+	}
+}
+
+// TestParentSnapshotID は Parent (WMI オブジェクトパス) からの GUID 抽出を検証する。
+// 期待値の元は 2026-09-10 の実機ダンプ。
+func TestParentSnapshotID(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "実機の形",
+			in:   `\\DESKTOP-HOST\root\virtualization\v2:Msvm_VirtualSystemSettingData.InstanceID="Microsoft:A36B631F-7F85-44DC-82EE-7043EC948526"`,
+			want: "A36B631F-7F85-44DC-82EE-7043EC948526",
+		},
+		{"空 (親なし)", "", ""},
+		{"Microsoft: 接頭辞が無い", `...InstanceID="A36B631F"`, ""},
+		{"閉じ引用符が無い", `...InstanceID="Microsoft:A36B631F`, ""},
+		{"InstanceID を含まない", `\\HOST\root\virtualization\v2:Msvm_ComputerSystem.Name="X"`, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := ParentSnapshotID(tc.in); got != tc.want {
+				t.Errorf("ParentSnapshotID(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
 	}
 }

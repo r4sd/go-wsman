@@ -21,12 +21,15 @@
           <p:Version>10.0</p:Version>
         </p:Msvm_VirtualSystemSettingData>
         <p:Msvm_VirtualSystemSettingData>
-          <p:InstanceID>Microsoft:11111111-aaaa-bbbb-cccc-000000000001\SNAP-0001</p:InstanceID>
+          <p:InstanceID>Microsoft:33333333-aaaa-bbbb-cccc-000000000011</p:InstanceID>
           <p:ElementName>vm-1 checkpoint</p:ElementName>
           <p:VirtualSystemIdentifier>11111111-aaaa-bbbb-cccc-000000000001</p:VirtualSystemIdentifier>
           <p:VirtualSystemType>Microsoft:Hyper-V:Snapshot:Realized</p:VirtualSystemType>
           <p:VirtualSystemSubType>Microsoft:Hyper-V:SubType:2</p:VirtualSystemSubType>
-          <p:ConfigurationID>11111111-aaaa-bbbb-cccc-000000000001</p:ConfigurationID>
+          <p:ConfigurationID>33333333-aaaa-bbbb-cccc-000000000011</p:ConfigurationID>
+          <p:CreationTime>2026-09-09T16:20:31.444762Z</p:CreationTime>
+          <p:UserSnapshotType>5</p:UserSnapshotType>
+          <p:Parent>\\HOST\root\virtualization\v2:Msvm_VirtualSystemSettingData.InstanceID="Microsoft:44444444-aaaa-bbbb-cccc-000000000012"</p:Parent>
           <p:SecureBootEnabled>TRUE</p:SecureBootEnabled>
           <p:Version>10.0</p:Version>
         </p:Msvm_VirtualSystemSettingData>
