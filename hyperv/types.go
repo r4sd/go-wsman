@@ -371,7 +371,12 @@ type Msvm_VirtualSystemSettingData struct {
 	PauseAfterBootFailure        bool   `cim:"PauseAfterBootFailure"`        // BIOS が boot 失敗で一時停止 (MOF は boolean、OnOffState ではない)
 	Version                      string `cim:"Version"`                      // 構成バージョン（例: "10.0"）
 	CreationTime                 string `cim:"CreationTime"`                 // CIM DateTime（文字列）
-	UserSnapshotType             uint16 `cim:"UserSnapshotType"`             // チェックポイント種別 (#106、値は UserSnapshotType* 定数参照)
+	// Parent はスナップショットの親スナップショットへの参照。VM 本体の SettingData では空。
+	// 実機の値は WMI オブジェクトパス形式 (2026-09-10 確認):
+	//   \\<HOST>\root\virtualization\v2:Msvm_VirtualSystemSettingData.InstanceID="Microsoft:<GUID>"
+	// PS の Get-VMSnapshot.ParentSnapshotId に相当する GUID を取り出すには InstanceID 部分を抜く。
+	Parent           string `cim:"Parent"`
+	UserSnapshotType uint16 `cim:"UserSnapshotType"` // チェックポイント種別 (#106、値は UserSnapshotType* 定数参照)
 }
 
 // VlanOperationMode 定数群 (Msvm_EthernetSwitchPortVlanSettingData.OperationMode、CIM 型 uint32)。
