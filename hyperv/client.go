@@ -57,7 +57,7 @@ func (c *Client) GetComputerSystem(ctx context.Context, name string) (*Msvm_Comp
 		return nil, err
 	}
 	var cs Msvm_ComputerSystem
-	if err := Unmarshal(resp.Properties(), &cs); err != nil {
+	if err := UnmarshalList(resp.PropertiesList(), &cs); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal Msvm_ComputerSystem: %w", err)
 	}
 	return &cs, nil
@@ -86,7 +86,7 @@ func (c *Client) FindComputerSystemByElementName(ctx context.Context, elementNam
 	matches := make([]*Msvm_ComputerSystem, 0, len(instances))
 	for _, inst := range instances {
 		var cs Msvm_ComputerSystem
-		if err := Unmarshal(inst.Properties(), &cs); err != nil {
+		if err := UnmarshalList(inst.PropertiesList(), &cs); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal Msvm_ComputerSystem: %w", err)
 		}
 		matches = append(matches, &cs)
@@ -145,7 +145,7 @@ func (c *Client) ListComputerSystems(ctx context.Context) ([]*Msvm_ComputerSyste
 	result := make([]*Msvm_ComputerSystem, 0, len(instances))
 	for _, inst := range instances {
 		var cs Msvm_ComputerSystem
-		if err := Unmarshal(inst.Properties(), &cs); err != nil {
+		if err := UnmarshalList(inst.PropertiesList(), &cs); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal Msvm_ComputerSystem: %w", err)
 		}
 		result = append(result, &cs)

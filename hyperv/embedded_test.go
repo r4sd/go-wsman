@@ -23,13 +23,13 @@ func TestParseEmbeddedInstance(t *testing.T) {
 		if err != nil {
 			t.Fatalf("parseEmbeddedInstance: %v", err)
 		}
-		if got["Path"] != `D:\Hyper-V\vm.vhdx` {
+		if first(got["Path"]) != `D:\Hyper-V\vm.vhdx` {
 			t.Errorf("Path: got %q", got["Path"])
 		}
-		if got["MaxInternalSize"] != "53687091200" {
+		if first(got["MaxInternalSize"]) != "53687091200" {
 			t.Errorf("MaxInternalSize: got %q", got["MaxInternalSize"])
 		}
-		if got["Format"] != "3" {
+		if first(got["Format"]) != "3" {
 			t.Errorf("Format: got %q", got["Format"])
 		}
 	})
@@ -46,14 +46,20 @@ func TestParseEmbeddedInstance(t *testing.T) {
 		if err != nil {
 			t.Fatalf("parseEmbeddedInstance: %v", err)
 		}
-		if got["Path"] != `D:\a.vhdx` {
+		if first(got["Path"]) != `D:\a.vhdx` {
 			t.Errorf("Path: got %q", got["Path"])
 		}
-		if got["DataAlignment"] != "" {
-			t.Errorf("DataAlignment: got %q, want empty", got["DataAlignment"])
+		// VALUE 要素が 1 つも無い PROPAGATED プロパティは **キーごと存在しない**。
+		// first() は nil でも "" を返すため、値比較ではこの契約を検証できない
+		// (批判的レビューでミューテーションが素通りすると指摘された)。
+		if v, ok := got["DataAlignment"]; ok {
+			t.Errorf("DataAlignment: キーが存在してはいけない (got %v)", v)
 		}
-		if got["ParentPath"] != "" {
-			t.Errorf("ParentPath: got %q, want empty", got["ParentPath"])
+		// 空の VALUE (<VALUE></VALUE>) は 1 要素の空文字として保持する。
+		if v, ok := got["ParentPath"]; !ok {
+			t.Error("ParentPath: キーが存在するべき (空 VALUE)")
+		} else if len(v) != 1 || v[0] != "" {
+			t.Errorf("ParentPath: got %v, want [\"\"]", v)
 		}
 	})
 
@@ -75,8 +81,31 @@ func TestParseEmbeddedInstance(t *testing.T) {
 		if err != nil {
 			t.Fatalf("parse: %v", err)
 		}
-		if got["Path"] != `D:\round.vhdx` || got["MaxInternalSize"] != "12345" || got["Format"] != "3" {
+		if first(got["Path"]) != `D:\round.vhdx` || first(got["MaxInternalSize"]) != "12345" || first(got["Format"]) != "3" {
 			t.Errorf("往復不一致: %+v", got)
+		}
+	})
+
+	t.Run("PROPERTY.ARRAY は要素ごとに保持される", func(t *testing.T) {
+		// 以前は複数 VALUE を連結していたため "ab" のように静かに壊れていた。
+		xml := `<INSTANCE CLASSNAME="X">` +
+			`<PROPERTY.ARRAY NAME="Notes" TYPE="string"><VALUE.ARRAY>` +
+			`<VALUE>alpha</VALUE><VALUE>beta</VALUE><VALUE>gamma</VALUE>` +
+			`</VALUE.ARRAY></PROPERTY.ARRAY>` +
+			`</INSTANCE>`
+
+		got, err := parseEmbeddedInstance(xml)
+		if err != nil {
+			t.Fatalf("parseEmbeddedInstance: %v", err)
+		}
+		want := []string{"alpha", "beta", "gamma"}
+		if len(got["Notes"]) != len(want) {
+			t.Fatalf("Notes: got %d 要素 %v, want %d 要素 (連結されていないか)", len(got["Notes"]), got["Notes"], len(want))
+		}
+		for i := range want {
+			if got["Notes"][i] != want[i] {
+				t.Errorf("Notes[%d]: got %q, want %q", i, got["Notes"][i], want[i])
+			}
 		}
 	})
 
@@ -293,4 +322,13 @@ func TestMarshalEmbeddedInstance_EscapesValues(t *testing.T) {
 	if !contains(got, `<VALUE>a&lt;b&gt;&amp;`) {
 		t.Errorf("special chars should be XML-escaped, got: %s", got)
 	}
+}
+
+// first は map[string][]string の先頭要素を返すテストヘルパー。
+// parseEmbeddedInstance がスカラーも 1 要素配列で返すようになったため使う。
+func first(v []string) string {
+	if len(v) == 0 {
+		return ""
+	}
+	return v[0]
 }

@@ -41,7 +41,7 @@ func (c *Client) GetMemorySettings(ctx context.Context, vmName string) (*Msvm_Me
 	}
 
 	var m Msvm_MemorySettingData
-	if err := Unmarshal(instances[0].Properties(), &m); err != nil {
+	if err := UnmarshalList(instances[0].PropertiesList(), &m); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal Msvm_MemorySettingData: %w", err)
 	}
 	return &m, nil
@@ -90,7 +90,7 @@ func (c *Client) GetProcessorSettings(ctx context.Context, vmName string) (*Msvm
 	}
 
 	var p Msvm_ProcessorSettingData
-	if err := Unmarshal(instances[0].Properties(), &p); err != nil {
+	if err := UnmarshalList(instances[0].PropertiesList(), &p); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal Msvm_ProcessorSettingData: %w", err)
 	}
 	return &p, nil

@@ -137,7 +137,7 @@ func (c *Client) getJob(ctx context.Context, resourceURI, instanceID string) (*M
 		return nil, err
 	}
 	var job Msvm_ConcreteJob
-	if err := Unmarshal(resp.Properties(), &job); err != nil {
+	if err := UnmarshalList(resp.PropertiesList(), &job); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal job: %w", err)
 	}
 	return &job, nil

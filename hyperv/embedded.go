@@ -20,11 +20,17 @@ import (
 //	  <PROPERTY.ARRAY NAME="Arr" TYPE="string"><VALUE.ARRAY><VALUE>a</VALUE>...</VALUE.ARRAY></PROPERTY.ARRAY>
 //	</INSTANCE>
 //
-// キーは PROPERTY の NAME 属性、値は入れ子の VALUE のテキスト。VALUE が無い
-// (PROPAGATED や空) プロパティは空文字になる。配列 (PROPERTY.ARRAY) の複数 VALUE は
-// 連結される (現状 map[string]string の用途はスカラのみ)。
-func parseEmbeddedInstance(xmlStr string) (map[string]string, error) {
-	props := make(map[string]string)
+// キーは PROPERTY の NAME 属性、値は入れ子の VALUE のテキストの配列。
+// 配列 (PROPERTY.ARRAY) の複数 VALUE は要素ごとに保持する。
+//
+// VALUE 要素が 1 つも無いプロパティ (PROPAGATED 等) は **キーごと作らない**
+// (wsman の parseInstances と同じ意味論)。空の VALUE (<VALUE></VALUE>) は
+// 1 要素の空文字として保持する。
+//
+// 以前は map[string]string を返し複数 VALUE を **連結** していたため、配列プロパティが
+// 静かに壊れていた ("a","b" → "ab")。UnmarshalList への一本化に合わせて修正した。
+func parseEmbeddedInstance(xmlStr string) (map[string][]string, error) {
+	props := make(map[string][]string)
 	dec := xml.NewDecoder(strings.NewReader(xmlStr))
 
 	var curName string // 現在の PROPERTY / PROPERTY.ARRAY の NAME
@@ -55,10 +61,17 @@ func parseEmbeddedInstance(xmlStr string) (map[string]string, error) {
 			switch t.Name.Local {
 			case "VALUE":
 				inValue = false
-			case "PROPERTY", "PROPERTY.ARRAY":
 				if haveProp {
-					props[curName] = val.String()
+					props[curName] = append(props[curName], val.String())
+					val.Reset()
 				}
+			case "PROPERTY", "PROPERTY.ARRAY":
+				// VALUE が 1 つも無いプロパティ (PROPAGATED 等) はキーごと作らない。
+				// wsman 側の parseInstances / extractProperties と同じ意味論に揃える。
+				//
+				// 1 要素の空文字を入れると、空の PROPERTY.ARRAY が [""] になり
+				// []uint16 フィールドで ParseUint("") エラー、[]string フィールドで
+				// 「長さ 1 の空要素」という誤った値になる (批判的レビュー指摘)。
 				curName = ""
 				haveProp = false
 			}

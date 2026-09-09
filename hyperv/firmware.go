@@ -30,7 +30,7 @@ func (c *Client) ListBootSources(ctx context.Context, vmGUID string) ([]*Msvm_Bo
 	result := make([]*Msvm_BootSourceSettingData, 0, len(instances))
 	for _, inst := range instances {
 		var b Msvm_BootSourceSettingData
-		if err := Unmarshal(inst.Properties(), &b); err != nil {
+		if err := UnmarshalList(inst.PropertiesList(), &b); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal Msvm_BootSourceSettingData: %w", err)
 		}
 		result = append(result, &b)

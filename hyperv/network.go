@@ -51,7 +51,7 @@ func (c *Client) ListVirtualEthernetSwitches(ctx context.Context) ([]*Msvm_Virtu
 	result := make([]*Msvm_VirtualEthernetSwitch, 0, len(instances))
 	for _, inst := range instances {
 		var sw Msvm_VirtualEthernetSwitch
-		if err := Unmarshal(inst.Properties(), &sw); err != nil {
+		if err := UnmarshalList(inst.PropertiesList(), &sw); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal Msvm_VirtualEthernetSwitch: %w", err)
 		}
 		result = append(result, &sw)
@@ -97,7 +97,7 @@ func (c *Client) ListNetworkAdapters(ctx context.Context, vmName string) ([]*Msv
 	result := make([]*Msvm_SyntheticEthernetPortSettingData, 0, len(instances))
 	for _, inst := range instances {
 		var p Msvm_SyntheticEthernetPortSettingData
-		if err := Unmarshal(inst.Properties(), &p); err != nil {
+		if err := UnmarshalList(inst.PropertiesList(), &p); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal Msvm_SyntheticEthernetPortSettingData: %w", err)
 		}
 		result = append(result, &p)
@@ -126,7 +126,7 @@ func (c *Client) ListEthernetPortAllocations(ctx context.Context, vmName string)
 	result := make([]*Msvm_EthernetPortAllocationSettingData, 0, len(instances))
 	for _, inst := range instances {
 		var a Msvm_EthernetPortAllocationSettingData
-		if err := Unmarshal(inst.Properties(), &a); err != nil {
+		if err := UnmarshalList(inst.PropertiesList(), &a); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal Msvm_EthernetPortAllocationSettingData: %w", err)
 		}
 		result = append(result, &a)

@@ -17,7 +17,7 @@ func TestUnmarshal_BasicTypes(t *testing.T) {
 	}
 
 	var got target
-	if err := Unmarshal(props, &got); err != nil {
+	if err := UnmarshalList(scalarProps(props), &got); err != nil {
 		t.Fatalf("Unmarshal returned error: %v", err)
 	}
 
@@ -42,7 +42,7 @@ func TestUnmarshal_NumericTypes(t *testing.T) {
 	}
 
 	var got target
-	if err := Unmarshal(props, &got); err != nil {
+	if err := UnmarshalList(scalarProps(props), &got); err != nil {
 		t.Fatalf("Unmarshal returned error: %v", err)
 	}
 	if got.U32 != 4294967295 {
@@ -66,7 +66,7 @@ func TestUnmarshal_BoolType(t *testing.T) {
 	}
 
 	var got target
-	if err := Unmarshal(props, &got); err != nil {
+	if err := UnmarshalList(scalarProps(props), &got); err != nil {
 		t.Fatalf("Unmarshal returned error: %v", err)
 	}
 	if !got.Enabled {
@@ -89,7 +89,7 @@ func TestUnmarshal_MissingProperty(t *testing.T) {
 	}
 
 	var got target
-	if err := Unmarshal(props, &got); err != nil {
+	if err := UnmarshalList(scalarProps(props), &got); err != nil {
 		t.Fatalf("Unmarshal returned error: %v", err)
 	}
 	if got.Name != "vm-1" {
@@ -113,7 +113,7 @@ func TestUnmarshal_NoTag(t *testing.T) {
 	}
 
 	var got target
-	if err := Unmarshal(props, &got); err != nil {
+	if err := UnmarshalList(scalarProps(props), &got); err != nil {
 		t.Fatalf("Unmarshal returned error: %v", err)
 	}
 	if got.Tagged != "value1" {
@@ -135,7 +135,7 @@ func TestUnmarshal_InvalidUint(t *testing.T) {
 	}
 
 	var got target
-	err := Unmarshal(props, &got)
+	err := UnmarshalList(scalarProps(props), &got)
 	if err == nil {
 		t.Fatal("expected error for invalid uint value, got nil")
 	}
@@ -151,7 +151,7 @@ func TestUnmarshal_NotPointer(t *testing.T) {
 		Name string `cim:"Name"`
 	}
 	var got target
-	err := Unmarshal(map[string]string{"Name": "x"}, got) // ポインタじゃない
+	err := UnmarshalList(scalarProps(map[string]string{"Name": "x"}), got) // ポインタじゃない
 	if err == nil {
 		t.Fatal("expected error for non-pointer arg, got nil")
 	}
@@ -163,7 +163,7 @@ func TestUnmarshal_NilPointer(t *testing.T) {
 		Name string `cim:"Name"`
 	}
 	var p *target
-	err := Unmarshal(map[string]string{"Name": "x"}, p)
+	err := UnmarshalList(scalarProps(map[string]string{"Name": "x"}), p)
 	if err == nil {
 		t.Fatal("expected error for nil pointer, got nil")
 	}
@@ -185,7 +185,7 @@ func TestUnmarshal_VirtualHardDiskSettingData(t *testing.T) {
 	}
 
 	var got Msvm_VirtualHardDiskSettingData
-	if err := Unmarshal(props, &got); err != nil {
+	if err := UnmarshalList(scalarProps(props), &got); err != nil {
 		t.Fatalf("Unmarshal returned error: %v", err)
 	}
 	if got.InstanceID != "Microsoft:Definition\\1\\Default" {
@@ -372,4 +372,18 @@ func TestUnmarshalList_InvalidUintInSlice(t *testing.T) {
 	if !contains(err.Error(), "Ports") {
 		t.Errorf("error should mention field name: %v", err)
 	}
+}
+
+// scalarProps は従来の map[string]string を UnmarshalList 用の map[string][]string に包む。
+//
+// Unmarshal (スカラー専用) は UnmarshalList へ一本化して削除した。呼び出し側が
+// 誤ってスカラー版を選ぶと、配列プロパティが応答に含まれるときだけ実行時に落ちる
+// という**データ依存の故障**になっていたため (手書き golden で 3 回すり抜けた)。
+// 本ヘルパーは既存のスカラー挙動テストをそのまま活かすためのもの。
+func scalarProps(m map[string]string) map[string][]string {
+	out := make(map[string][]string, len(m))
+	for k, v := range m {
+		out[k] = []string{v}
+	}
+	return out
 }
