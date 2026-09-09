@@ -7,9 +7,13 @@ import (
 	"strings"
 )
 
-
-// UnmarshalList は配列対応版の Unmarshal。
-// CIM プロパティ map[string][]string を cim タグ付き構造体にマッピングする。
+// UnmarshalList は CIM プロパティ map[string][]string を cim タグ付き構造体に
+// マッピングする。本パッケージ唯一のアンマーシャラ。
+//
+// かつてスカラー専用の Unmarshal が併存したが、配列フィールドを持つ構造体に
+// 誤って渡すと「そのプロパティが応答に含まれるときだけ」落ちるデータ依存の故障に
+// なり、手書き golden では検出できなかった (#126 / #136 / #137)。選択肢を無くすため
+// 削除し本関数に一本化した (ADR 0002 参照)。
 //
 // scalar フィールド (string, uint16, ...): props[tag] の最初の要素を使う。
 // slice フィールド ([]string, []uint16, ...): props[tag] の全要素を slice に展開。
