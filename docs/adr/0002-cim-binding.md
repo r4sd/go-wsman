@@ -123,3 +123,37 @@ MOF は「プロパティが存在するか」「型は何か」は教えてく�
 
 - [ ] 扱う CIM クラスが 30 を超えた → コード生成(案 C)を再検討する
 - [ ] MOF 照合テストが未整備の既存クラスで typo 由来のバグが出た → 遡及して fixture を足す
+
+## 2026-09-10: Unmarshal を廃止し UnmarshalList へ一本化する
+
+スカラー専用の `Unmarshal` と配列対応の `UnmarshalList` が併存しており、呼び出し側が
+選び間違えると実行時に落ちていた。しかもその失敗は **データ依存** だった。
+
+```go
+raw, ok := props[tag]
+if !ok { continue }        // ← slice フィールドでもここで抜ける
+if err := setField(...)    // ← ここで初めて "unsupported field kind: slice"
+```
+
+slice 判定が `props` 参照の後にあるため、構造体に配列フィールドがあっても
+**レスポンスにそのプロパティが含まれない限りエラーにならない**。想像で書いた golden は
+必ずすり抜ける。#126 / #136 / #137 の 3 件はいずれもこの機構で起きた。
+
+`ListVmCheckpoints` は notes を設定した VM で一度も成功しない状態が長く続いたが、
+golden に `Notes` が無かったため単体テストは緑のままだった。
+
+**決定**: `Unmarshal` を削除し `UnmarshalList` に一本化する。選択肢を無くすことで、
+呼び出し側の選び間違い自体を起こせなくする。`UnmarshalList` はスカラー構造体にも
+動く上位互換で、`map[string]string` を渡すと型が合わないためコンパイルで止まる。
+
+あわせて `parseEmbeddedInstance` も `map[string][]string` 返しに変更した。従来は
+`PROPERTY.ARRAY` の複数 `VALUE` を連結しており (`"a","b"` → `"ab"`)、配列を読む経路が
+増えれば静かに壊れる状態だった。VALUE 要素が 1 つも無いプロパティはキーごと作らない
+方針とし、`wsman` 側の `parseInstances` と意味論を揃えた。
+
+**残る類型** (本決定では消えない):
+
+- 構造体側の配列性宣言ミス (CIM が `string[]` のプロパティを `string` で宣言する等)。
+  多値が黙って先頭で切られる。検出機構は `cim_compliance_test.go` の MOF 突合のみで、
+  fixture 未登録クラスでは検出できない
+- `VALUE.NULL` を落とすため、並列配列 (IPAddresses / Subnets 等) で位置がずれうる

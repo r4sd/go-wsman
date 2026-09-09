@@ -49,11 +49,17 @@ func TestParseEmbeddedInstance(t *testing.T) {
 		if first(got["Path"]) != `D:\a.vhdx` {
 			t.Errorf("Path: got %q", got["Path"])
 		}
-		if first(got["DataAlignment"]) != "" {
-			t.Errorf("DataAlignment: got %v, want empty", got["DataAlignment"])
+		// VALUE 要素が 1 つも無い PROPAGATED プロパティは **キーごと存在しない**。
+		// first() は nil でも "" を返すため、値比較ではこの契約を検証できない
+		// (批判的レビューでミューテーションが素通りすると指摘された)。
+		if v, ok := got["DataAlignment"]; ok {
+			t.Errorf("DataAlignment: キーが存在してはいけない (got %v)", v)
 		}
-		if first(got["ParentPath"]) != "" {
-			t.Errorf("ParentPath: got %v, want empty", got["ParentPath"])
+		// 空の VALUE (<VALUE></VALUE>) は 1 要素の空文字として保持する。
+		if v, ok := got["ParentPath"]; !ok {
+			t.Error("ParentPath: キーが存在するべき (空 VALUE)")
+		} else if len(v) != 1 || v[0] != "" {
+			t.Errorf("ParentPath: got %v, want [\"\"]", v)
 		}
 	})
 

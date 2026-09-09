@@ -130,7 +130,7 @@ https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/msvm-<class-slug>
 
 ### Unmarshal パターン
 
-`wsman.Instance.Properties()` → `map[string]string` → `cim:` タグで struct にマッピング。
+`PropertiesList()` → `map[string][]string` → `cim:` タグで struct にマッピング。
 
 ```go
 resp, err := c.wsman.Get(ctx, resourceURI, selectors...)
@@ -138,11 +138,16 @@ if err != nil {
     return nil, err
 }
 var result SomeCIMClass
-if err := Unmarshal(resp.Properties(), &result); err != nil {
+if err := UnmarshalList(resp.PropertiesList(), &result); err != nil {
     return nil, err
 }
 return &result, nil
 ```
+
+> ⚠️ **`UnmarshalList` / `PropertiesList()` だけを使う。** スカラー専用の `Unmarshal` は
+> 削除済み。配列フィールドを持つ構造体にスカラー版を渡すと、**そのプロパティが
+> 応答に含まれるときだけ**実行時に落ちるデータ依存の故障になり、手書き golden では
+> 検出できなかった (#126 / #136 / #137 が同型の事故)。選択肢を無くすことで塞いだ。
 
 ### エラーハンドリング
 
