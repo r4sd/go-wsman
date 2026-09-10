@@ -97,7 +97,7 @@ https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/msvm-<class-slug>
 全ての機能実装は以下のサイクルで進める:
 
 ```
-1. golden file 準備（実機ダンプ or 手書き XML）
+1. golden file 準備（**実機ダンプを匿名化して使う**。手書きは最後の手段)
 2. Red:  テスト作成 → go test で失敗を確認
 3. Green: 最小実装 → テスト通過
 4. Refactor: 必要なら整理
@@ -106,10 +106,51 @@ https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/msvm-<class-slug>
 
 ### golden file
 
+> 🔴 **想像で書かない。実機を 1 回叩いてから書く。**
+>
+> 手書き golden が「実機に無い挙動」を仕様として固定する事故を **4 回**繰り返している
+> (#126 / #136 / #137、および notes 分割をバグごと固定していた既存テスト)。
+> いずれも単体テストは緑のまま、実機で初めて落ちた。
+>
+> **機構**: 失敗がデータ依存になる。構造体に配列フィールドがあっても、
+> golden にそのプロパティが無ければエラーにならない。だから想像で書いた golden は
+> 必ずすり抜ける (#138 で `Unmarshal` を廃止し選択肢自体を消した)。
+>
+> **手順**: 使い捨て VM に対象の操作を 1 回行い、生の応答をダンプ →
+> ホスト名と GUID だけ匿名化して golden にする。手書きで足す場合は
+> **合成データである旨をファイル内にコメントで残す**。
+
 - 配置: `{package}/testdata/`
 - 命名: `{operation}_response_{class}.xml`（wsman パッケージの慣例に合わせる）
   - 例: `get_response_computersystem.xml`, `enumerate_response_computersystem.xml`
 - ヘルパー: `loadGolden(t, filename)` を使用（wsman パッケージに実装済み）
+
+### 書き込み可否は MOF から判断しない
+
+MOF の `Access type` は `ModifySystemSettings` の受理を**予測しない**。実機で確認する。
+
+| フィールド | MOF | 実機 |
+|---|---|---|
+| `SecureBootTemplateId` | Read-only(「ModifyVirtualSystem で変更可」の但し書きあり) | ✅ 書ける |
+| `AutomaticCriticalErrorActionTimeout` | **Read/write** | ❌ `ErrorCode=32768` |
+| `AutomaticStartupActionDelay` | Read-only | ❌ `ErrorCode=32768` |
+
+MOF に「ModifyVirtualSystem で変更できる」と明記があれば書ける可能性が高い。
+無ければ**実機で確かめるまで書けると仮定しない**。
+
+配列性も同様で、`Notes` は MOF が `string[]` だが**実質単一値**
+(複数要素を送ると先頭以外が捨てられる)。
+
+### ミューテーション検証の落とし穴
+
+「N/N 撃墜」を報告する前に確認する。
+
+| 罠 | 対処 |
+|---|---|
+| コンパイルエラーで落ちただけ | 変異は**ビルドが通る形**にする (`if false` ではなく `_ = x` を添える) |
+| 純関数だけ変異させた | 呼び出し経路を通すテスト (`httptest` 等) を足す |
+| 応答列の余りを検査していない | テスト終了時に全応答を消費したか検証する |
+| `Contains` で引数を検証 | **どのプロパティにどちらが入っているか**を見る |
 
 ### 統合テスト
 
