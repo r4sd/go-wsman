@@ -284,14 +284,13 @@ func TestClient_AddNetworkAdapter_WithSwitch(t *testing.T) {
 	// Msvm_VirtualEthernetSwitch は CIM_ComputerSystem 派生で
 	// SystemCreationClassName / SystemName を持たない。
 	// SelectorSet を厳密比較する (Contains で GUID だけ見ると余計な Selector を見逃す)。
+	// SelectorSet 要素を丸ごと比較する。連結部分文字列の Contains だと、
+	// 名前昇順で "Name" より後ろに並ぶ Selector (SystemName 等) を足されても通る。
 	const wantSelectors = `<w:Selector Name="CreationClassName">Msvm_VirtualEthernetSwitch</w:Selector>` +
 		`<w:Selector Name="Name">AAAAAAAA-1111-1111-1111-AAAAAAAAAAAA</w:Selector>`
-	unescaped := unescapeForAssert(allocBody)
-	if !strings.Contains(unescaped, wantSelectors) {
-		t.Errorf("スイッチ EPR の SelectorSet が一致しない\n want: %s\n body: %s", wantSelectors, unescaped)
-	}
-	if strings.Contains(unescaped, "SystemCreationClassName") {
-		t.Errorf("MOF に存在しない Selector SystemCreationClassName を送っている")
+	gotSelectors := selectorSetAfter(t, unescapeForAssert(allocBody), msvmVirtualEthernetSwitchURI)
+	if gotSelectors != wantSelectors {
+		t.Errorf("スイッチ EPR の SelectorSet が一致しない\n got:  %s\n want: %s", gotSelectors, wantSelectors)
 	}
 }
 

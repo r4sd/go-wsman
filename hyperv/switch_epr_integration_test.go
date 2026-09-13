@@ -10,13 +10,16 @@ import (
 )
 
 // TestRealSwitchEPRSelectors は MOF 準拠の 2 Selector (CreationClassName + Name) が
-// スイッチを一意に解決できることを実機で確認する (#134)。
+// 実機で拒否されないことを確認する (#134)。
 //
-// 修正前は存在しない SystemCreationClassName / SystemName を足していた。
-// 単体テストは「送っていないこと」しか見られないので、実機では
-// 「減らした Selector でも実インスタンスに解決できる」ことを押さえる。
+// ⚠️ これは「DestroySystem / AddResourceSettings のパラメータとして通る」証明ではない。
+// WS-Man の Get と、REF パラメータ / string プロパティとしての解決は経路が別で、
+// WinRM は部分キーでも解決することがある。ここで押さえているのは
+// 「この Selector 集合が実インスタンスに解決でき、値も一致する」ところまで。
 //
 // 非破壊 (Get のみ)。既存スイッチを 1 つ拾って読むだけで、作成も削除もしない。
+// 本来は使い捨てスイッチで create → destroy したかったが、CreateSwitch 自体が
+// 実機で InternalError になる (#145) ため代替している。
 func TestRealSwitchEPRSelectors(t *testing.T) {
 	c := getIntegrationClient(t)
 	ctx := context.Background()
@@ -42,5 +45,5 @@ func TestRealSwitchEPRSelectors(t *testing.T) {
 	if got := resp.Property("Name"); got != sw.Name {
 		t.Errorf("解決先が違う: Name=%q, want %q", got, sw.Name)
 	}
-	t.Logf("🎯 判定: CreationClassName + Name の 2 つでスイッチを一意に解決できる")
+	t.Logf("🎯 判定: CreationClassName + Name の 2 つが実機で拒否されず、同じインスタンスに解決される")
 }

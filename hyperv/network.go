@@ -188,8 +188,12 @@ func (c *Client) AddNetworkAdapter(ctx context.Context, vmName string, opts Netw
 
 	// Selector は MOF に存在するキーだけにする。Msvm_VirtualEthernetSwitch は
 	// CIM_ComputerSystem 派生で、SystemCreationClassName / SystemName を持たない
-	// (それらは CIM_LogicalDevice 系のキー)。実機の正常なアロケーションの HostResource も
-	// CreationClassName と Name の 2 つだけを使う。
+	// (それらは CIM_LogicalDevice 系のキー)。実機のアロケーションが参照するスイッチも
+	// CreationClassName と Name の 2 つで一意に定まる。
+	//
+	// ⚠️ ここで作っているのは WS-Addressing の EPR だが、HostResource / Parent は CIM 上
+	// string 型で **WMI オブジェクトパス**を要求する (wmiObjectPath のコメント参照)。
+	// 形式自体の妥当性は #114 で追跡中で、本 Selector の修正とは別問題。
 	switchEPR := buildEndpointReference(msvmVirtualEthernetSwitchURI, map[string]string{
 		"Name":              sw.Name,
 		"CreationClassName": "Msvm_VirtualEthernetSwitch",

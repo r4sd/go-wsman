@@ -248,17 +248,50 @@ func TestClient_DestroySwitch_SelectorSet(t *testing.T) {
 		t.Fatalf("用意した応答が全て消費されていない: %d リクエスト", len(bodies))
 	}
 
+	// SelectorSet 要素を丸ごと比較する。連結部分文字列の Contains だと、
+	// 名前昇順で "Name" より後ろに並ぶ Selector (SystemName 等) を足されても通ってしまう。
 	const want = `<w:Selector Name="CreationClassName">Msvm_VirtualEthernetSwitch</w:Selector>` +
 		`<w:Selector Name="Name">BBBBBBBB-2222-2222-2222-BBBBBBBBBBBB</w:Selector>`
-	body := unescapeForAssert(bodies[2])
-	if !strings.Contains(body, want) {
-		t.Errorf("SelectorSet が一致しない\n want (完全一致): %s\n body: %s", want, body)
+	got := selectorSetInner(t, unescapeForAssert(bodies[2]))
+	if got != want {
+		t.Errorf("SelectorSet が一致しない\n got:  %s\n want: %s", got, want)
 	}
-	for _, bogus := range []string{"SystemCreationClassName", "SystemName"} {
-		if strings.Contains(body, bogus) {
-			t.Errorf("MOF に存在しない Selector %q を送っている", bogus)
+}
+
+// selectorSetInner は body 中の最初の <w:SelectorSet ...>...</w:SelectorSet> の
+// 内側をそのまま返す。要素全体を取り出すことで「Selector が増えている」も検出できる。
+func selectorSetInner(t *testing.T, body string) string {
+	t.Helper()
+	return selectorSetAfter(t, body, "")
+}
+
+// selectorSetAfter は marker 以降で最初に現れる SelectorSet の内側を返す。
+// 1 つの body に複数の EPR がある場合 (AddResourceSettings の HostResource / Parent 等) に
+// 目的の EPR を特定するため、marker には ResourceURI を渡す。
+func selectorSetAfter(t *testing.T, body, marker string) string {
+	t.Helper()
+	if marker != "" {
+		m := strings.Index(body, marker)
+		if m < 0 {
+			t.Fatalf("marker %q が body に無い", marker)
 		}
+		body = body[m:]
 	}
+	const openTag, closeTag = `<w:SelectorSet`, `</w:SelectorSet>`
+	i := strings.Index(body, openTag)
+	if i < 0 {
+		t.Fatalf("SelectorSet が見つからない: %s", body)
+	}
+	j := strings.Index(body[i:], ">")
+	if j < 0 {
+		t.Fatalf("SelectorSet の開始タグが閉じていない: %s", body)
+	}
+	start := i + j + 1
+	k := strings.Index(body[start:], closeTag)
+	if k < 0 {
+		t.Fatalf("SelectorSet が閉じていない: %s", body)
+	}
+	return body[start : start+k]
 }
 
 // unescapeForAssert は EPR が SOAP パラメータ内で XML エスケープされている場合に
