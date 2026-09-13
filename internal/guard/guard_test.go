@@ -346,7 +346,7 @@ func relPath(path string) string {
 }
 
 // macInElementPattern は fixture 中の MAC アドレス値。
-var macInElementPattern = regexp.MustCompile(`<(?:[A-Za-z0-9]+:)?(?:PermanentAddress|Address)>([0-9A-Fa-f]{12})</`)
+var macInElementPattern = regexp.MustCompile(`<(?:[A-Za-z0-9]+:)?(?:PermanentAddress|Address)(?:\s[^>]*)?>([0-9A-Fa-f]{12})</`)
 
 // macLiteralPattern はソース中に直接書かれた MAC。区切り付き・無しの両方。
 var macLiteralPattern = regexp.MustCompile(`\b(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}\b|"[0-9A-Fa-f]{12}"`)

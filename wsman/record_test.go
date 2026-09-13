@@ -356,3 +356,17 @@ func TestScrubDifferencingDiskName(t *testing.T) {
 		t.Errorf("CIM クラス名が壊れた: %s", got)
 	}
 }
+
+// TestScrubMACAddress_WithAttributes は属性付きの要素でも MAC を伏せることを検証する。
+// 属性の有無で網が抜けると、実機が形を変えた瞬間に漏れる。
+func TestScrubMACAddress_WithAttributes(t *testing.T) {
+	a := newAnonymizer("https://example.invalid/wsman", nil)
+	got := a.scrub(`<p:PermanentAddress xsi:type="p:string">00005E005301</p:PermanentAddress>`)
+	if strings.Contains(got, "00005E005301") {
+		t.Errorf("属性付きの要素で MAC が伏せられていない: %s", got)
+	}
+	if err := verifyRecorded(recordedFile(
+		`<p:PermanentAddress xsi:type="p:string">00005E005301</p:PermanentAddress>`), nil, ""); err == nil {
+		t.Error("属性付きの要素で MAC の漏れを見逃した")
+	}
+}

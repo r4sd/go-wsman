@@ -60,7 +60,7 @@ var (
 	//
 	// 12 桁 hex を無条件に置換すると GUID プレースホルダの一部にも当たるので、
 	// **要素単位**で捕まえる。
-	macElementPattern = regexp.MustCompile(`(<(?:[A-Za-z0-9]+:)?(?:PermanentAddress|Address)>)([0-9A-Fa-f]{12})(</)`)
+	macElementPattern = regexp.MustCompile(`(<(?:[A-Za-z0-9]+:)?(?:PermanentAddress|Address)(?:\s[^>]*)?>)([0-9A-Fa-f]{12})(</)`)
 )
 
 // anonymizer は実環境の識別子をプレースホルダへ決定的に写す。
@@ -229,7 +229,7 @@ func scrubVariants(s, value, replacement string) string {
 }
 
 // cimClassPattern は応答に現れる CIM クラス名。
-var cimClassPattern = regexp.MustCompile(`Msvm_[A-Za-z0-9]+`)
+var cimClassPattern = regexp.MustCompile(`(?:Msvm|CIM|Win32)_[A-Za-z0-9]+`)
 
 // classTokensUnchanged は匿名化の前後で CIM クラス名の集合が変わっていないか確かめる。
 //
