@@ -1,0 +1,10 @@
+# Msvm_StorageAllocationSettingData (root/virtualization/v2)
+# 出典: https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/msvm-storageallocationsettingdata
+# Fetched: 2026-09-14
+InstanceID string
+ElementName string
+ResourceType uint16
+ResourceSubType string
+HostResource string[]
+Parent string
+Address string
