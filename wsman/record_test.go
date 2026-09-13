@@ -166,7 +166,7 @@ func TestVerifyRecordedCatchesLeak(t *testing.T) {
 
 	// 伏せ損ねた MAC も捕まえる。実機 NIC の MAC は OUI からベンダが割れるので、
 	// 公開リポジトリへ出す前にここで止める (実際に一度コミットしてしまった)。
-	if err := verifyRecorded(recordedFile("<p:PermanentAddress>ECB1D72F78D1</p:PermanentAddress>"), nil, ""); err == nil {
+	if err := verifyRecorded(recordedFile("<p:PermanentAddress>00005E005301</p:PermanentAddress>"), nil, ""); err == nil {
 		t.Error("伏せられていない MAC を見逃した")
 	}
 	if err := verifyRecorded(recordedFile("<p:PermanentAddress>00155D000001</p:PermanentAddress>"), nil, ""); err != nil {
@@ -320,11 +320,12 @@ func TestScrubClassTokensUnchanged(t *testing.T) {
 // 公開リポジトリに録音物を置く前提で、MAC は OUI からベンダが割れる。
 // 12 桁 hex を無条件に置換すると GUID プレースホルダの末尾にも当たるので、要素単位で扱う。
 func TestScrubMACAddress(t *testing.T) {
+	// 実環境の MAC をテストに書かない (実際に一度やった)。RFC 7042 の文書用アドレスを使う。
 	a := newAnonymizer("https://example.invalid/wsman", nil)
-	got := a.scrub(`<p:PermanentAddress>ECB1D72F78D1</p:PermanentAddress>` +
+	got := a.scrub(`<p:PermanentAddress>00005E005301</p:PermanentAddress>` +
 		`<p:InstanceID>Microsoft:5F1CA9D4-1111-2222-3333-444455556666</p:InstanceID>`)
 
-	if strings.Contains(got, "ECB1D72F78D1") {
+	if strings.Contains(got, "00005E005301") {
 		t.Errorf("MAC が伏せられていない: %s", got)
 	}
 	if !strings.Contains(got, "<p:PermanentAddress>00155D") {
