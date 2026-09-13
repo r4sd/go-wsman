@@ -28,10 +28,44 @@ func parseCimTag(tag string) (name string, isDatetime bool) {
 	return name, isDatetime
 }
 
-// cimIntervalPattern は CIM ネイティブの interval 書式 (DSP0004)。
+// cimIntervalPattern は CIM ネイティブの interval 書式 (Microsoft "Interval Format")。
 //
 //	ddddddddHHMMSS.mmmmmm:000
-var cimIntervalPattern = regexp.MustCompile(`^\d{8}\d{2}\d{2}\d{2}\.\d{6}:000$`)
+//
+// days 00000000-99999999 / HH 00-23 / MM・SS 00-59 / 末尾は :000 固定。
+// 桁数だけでは HH=99 のような不正値を素通ししてしまうので、値域は
+// validateCIMInterval で別途見る。
+var cimIntervalPattern = regexp.MustCompile(`^(\d{8})(\d{2})(\d{2})(\d{2})\.\d{6}:000$`)
+
+// maxIntervalDays は CIM interval の日フィールド (8 桁) の上限。
+const maxIntervalDays = 99999999
+
+// validateCIMInterval は CIM ネイティブ interval の値域を検証する。
+// 書式が合っていても HH=99 のような値は実機が受け付けない。
+func validateCIMInterval(s string) error {
+	m := cimIntervalPattern.FindStringSubmatch(s)
+	if m == nil {
+		return fmt.Errorf("validateCIMInterval: %q は CIM interval 書式ではない", s)
+	}
+	for _, f := range []struct {
+		name string
+		raw  string
+		max  int64
+	}{
+		{"HH", m[2], 23},
+		{"MM", m[3], 59},
+		{"SS", m[4], 59},
+	} {
+		v, err := strconv.ParseInt(f.raw, 10, 64)
+		if err != nil {
+			return fmt.Errorf("validateCIMInterval: %q の %s を解釈できない: %w", s, f.name, err)
+		}
+		if v > f.max {
+			return fmt.Errorf("validateCIMInterval: %q の %s=%d が範囲外 (0-%d)", s, f.name, v, f.max)
+		}
+	}
+	return nil
+}
 
 // iso8601DurationPattern は実機の read が返す書式。intervalISO8601Pattern と同じ形だが、
 // provider 側とは別実装なのでここにも置く。
@@ -49,7 +83,7 @@ var iso8601DurationPattern = regexp.MustCompile(`^P(\d+)DT(\d+)H(\d+)M(\d+)S$`)
 // 呼び出し側からは「成功したのに変わらない」に見える。
 func iso8601ToCIMInterval(s string) (string, error) {
 	if cimIntervalPattern.MatchString(s) {
-		return s, nil
+		return s, validateCIMInterval(s)
 	}
 	m := iso8601DurationPattern.FindStringSubmatch(s)
 	if m == nil {
@@ -65,6 +99,14 @@ func iso8601ToCIMInterval(s string) (string, error) {
 	}
 	days, hours, minutes, seconds := nums[0], nums[1], nums[2], nums[3]
 
+	// 範囲チェックは **乗算より先に** 行う。後ろに置くと total が int64 を溢れて
+	// 負数になり、上限ガードを素通りして不正な文字列を「成功」として返す。
+	// 黙って送ると ErrorCode=32768 になるだけで、呼び出し側からは
+	// 「成功したのに変わらない」に見える (本リポジトリで繰り返している事故の型)。
+	if days > maxIntervalDays || hours > maxIntervalDays || minutes > maxIntervalDays || seconds > maxIntervalDays {
+		return "", fmt.Errorf("iso8601ToCIMInterval: %q の各フィールドが大きすぎる", s)
+	}
+
 	// 時分秒の繰り上がりを吸収してから桁に収める (read が "P0DT0H90M0S" を返す想定は
 	// 無いが、呼び出し側が組み立てた値でも壊れないように)。
 	total := days*24*3600 + hours*3600 + minutes*60 + seconds
@@ -72,7 +114,7 @@ func iso8601ToCIMInterval(s string) (string, error) {
 	rem := total % (24 * 3600)
 	hours, minutes, seconds = rem/3600, (rem%3600)/60, rem%60
 
-	if days > 99999999 {
+	if days > maxIntervalDays {
 		return "", fmt.Errorf("iso8601ToCIMInterval: %q は日数が 8 桁に収まらない", s)
 	}
 	return fmt.Sprintf("%08d%02d%02d%02d.%06d:000", days, hours, minutes, seconds, 0), nil
