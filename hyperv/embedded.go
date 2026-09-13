@@ -140,57 +140,70 @@ func marshalEmbeddedInstance(v interface{}, className, _ string) (string, error)
 		if tag == "" {
 			continue
 		}
-		fv := rv.Field(i)
-		// slice は PROPERTY.ARRAY / VALUE.ARRAY に展開 (CIM-XML 配列の慣習)。
-		// nil/空 slice はゼロ値扱いで出力しない。
-		if fv.Kind() == reflect.Slice {
-			if fv.Len() == 0 {
-				continue
-			}
-			cimType, err := cimTypeName(fv.Type().Elem().Kind())
-			if err != nil {
-				return "", fmt.Errorf("field %q: %w", field.Name, err)
-			}
-			fmt.Fprintf(&sb, `<PROPERTY.ARRAY NAME=%q TYPE=%q><VALUE.ARRAY>`, tag, cimType)
-			for j := 0; j < fv.Len(); j++ {
-				val, err := stringify(fv.Index(j))
-				if err != nil {
-					return "", fmt.Errorf("field %q [%d]: %w", field.Name, j, err)
-				}
-				fmt.Fprintf(&sb, "<VALUE>%s</VALUE>", xmlEscape(val))
-			}
-			sb.WriteString(`</VALUE.ARRAY></PROPERTY.ARRAY>`)
-			continue
+		if err := marshalField(&sb, rv.Field(i), field.Name, tag); err != nil {
+			return "", err
 		}
-		// ポインタフィールドは「送る/送らない」を呼び出し側が明示する (#135)。
-		//
-		//	nil    = 送らない (値型のゼロ値スキップと同じ「変更しない」)
-		//	&false = 明示的に false を送る
-		//
-		// 値型だと false / 0 / "" がゼロ値スキップに掛かり、「変更しない」と
-		// 「ゼロ値に変える」を区別する手段が無かった。ゼロ値が意味を持つフィールドだけ
-		// 順次ポインタへ移す (最小インスタンスの原則は値型側でそのまま残る)。
-		if fv.Kind() == reflect.Pointer {
-			if fv.IsNil() {
-				continue
-			}
-			fv = fv.Elem()
-		} else if fv.IsZero() {
-			continue
-		}
-		cimType, err := cimTypeName(fv.Kind())
-		if err != nil {
-			return "", fmt.Errorf("field %q: %w", field.Name, err)
-		}
-		val, err := stringify(fv)
-		if err != nil {
-			return "", fmt.Errorf("field %q: %w", field.Name, err)
-		}
-		fmt.Fprintf(&sb, `<PROPERTY NAME=%q TYPE=%q><VALUE>%s</VALUE></PROPERTY>`, tag, cimType, xmlEscape(val))
 	}
 
 	sb.WriteString(`</INSTANCE>`)
 	return cdataWrap(sb.String()), nil
+}
+
+// marshalField は 1 フィールドを PROPERTY / PROPERTY.ARRAY として sb に書く。
+// 出力しない (ゼロ値 / nil ポインタ / 空 slice) 場合は何も書かずに nil を返す。
+func marshalField(sb *strings.Builder, fv reflect.Value, fieldName, tag string) error {
+	// slice は PROPERTY.ARRAY / VALUE.ARRAY に展開 (CIM-XML 配列の慣習)。
+	// nil/空 slice はゼロ値扱いで出力しない。
+	if fv.Kind() == reflect.Slice {
+		return marshalSliceField(sb, fv, fieldName, tag)
+	}
+	// ポインタフィールドは「送る/送らない」を呼び出し側が明示する (#135)。
+	//
+	//	nil    = 送らない (値型のゼロ値スキップと同じ「変更しない」)
+	//	&false = 明示的に false を送る
+	//
+	// 値型だと false / 0 / "" がゼロ値スキップに掛かり、「変更しない」と
+	// 「ゼロ値に変える」を区別する手段が無かった。ゼロ値が意味を持つフィールドだけ
+	// 順次ポインタへ移す (最小インスタンスの原則は値型側でそのまま残る)。
+	if fv.Kind() == reflect.Pointer {
+		if fv.IsNil() {
+			return nil
+		}
+		fv = fv.Elem()
+	} else if fv.IsZero() {
+		return nil
+	}
+	cimType, err := cimTypeName(fv.Kind())
+	if err != nil {
+		return fmt.Errorf("field %q: %w", fieldName, err)
+	}
+	val, err := stringify(fv)
+	if err != nil {
+		return fmt.Errorf("field %q: %w", fieldName, err)
+	}
+	fmt.Fprintf(sb, `<PROPERTY NAME=%q TYPE=%q><VALUE>%s</VALUE></PROPERTY>`, tag, cimType, xmlEscape(val))
+	return nil
+}
+
+// marshalSliceField は slice フィールドを PROPERTY.ARRAY として書く。
+func marshalSliceField(sb *strings.Builder, fv reflect.Value, fieldName, tag string) error {
+	if fv.Len() == 0 {
+		return nil
+	}
+	cimType, err := cimTypeName(fv.Type().Elem().Kind())
+	if err != nil {
+		return fmt.Errorf("field %q: %w", fieldName, err)
+	}
+	fmt.Fprintf(sb, `<PROPERTY.ARRAY NAME=%q TYPE=%q><VALUE.ARRAY>`, tag, cimType)
+	for j := 0; j < fv.Len(); j++ {
+		val, err := stringify(fv.Index(j))
+		if err != nil {
+			return fmt.Errorf("field %q [%d]: %w", fieldName, j, err)
+		}
+		fmt.Fprintf(sb, "<VALUE>%s</VALUE>", xmlEscape(val))
+	}
+	sb.WriteString(`</VALUE.ARRAY></PROPERTY.ARRAY>`)
+	return nil
 }
 
 // cdataWrap は s を CDATA セクションで包む。s が CDATA 終端シーケンス "]]>" を
