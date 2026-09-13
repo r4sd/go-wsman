@@ -222,3 +222,82 @@ func TestClient_DestroySwitch_Empty(t *testing.T) {
 		t.Error("expected error for empty switchName")
 	}
 }
+
+// TestClient_DestroySwitch_SelectorSet はスイッチ EPR の Selector が
+// MOF に存在するキーだけであることを検証する (#134)。
+//
+// Msvm_VirtualEthernetSwitch は CIM_ComputerSystem 派生で
+// SystemCreationClassName / SystemName を持たない。存在しないキーを送っていると
+// #114 のような障害の切り分けで毎回疑う対象になる。
+//
+// SelectorSet 全体を厳密比較する。Contains だと余計な Selector が増えても通る。
+func TestClient_DestroySwitch_SelectorSet(t *testing.T) {
+	enum := loadGolden(t, "enumerate_response_virtualethernetswitch.xml")
+	pull := loadGolden(t, "pull_response_virtualethernetswitch.xml")
+	resp := loadGolden(t, "invoke_response_destroy_switch.xml")
+
+	var bodies []string
+	server := newSequenceServer(t, []string{enum, pull, resp}, &bodies)
+	defer server.Close()
+
+	client, _ := NewClient(server.URL)
+	if _, err := client.DestroySwitch(context.Background(), "Internal"); err != nil {
+		t.Fatalf("DestroySwitch: %v", err)
+	}
+	if len(bodies) != 3 {
+		t.Fatalf("用意した応答が全て消費されていない: %d リクエスト", len(bodies))
+	}
+
+	// SelectorSet 要素を丸ごと比較する。連結部分文字列の Contains だと、
+	// 名前昇順で "Name" より後ろに並ぶ Selector (SystemName 等) を足されても通ってしまう。
+	const want = `<w:Selector Name="CreationClassName">Msvm_VirtualEthernetSwitch</w:Selector>` +
+		`<w:Selector Name="Name">BBBBBBBB-2222-2222-2222-BBBBBBBBBBBB</w:Selector>`
+	got := selectorSetInner(t, unescapeForAssert(bodies[2]))
+	if got != want {
+		t.Errorf("SelectorSet が一致しない\n got:  %s\n want: %s", got, want)
+	}
+}
+
+// selectorSetInner は body 中の最初の <w:SelectorSet ...>...</w:SelectorSet> の
+// 内側をそのまま返す。要素全体を取り出すことで「Selector が増えている」も検出できる。
+func selectorSetInner(t *testing.T, body string) string {
+	t.Helper()
+	return selectorSetAfter(t, body, "")
+}
+
+// selectorSetAfter は marker 以降で最初に現れる SelectorSet の内側を返す。
+// 1 つの body に複数の EPR がある場合 (AddResourceSettings の HostResource / Parent 等) に
+// 目的の EPR を特定するため、marker には ResourceURI を渡す。
+func selectorSetAfter(t *testing.T, body, marker string) string {
+	t.Helper()
+	if marker != "" {
+		m := strings.Index(body, marker)
+		if m < 0 {
+			t.Fatalf("marker %q が body に無い", marker)
+		}
+		body = body[m:]
+	}
+	const openTag, closeTag = `<w:SelectorSet`, `</w:SelectorSet>`
+	i := strings.Index(body, openTag)
+	if i < 0 {
+		t.Fatalf("SelectorSet が見つからない: %s", body)
+	}
+	j := strings.Index(body[i:], ">")
+	if j < 0 {
+		t.Fatalf("SelectorSet の開始タグが閉じていない: %s", body)
+	}
+	start := i + j + 1
+	k := strings.Index(body[start:], closeTag)
+	if k < 0 {
+		t.Fatalf("SelectorSet が閉じていない: %s", body)
+	}
+	return body[start : start+k]
+}
+
+// unescapeForAssert は EPR が SOAP パラメータ内で XML エスケープされている場合に
+// 元の文字列へ戻す (アサーションを実際に送られた Selector に対して行うため)。
+func unescapeForAssert(s string) string {
+	// xml.EscapeText は " を数値参照 &#34; で出す (&quot; ではない)。
+	r := strings.NewReplacer("&lt;", "<", "&gt;", ">", "&#34;", `"`, "&quot;", `"`, "&amp;", "&")
+	return r.Replace(s)
+}
