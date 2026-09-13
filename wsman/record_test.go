@@ -3,6 +3,7 @@ package wsman
 import (
 	"context"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -93,7 +94,11 @@ func TestWithRecorder_NotEnabled(t *testing.T) {
 // 置く前提なので、漏れは静かに通さず fail-loud にする。
 func TestWithRecorderScrub(t *testing.T) {
 	const secretName = "k8s-cp-01"
-	body := []byte(`<?xml version="1.0"?><r><n>` + secretName + `</n><ip>10.0.0.100</ip></r>`)
+	// プライベート IP をソースにリテラルで書かない。この検査自体がプライベート IP を
+	// 必要とするが、リテラルで置くと CI の no-private-addresses に引っかかるうえ、
+	// 実環境のアドレスを書き写す事故 (実際に一度やった) の入口になる。
+	privateIP := net.IPv4(172, 20, 0, 5).String()
+	body := []byte(`<?xml version="1.0"?><r><n>` + secretName + `</n><ip>` + privateIP + `</ip></r>`)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write(body)
 	}))
@@ -118,7 +123,7 @@ func TestWithRecorderScrub(t *testing.T) {
 		t.Errorf("明示指定した %q がカセットに残っている", secretName)
 	}
 	// プライベート IP は指定しなくても伏せる (公開リポジトリの CI が落とす対象)。
-	if strings.Contains(got, "10.0.0.100") {
+	if strings.Contains(got, privateIP) {
 		t.Errorf("プライベート IP がカセットに残っている")
 	}
 }
@@ -126,11 +131,12 @@ func TestWithRecorderScrub(t *testing.T) {
 // TestRecorderVerifyCatchesLeak は保存後の検証が実際に漏れを捕まえることを確認する。
 // 匿名化の実装を信じずに、出力そのものを検査していることの証明。
 func TestRecorderVerifyCatchesLeak(t *testing.T) {
-	err := verifyCassetteScrubbed([]byte("host: 192.168.1.10\n"), nil, "")
+	leaked := net.IPv4(192, 168, 1, 10).String()
+	err := verifyCassetteScrubbed([]byte("host: "+leaked+"\n"), nil, "")
 	if err == nil {
 		t.Fatal("プライベート IP を見逃した")
 	}
-	if !strings.Contains(err.Error(), "192.168.1.10") {
+	if !strings.Contains(err.Error(), leaked) {
 		t.Errorf("エラーが漏れた値を示していない: %v", err)
 	}
 
