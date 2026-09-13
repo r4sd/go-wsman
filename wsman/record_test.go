@@ -2,6 +2,7 @@ package wsman
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -135,5 +136,57 @@ func TestRecorderVerifyCatchesLeak(t *testing.T) {
 
 	if err := verifyCassetteScrubbed([]byte("host: hyperv-host.example.invalid\n"), nil, ""); err != nil {
 		t.Errorf("匿名化済みの内容を誤って拒否した: %v", err)
+	}
+}
+
+// TestNewReplayClient は録音したカセットをユニットテストで再生できることを検証する (#157)。
+//
+// これが無いと「手書き golden を禁止する」だけになって代替が無い。
+// 録音 → 再生が閉じて初めて「golden を人が書く工程」を消せる。
+func TestNewReplayClient(t *testing.T) {
+	// まず httptest 相手に録音する (実機が無い CI でも回る形にするため)。
+	// Enumerate は Enumerate → Pull の 2 往復なので、Action で応答を出し分ける。
+	enumResp := loadGolden(t, "enumerate_response.xml")
+	pullResp := loadGolden(t, "pull_response_xsinil_real.xml")
+	endResp := loadGolden(t, "pull_response_end.xml")
+	pulls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reqBody, _ := io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/soap+xml; charset=utf-8")
+		if strings.Contains(string(reqBody), "enumeration/Enumerate") {
+			_, _ = w.Write(enumResp)
+			return
+		}
+		pulls++
+		if pulls == 1 {
+			_, _ = w.Write(pullResp)
+			return
+		}
+		_, _ = w.Write(endResp) // EndOfSequence
+	}))
+	cassette := filepath.Join(t.TempDir(), "replay")
+	rec, err := NewClient(server.URL, WithRecorder(cassette))
+	if err != nil {
+		t.Fatalf("NewClient(record): %v", err)
+	}
+	_, _ = rec.Enumerate(context.Background(), "http://example.invalid/Msvm_Test")
+	if err := rec.StopRecording(); err != nil {
+		t.Fatalf("StopRecording: %v", err)
+	}
+	server.Close() // 以降ネットワークは無い。再生できれば本当にカセット由来。
+
+	replay, err := NewReplayClient(cassette, server.URL)
+	if err != nil {
+		t.Fatalf("NewReplayClient: %v", err)
+	}
+	items, err := replay.Enumerate(context.Background(), "http://example.invalid/Msvm_Test")
+	if err != nil {
+		t.Fatalf("再生に失敗: %v", err)
+	}
+	if len(items) == 0 {
+		t.Fatal("再生した応答からインスタンスが取れていない")
+	}
+	if got := items[0].PropertiesList()["ResourceType"]; len(got) != 1 || got[0] != "17" {
+		t.Errorf("ResourceType = %v, want [17] (カセットの中身が再生されていない)", got)
 	}
 }

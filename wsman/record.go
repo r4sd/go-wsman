@@ -1,7 +1,10 @@
 package wsman
 
 import (
+	"bytes"
 	"fmt"
+	"io"
+	"net/http"
 	"net/url"
 	"os"
 	"regexp"
@@ -240,4 +243,73 @@ func attachRecorder(c *Client) error {
 	c.transport.httpClient.Transport = rec
 	c.recorder = rec
 	return nil
+}
+
+// NewReplayClient は録音済みカセットを再生する Client を作る (#157)。
+//
+// ネットワークへは一切出ない。テストの fixture を「人が書いた XML」から
+// 「実機から録った応答」へ置き換えるための入口。
+//
+// endpoint は録音時と同じものを渡すこと (カセットの照合に URL を使うため)。
+// cassettePath には拡張子を付けない。
+func NewReplayClient(cassettePath, endpoint string, opts ...ClientOption) (*Client, error) {
+	rec, err := recorder.New(cassettePath,
+		recorder.WithMode(recorder.ModeReplayOnly),
+		recorder.WithMatcher(matchWSManRequest),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("NewReplayClient: カセットを開けない (%s): %w", cassettePath, err)
+	}
+	// 同じ応答を複数回引けるようにする。テストは 1 つのカセットから
+	// 何度も同じ Get を回すことがある。
+	all := append([]ClientOption{WithHTTPClient(&http.Client{Transport: rec})}, opts...)
+	c, err := NewClient(endpoint, all...)
+	if err != nil {
+		return nil, err
+	}
+	c.recorder = rec
+	return c, nil
+}
+
+// soapActionPattern / soapResourceURIPattern は照合に使う 2 つの識別子を本文から取り出す。
+var (
+	soapActionPattern      = regexp.MustCompile(`<a:Action[^>]*>([^<]+)</a:Action>`)
+	soapResourceURIPattern = regexp.MustCompile(`<w:ResourceURI[^>]*>([^<]+)</w:ResourceURI>`)
+)
+
+// matchWSManRequest は録音済みのやり取りと再生時のリクエストを突き合わせる。
+//
+// go-vcr の既定は method + URL だが、WS-Man はすべて同じ URL への POST なので
+// それでは区別できない。さらに録音時に URL は匿名化され、MessageID は毎回変わるため
+// 本文の完全一致も使えない。
+//
+// SOAP の Action と ResourceURI の組で照合する。この 2 つが操作を決めている。
+func matchWSManRequest(r *http.Request, i cassette.Request) bool {
+	if r.Method != i.Method {
+		return false
+	}
+	body := peekRequestBody(r)
+	return firstSubmatch(soapActionPattern, body) == firstSubmatch(soapActionPattern, i.Body) &&
+		firstSubmatch(soapResourceURIPattern, body) == firstSubmatch(soapResourceURIPattern, i.Body)
+}
+
+// peekRequestBody は本文を読み取り、後続が再度読めるように詰め直す。
+// マッチャは同じリクエストに対して複数回呼ばれうるので、消費しっぱなしにできない。
+func peekRequestBody(r *http.Request) string {
+	if r.Body == nil {
+		return ""
+	}
+	var buf bytes.Buffer
+	if _, err := buf.ReadFrom(r.Body); err != nil {
+		return ""
+	}
+	r.Body = io.NopCloser(bytes.NewReader(buf.Bytes()))
+	return buf.String()
+}
+
+func firstSubmatch(re *regexp.Regexp, s string) string {
+	if m := re.FindStringSubmatch(s); len(m) > 1 {
+		return m[1]
+	}
+	return ""
 }
