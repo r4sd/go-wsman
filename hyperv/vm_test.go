@@ -154,8 +154,9 @@ func TestClient_DefineSystem(t *testing.T) {
 	settings := &Msvm_VirtualSystemSettingData{
 		ElementName:          "test-vm-new",
 		VirtualSystemSubType: VirtualSystemSubTypeGen2,
-		// ポインタフィールドの明示 false。create 経路でも握り潰されないこと (#135)。
+		// ポインタフィールドの明示 false。create 経路でも握り潰されないこと (#135 / #149)。
 		AutomaticSnapshotsEnabled: &falseVal,
+		SecureBoot:                &falseVal,
 	}
 
 	got, err := client.DefineSystem(context.Background(), settings)
@@ -188,10 +189,14 @@ func TestClient_DefineSystem(t *testing.T) {
 	if !strings.Contains(capturedBody, "Msvm_VirtualSystemSettingData") {
 		t.Errorf("request body should embed Msvm_VirtualSystemSettingData class element")
 	}
-	// 配線の検証: create 経路が marshal 直前にポインタを nil にする変異を検出する (#135)。
-	const wantProp = `<PROPERTY NAME="AutomaticSnapshotsEnabled" TYPE="boolean"><VALUE>false</VALUE></PROPERTY>`
-	if !strings.Contains(capturedBody, wantProp) {
-		t.Errorf("明示的な false が DefineSystem の body に乗っていない\n want: %s\n body: %s", wantProp, capturedBody)
+	// 配線の検証: create 経路が marshal 直前にポインタを nil にする変異を検出する (#135 / #149)。
+	for _, wantProp := range []string{
+		`<PROPERTY NAME="AutomaticSnapshotsEnabled" TYPE="boolean"><VALUE>false</VALUE></PROPERTY>`,
+		`<PROPERTY NAME="SecureBootEnabled" TYPE="boolean"><VALUE>false</VALUE></PROPERTY>`,
+	} {
+		if !strings.Contains(capturedBody, wantProp) {
+			t.Errorf("明示的な false が DefineSystem の body に乗っていない\n want: %s\n body: %s", wantProp, capturedBody)
+		}
 	}
 }
 
@@ -332,7 +337,11 @@ func TestClient_ListSystemSettingData(t *testing.T) {
 	if got[1].VirtualSystemSubType != VirtualSystemSubTypeGen1 {
 		t.Errorf("got[1].VirtualSystemSubType: got %q", got[1].VirtualSystemSubType)
 	}
-	if got[1].SecureBoot != nil && *got[1].SecureBoot {
+	// golden に SecureBootEnabled=FALSE があるので nil は「読めていない」= バグ。
+	// `!= nil && *x` だけだと全件 nil にする変異が素通りする。
+	if got[1].SecureBoot == nil {
+		t.Errorf("got[1].SecureBoot: nil (golden にプロパティがあるのに埋まっていない)")
+	} else if *got[1].SecureBoot {
 		t.Errorf("got[1].SecureBoot: want false (Gen1 では SecureBoot 無効)")
 	}
 }

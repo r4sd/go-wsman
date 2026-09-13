@@ -239,3 +239,34 @@ func TestClient_SetProcessorSettings(t *testing.T) {
 		t.Errorf("body should contain ExposeVirtualizationExtensions=true")
 	}
 }
+
+// TestClient_GetMemorySettings_AbsentPointerStaysNil は、応答にプロパティが無ければ
+// ポインタが nil のままであることを **呼び出し経路** で固定する (#135 / #149)。
+//
+// 「未指定」と「false」を区別できることがポインタ化の目的なので、read で常に確保すると
+// 機構ごと無意味になる。純関数 (UnmarshalList) のテストだけだと
+// GetMemorySettings が読み取り時に確保する変異を検出できない。
+func TestClient_GetMemorySettings_AbsentPointerStaysNil(t *testing.T) {
+	enum := loadGolden(t, "enumerate_response_memorysettingdata.xml")
+	pull := loadGolden(t, "pull_response_memorysettingdata_no_dynmem.xml")
+
+	var bodies []string
+	server := newSequenceServer(t, []string{enum, pull}, &bodies)
+	defer server.Close()
+
+	client, _ := NewClient(server.URL)
+	got, err := client.GetMemorySettings(context.Background(), "11111111-aaaa-bbbb-cccc-000000000001")
+	if err != nil {
+		t.Fatalf("GetMemorySettings: %v", err)
+	}
+	if len(bodies) != 2 {
+		t.Fatalf("用意した応答が全て消費されていない: %d リクエスト", len(bodies))
+	}
+	if got.DynamicMemoryEnabled != nil {
+		t.Errorf("応答に無いプロパティが nil でない: %v (read で確保してしまっている)", *got.DynamicMemoryEnabled)
+	}
+	// 他のプロパティは従来どおり読めること (golden を壊していない確認)。
+	if got.VirtualQuantity != 2048 {
+		t.Errorf("VirtualQuantity: got %d, want 2048", got.VirtualQuantity)
+	}
+}

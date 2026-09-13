@@ -137,3 +137,47 @@ func defineThrowawayVMGen(t *testing.T, c *Client, ctx context.Context, name, su
 	})
 	return guid
 }
+
+// TestRealGen1SecureBootSend は Gen1 VM へ SecureBootEnabled=false を送っても
+// 拒否されないことを確認する (#149)。
+//
+// MOF は「Secure boot can only be enabled for generation 2」と書いており、Gen1 でも
+// read は FALSE を返す。ポインタ化により「GetSystemSettingData → 編集 → UpdateVm」の
+// パターンでは Gen1 でも SecureBootEnabled=false が毎回送られることになるため、
+// 実機が拒否しないかを押さえておく。
+//
+// 現時点で go-wsman / provider とも全体コピー送信をする経路は無いので実害は無いが、
+// 将来そのパターンを書いた時に踏む。
+func TestRealGen1SecureBootSend(t *testing.T) {
+	if os.Getenv("WSMAN_TEST_ALLOW_MUTATION") == "" {
+		t.Skip("WSMAN_TEST_ALLOW_MUTATION 未設定（VM 作成を伴う破壊的テスト）")
+	}
+	c := getIntegrationClient(t)
+	ctx := context.Background()
+	guid := defineThrowawayVM(t, c, ctx, "gw-p1-gen1-sb")
+
+	before, err := c.GetSystemSettingData(ctx, guid)
+	if err != nil {
+		t.Fatalf("GetSystemSettingData: %v", err)
+	}
+	if before.SecureBoot == nil {
+		t.Logf("① Gen1 は SecureBootEnabled を返さない (nil) → 送信されないので無害")
+		return
+	}
+	t.Logf("① Gen1 作成直後: SecureBoot=%v", *before.SecureBoot)
+
+	f := false
+	jobRef, err := c.UpdateVm(ctx, &Msvm_VirtualSystemSettingData{
+		InstanceID: before.InstanceID,
+		SecureBoot: &f,
+	})
+	if err != nil {
+		t.Fatalf("🔴 Gen1 への SecureBootEnabled=false 送信が拒否された: %v", err)
+	}
+	if jobRef != "" {
+		if err := c.WaitForJob(ctx, jobRef); err != nil {
+			t.Fatalf("🔴 Gen1 への SecureBootEnabled=false 送信でジョブが失敗: %v", err)
+		}
+	}
+	t.Logf("🎯 判定: Gen1 へ SecureBootEnabled=false を送っても拒否されない")
+}
