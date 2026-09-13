@@ -55,6 +55,12 @@ var (
 
 	// recordedHashPattern はヘッダ中の本文ハッシュ。
 	recordedHashPattern = regexp.MustCompile(`sha256:\s*([0-9a-f]{64})`)
+
+	// macElementPattern は MAC アドレスを値に持つ要素。物理 NIC の実アドレスが載る。
+	//
+	// 12 桁 hex を無条件に置換すると GUID プレースホルダの一部にも当たるので、
+	// **要素単位**で捕まえる。
+	macElementPattern = regexp.MustCompile(`(<(?:[A-Za-z0-9]+:)?(?:PermanentAddress|Address)>)([0-9A-Fa-f]{12})(</)`)
 )
 
 // anonymizer は実環境の識別子をプレースホルダへ決定的に写す。
@@ -113,6 +119,9 @@ func (a *anonymizer) placeholderFor(prefix, s string) string {
 	case "guid":
 		// 出力は RFC 4122 の v4 形に似せる。GUID を期待するパーサを壊さないため。
 		v = fmt.Sprintf("00000000-0000-4000-8000-%012x", n)
+	case "mac":
+		// Hyper-V が仮想 NIC に振る OUI (00-15-5D) を使う。実機の OUI からベンダが割れるため。
+		v = fmt.Sprintf("00155D%06X", n)
 	case "ip":
 		idx := (n - 1) / 254
 		if idx >= len(docIPRanges) {
@@ -145,24 +154,44 @@ func scrubWordBounded(s, value, replacement string) string {
 		if v == "" {
 			continue
 		}
-		pat := regexp.QuoteMeta(v)
-		if isWordChar(v[0]) {
-			pat = `\b` + pat
-		}
-		if isWordChar(v[len(v)-1]) {
-			pat += `\b`
-		}
-		re, err := regexp.Compile("(?i)" + pat)
+		re, err := regexp.Compile("(?i)" + regexp.QuoteMeta(v))
 		if err != nil {
 			continue
 		}
-		s = re.ReplaceAllLiteralString(s, replacement)
+		var sb strings.Builder
+		last := 0
+		for _, loc := range re.FindAllStringIndex(s, -1) {
+			if !boundedByNonAlnum(s, loc[0], loc[1]) {
+				continue
+			}
+			sb.WriteString(s[last:loc[0]])
+			sb.WriteString(replacement)
+			last = loc[1]
+		}
+		sb.WriteString(s[last:])
+		s = sb.String()
 	}
 	return s
 }
 
-func isWordChar(b byte) bool {
-	return b == '_' || ('0' <= b && b <= '9') || ('a' <= b && b <= 'z') || ('A' <= b && b <= 'Z')
+// boundedByNonAlnum は s[start:end] の両隣が英数字でないかを返す。
+//
+// RE2 の \b は "_" を単語文字として扱うが、Hyper-V の差分ディスクは
+// <VM名>_<GUID>.avhdx という命名なので、"_" を区切りとして扱わないと VM 名が伏せられない
+// (チェックポイントを 1 つでも持つ VM がいると録音が成立しなくなる)。
+//
+// 一方で Msvm_ExternalEthernetPort の External は右隣が "E" なので守られる。
+func boundedByNonAlnum(s string, start, end int) bool {
+	isAlnum := func(b byte) bool {
+		return ('0' <= b && b <= '9') || ('a' <= b && b <= 'z') || ('A' <= b && b <= 'Z')
+	}
+	if start > 0 && isAlnum(s[start-1]) {
+		return false
+	}
+	if end < len(s) && isAlnum(s[end]) {
+		return false
+	}
+	return true
 }
 
 // replaceFold は大文字小文字を無視して old を replacement に置換する。
@@ -243,6 +272,11 @@ func (a *anonymizer) scrub(s string) string {
 	for _, lit := range a.literals {
 		s = scrubWordBounded(s, lit, a.placeholderFor("scrubbed", lit))
 	}
+	// MAC は GUID 置換より**前**に処理する。後に回すと GUID プレースホルダの末尾 12 桁に当たる。
+	s = macElementPattern.ReplaceAllStringFunc(s, func(m string) string {
+		g := macElementPattern.FindStringSubmatch(m)
+		return g[1] + a.placeholderFor("mac", g[2]) + g[3]
+	})
 	// 複数のアドレスを 1 つに潰すと区別が要るテストで使えないので、決定的に採番する。
 	s = privateIPPattern.ReplaceAllStringFunc(s, func(ip string) string {
 		return a.placeholderFor("ip", ip)
@@ -413,6 +447,11 @@ func verifyRecorded(content []byte, scrub []string, endpoint string) error {
 	var leaks []string
 
 	leaks = append(leaks, privateIPPattern.FindAllString(body, -1)...)
+	for _, m := range macElementPattern.FindAllStringSubmatch(body, -1) {
+		if !strings.HasPrefix(strings.ToUpper(m[2]), "00155D") {
+			leaks = append(leaks, m[2])
+		}
+	}
 	for _, lit := range scrub {
 		if lit == "" {
 			continue

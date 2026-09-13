@@ -164,6 +164,15 @@ func TestVerifyRecordedCatchesLeak(t *testing.T) {
 		t.Error("大文字小文字違いの残留を見逃した")
 	}
 
+	// 伏せ損ねた MAC も捕まえる。実機 NIC の MAC は OUI からベンダが割れるので、
+	// 公開リポジトリへ出す前にここで止める (実際に一度コミットしてしまった)。
+	if err := verifyRecorded(recordedFile("<p:PermanentAddress>ECB1D72F78D1</p:PermanentAddress>"), nil, ""); err == nil {
+		t.Error("伏せられていない MAC を見逃した")
+	}
+	if err := verifyRecorded(recordedFile("<p:PermanentAddress>00155D000001</p:PermanentAddress>"), nil, ""); err != nil {
+		t.Errorf("伏せ済みの MAC を誤って拒否した: %v", err)
+	}
+
 	if err := verifyRecorded(recordedFile("<probe>clean</probe>"), nil, ""); err != nil {
 		t.Errorf("匿名化済みの内容を誤って拒否した: %v", err)
 	}
@@ -303,5 +312,46 @@ func TestScrubClassTokensUnchanged(t *testing.T) {
 	broken := strings.ReplaceAll(origin, "Msvm_ExternalEthernetPort", "Msvm_scrubbedEthernetPort")
 	if err := classTokensUnchanged(origin, broken); err == nil {
 		t.Error("クラス名の書き換えを見逃した")
+	}
+}
+
+// TestScrubMACAddress は物理 NIC の MAC が伏せられることを検証する (#157)。
+//
+// 公開リポジトリに録音物を置く前提で、MAC は OUI からベンダが割れる。
+// 12 桁 hex を無条件に置換すると GUID プレースホルダの末尾にも当たるので、要素単位で扱う。
+func TestScrubMACAddress(t *testing.T) {
+	a := newAnonymizer("https://example.invalid/wsman", nil)
+	got := a.scrub(`<p:PermanentAddress>ECB1D72F78D1</p:PermanentAddress>` +
+		`<p:InstanceID>Microsoft:5F1CA9D4-1111-2222-3333-444455556666</p:InstanceID>`)
+
+	if strings.Contains(got, "ECB1D72F78D1") {
+		t.Errorf("MAC が伏せられていない: %s", got)
+	}
+	if !strings.Contains(got, "<p:PermanentAddress>00155D") {
+		t.Errorf("MAC が Hyper-V の OUI に写っていない: %s", got)
+	}
+	// GUID のプレースホルダが MAC 置換で二重に壊れていないこと。
+	if !regexp.MustCompile(`00000000-0000-4000-8000-[0-9a-f]{12}`).MatchString(got) {
+		t.Errorf("GUID のプレースホルダが壊れた: %s", got)
+	}
+}
+
+// TestScrubDifferencingDiskName は差分ディスク名の中の VM 名が伏せられることを検証する。
+//
+// Hyper-V の差分ディスクは <VM名>_<GUID>.avhdx という命名なので、"_" を単語文字として
+// 扱うと VM 名が伏せられない。チェックポイントを 1 つでも持つ VM がいるホストでは
+// 保存後検証が落ちて**録音自体が成立しなくなる**。
+func TestScrubDifferencingDiskName(t *testing.T) {
+	const vmName = "probe-vm-01"
+	a := newAnonymizer("https://example.invalid/wsman", []string{vmName})
+	got := a.scrub(`<p:Path>D:\VMs\probe-vm-01\probe-vm-01_5F1CA9D4-1111-2222-3333-444455556666.avhdx</p:Path>` +
+		`<p:Class>Msvm_StorageAllocationSettingData</p:Class>`)
+
+	if strings.Contains(got, vmName) {
+		t.Errorf("差分ディスク名の中の VM 名が伏せられていない: %s", got)
+	}
+	// クラス名は壊さない。
+	if !strings.Contains(got, "Msvm_StorageAllocationSettingData") {
+		t.Errorf("CIM クラス名が壊れた: %s", got)
 	}
 }

@@ -208,7 +208,7 @@ func TestFixturesAreRecordedOrDerived(t *testing.T) {
 const selfTestMarker = "purpose: recorder-self-test"
 
 // cimClassPattern は fixture に現れる CIM クラス名。
-var cimClassPattern = regexp.MustCompile(`Msvm_[A-Za-z0-9]+`)
+var cimClassPattern = regexp.MustCompile(`(?:Msvm|CIM|Win32)_[A-Za-z0-9]+`)
 
 // checkDerivedFrom は合成 fixture の来歴を確かめる。
 func checkDerivedFrom(t *testing.T, content []byte, rel string) {
@@ -219,6 +219,14 @@ func checkDerivedFrom(t *testing.T, content []byte, rel string) {
 			t.Errorf("%s: %s を名乗る fixture が CIM クラス名 (%s) を含んでいる。\n"+
 				"  実機の挙動に関わるものは録音するか、録音物からの派生にすること。",
 				rel, selfTestMarker, strings.Join(uniq(cls), ", "))
+		}
+		// クラス名が無くても、応答の骨格を持つものは実機の挙動を主張できてしまう
+		// (Fault の形、Pull の終端条件など)。自己検査用の免除はそこまで広げない。
+		for _, shape := range []string{"Fault", "PullResponse", "EnumerateResponse", "Items"} {
+			if strings.Contains(string(content), shape) {
+				t.Errorf("%s: %s を名乗る fixture が応答の骨格 (%s) を含んでいる。\n"+
+					"  この免除は録音器そのものの検査だけに使うこと。", rel, selfTestMarker, shape)
+			}
 		}
 		return
 	}

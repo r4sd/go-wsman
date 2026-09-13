@@ -322,11 +322,11 @@ func TestParsePullResponse_Recorded(t *testing.T) {
 	if got := props["InstanceID"]; len(got) != 1 || !strings.HasPrefix(got[0], `Microsoft:GuestNetwork\`) {
 		t.Errorf("InstanceID = %v", got)
 	}
-	// 実機が返さなかったプロパティはキーを作らない。
-	// 並列配列 (#141) を持つクラスなので、ここが空でないと位置ずれの議論が始まる。
-	for _, name := range []string{"IPAddresses", "Subnets", "DefaultGateways", "DNSServers"} {
-		if v, ok := props[name]; ok {
-			t.Errorf("%s: 実機が返していないのにキーがある (%v)", name, v)
-		}
+	// 並列配列 (#141) を持つクラスなので、長さが噛み合っているかだけ見る。
+	// 「配列が空であること」は**このホストのゲストが IP を報告していない**という
+	// 環境事実なので、再録音で IP を返す VM が混ざると赤になる。ここでは固定しない。
+	if len(props["Subnets"]) > 0 && len(props["IPAddresses"]) != len(props["Subnets"]) {
+		t.Errorf("IPAddresses(%d) と Subnets(%d) の長さが違う",
+			len(props["IPAddresses"]), len(props["Subnets"]))
 	}
 }
