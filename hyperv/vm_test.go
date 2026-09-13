@@ -151,6 +151,8 @@ func TestClient_DefineSystem(t *testing.T) {
 	settings := &Msvm_VirtualSystemSettingData{
 		ElementName:          "test-vm-new",
 		VirtualSystemSubType: VirtualSystemSubTypeGen2,
+		// ポインタフィールドの明示 false。create 経路でも握り潰されないこと (#135)。
+		AutomaticSnapshotsEnabled: &falseVal,
 	}
 
 	got, err := client.DefineSystem(context.Background(), settings)
@@ -182,6 +184,11 @@ func TestClient_DefineSystem(t *testing.T) {
 	}
 	if !strings.Contains(capturedBody, "Msvm_VirtualSystemSettingData") {
 		t.Errorf("request body should embed Msvm_VirtualSystemSettingData class element")
+	}
+	// 配線の検証: create 経路が marshal 直前にポインタを nil にする変異を検出する (#135)。
+	const wantProp = `<PROPERTY NAME="AutomaticSnapshotsEnabled" TYPE="boolean"><VALUE>false</VALUE></PROPERTY>`
+	if !strings.Contains(capturedBody, wantProp) {
+		t.Errorf("明示的な false が DefineSystem の body に乗っていない\n want: %s\n body: %s", wantProp, capturedBody)
 	}
 }
 
@@ -455,6 +462,8 @@ func TestClient_UpdateVm(t *testing.T) {
 		Notes:                        []string{"updated by go-wsman test"},
 		LockOnDisconnect:             true,
 		AutomaticCriticalErrorAction: 1, // 1 = Pause (CIM 定数)
+		// ポインタフィールドの明示 false。ここが送られないと #135 が直っていない。
+		AutomaticSnapshotsEnabled: &falseVal,
 	}
 
 	jobRef, err := client.UpdateVm(context.Background(), settings)
@@ -482,7 +491,16 @@ func TestClient_UpdateVm(t *testing.T) {
 	if !strings.Contains(capturedBody, "updated by go-wsman test") {
 		t.Errorf("request body should contain Notes value")
 	}
+	// 配線の検証: 純関数 (marshalEmbeddedInstance) のテストだけだと、
+	// UpdateVm / clearReadOnlyForModify がポインタを握り潰す変異を検出できない (#135)。
+	const wantProp = `<PROPERTY NAME="AutomaticSnapshotsEnabled" TYPE="boolean"><VALUE>false</VALUE></PROPERTY>`
+	if !strings.Contains(capturedBody, wantProp) {
+		t.Errorf("明示的な false が UpdateVm の body に乗っていない\n want: %s\n body: %s", wantProp, capturedBody)
+	}
 }
+
+// falseVal はポインタフィールドへ &false を渡すための変数。
+var falseVal = false
 
 // TestClient_UpdateVm_NilSettings は nil ポインタを渡した時にバリデーションエラーになることを確認する。
 func TestClient_UpdateVm_NilSettings(t *testing.T) {

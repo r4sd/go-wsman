@@ -85,5 +85,55 @@ func TestRealExplicitFalse(t *testing.T) {
 	if *after.AutomaticSnapshotsEnabled {
 		t.Errorf("🔴 明示的な false が黙殺されている (#135 が直っていない)")
 	}
-	t.Logf("🎯 判定: &false が実機に反映される")
+	t.Logf("🎯 判定: &false が UpdateVm (ModifySystemSettings) で実機に反映される")
+}
+
+// TestRealExplicitFalseOnCreate は create 経路 (DefineSystem) でも &false が効くかを検証する (#135)。
+//
+// UpdateVm と DefineSystem は別のメソッドで、受理するプロパティ集合も違う。
+// 「書き込み可否は MOF から判断しない」のと同じ理由で、経路ごとに実機で確かめる。
+// 効くなら provider は create 時の PS 補正を 1 条件減らせる。
+func TestRealExplicitFalseOnCreate(t *testing.T) {
+	if os.Getenv("WSMAN_TEST_ALLOW_MUTATION") == "" {
+		t.Skip("WSMAN_TEST_ALLOW_MUTATION 未設定（VM 作成を伴う破壊的テスト）")
+	}
+	c := getIntegrationClient(t)
+	ctx := context.Background()
+
+	f := false
+	res, err := c.DefineSystem(ctx, &Msvm_VirtualSystemSettingData{
+		ElementName:               "gw-explicit-zero-create",
+		VirtualSystemSubType:      VirtualSystemSubTypeGen1,
+		AutomaticSnapshotsEnabled: &f,
+	})
+	if err != nil {
+		t.Fatalf("DefineSystem: %v", err)
+	}
+	guid := res.ResultingSystem
+	t.Cleanup(func() {
+		jobRef, err := c.DestroySystem(ctx, guid)
+		if err != nil {
+			t.Errorf("🔴 cleanup DestroySystem (実機に VM が残る): %v", err)
+			return
+		}
+		if jobRef != "" {
+			if err := c.WaitForJob(ctx, jobRef); err != nil {
+				t.Errorf("🔴 cleanup WaitForJob: %v", err)
+			}
+		}
+	})
+
+	sd, err := c.GetSystemSettingData(ctx, guid)
+	if err != nil {
+		t.Fatalf("GetSystemSettingData: %v", err)
+	}
+	if sd.AutomaticSnapshotsEnabled == nil {
+		t.Fatalf("AutomaticSnapshotsEnabled が read で nil")
+	}
+	t.Logf("① DefineSystem に &false を渡して作成: AutomaticSnapshotsEnabled=%v", *sd.AutomaticSnapshotsEnabled)
+	if *sd.AutomaticSnapshotsEnabled {
+		t.Errorf("🔴 create 経路では &false が効かない (provider は create 後の PS 補正が要る)")
+	} else {
+		t.Logf("🎯 判定: create 経路でも &false が効く")
+	}
 }

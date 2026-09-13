@@ -34,7 +34,7 @@
 | # | テーマ | 現在の決定 | 最終更新 |
 |---|---|---|---|
 | [0001](0001-powershell-free.md) | PowerShell に依存しない理由 | CIM をネイティブに呼ぶ(既存 provider は両方とも PS 依存) | 2026-08-27 |
-| [0002](0002-cim-binding.md) | CIM クラスのバインディング方式 | reflection + struct tag。MOF を一次資料とする | 2026-08-27 |
+| [0002](0002-cim-binding.md) | CIM クラスのバインディング方式 | reflection + struct tag。MOF を一次資料とする。ゼロ値が意味を持つフィールドはポインタ | 2026-09-13 |
 | [0003](0003-test-fixtures.md) | テストフィクスチャの作り方 | golden file は実機ダンプのみ。手書き禁止 | 2026-08-27 |
 | [0004](0004-authentication.md) | 認証とコネクション管理 | NTLM + 接続プール。Kerberos は未対応 | 2026-08-27 |
 
