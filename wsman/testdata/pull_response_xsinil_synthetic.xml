@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  🔴 合成データ。実機から採取したものではない。
+
+  「複数要素の配列の途中に NULL が入る」形は実機で未観測のため、位置保持の
+  回帰テスト用に手で作った。実機がこの形を返す証拠は無い (#141 は防御的な修正)。
+  実機が実際に返す NULL の形は pull_response_xsinil_real.xml を見ること。
+
+  1 件目 (instance-scoped-xsi): xmlns:xsi をインスタンス要素で宣言する形。
+    実機と同じ宣言位置 (= prefix が解決される経路)。
+
+  2 件目 (envelope-scoped-xsi): xmlns:xsi を Envelope でしか宣言しない形。
+    Items の innerxml を単独でパースすると祖先の宣言が見えず prefix が
+    未解決のまま残るため、isXSINil のフォールバック分岐を通る。
+-->
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd" xmlns:e="http://schemas.xmlsoap.org/ws/2004/09/enumeration" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_GuestNetworkAdapterConfiguration">
+  <s:Header>
+    <a:Action>http://schemas.xmlsoap.org/ws/2004/09/enumeration/PullResponse</a:Action>
+    <a:MessageID>uuid:00000000-0000-0000-0000-000000000011</a:MessageID>
+  </s:Header>
+  <s:Body>
+    <e:PullResponse>
+      <e:Items>
+        <p:Msvm_GuestNetworkAdapterConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+          <p:InstanceID>instance-scoped-xsi</p:InstanceID>
+          <p:IPAddresses>192.0.2.10</p:IPAddresses>
+          <p:IPAddresses>2001:db8::10</p:IPAddresses>
+          <p:Subnets>255.255.255.0</p:Subnets>
+          <p:Subnets xsi:nil="true"/>
+          <p:DNSServers xsi:nil="true"/>
+          <p:DNSServers>192.0.2.1</p:DNSServers>
+          <p:DefaultGateways xsi:nil="true"/>
+        </p:Msvm_GuestNetworkAdapterConfiguration>
+        <p:Msvm_GuestNetworkAdapterConfiguration>
+          <p:InstanceID>envelope-scoped-xsi</p:InstanceID>
+          <p:IPAddresses>192.0.2.20</p:IPAddresses>
+          <p:IPAddresses>2001:db8::20</p:IPAddresses>
+          <p:Subnets xsi:nil="true"/>
+          <p:Subnets>255.255.0.0</p:Subnets>
+          <p:DefaultGateways xsi:nil="true"/>
+        </p:Msvm_GuestNetworkAdapterConfiguration>
+      </e:Items>
+      <e:EnumerationContext>uuid:00000000-0000-0000-0000-000000000012</e:EnumerationContext>
+    </e:PullResponse>
+  </s:Body>
+</s:Envelope>

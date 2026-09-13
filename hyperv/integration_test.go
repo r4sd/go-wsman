@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/r4sd/go-wsman/wsman"
 )
 
@@ -104,6 +105,24 @@ func TestIntegration_AddScsiController(t *testing.T) {
 	if len(after) != len(before)+1 {
 		t.Errorf("AddScsiController 後は Controller が 1 増えるべき: before=%d after=%d", len(before), len(after))
 	}
+}
+
+// firstVirtualMachine は列挙結果から最初の **VM** を返す。
+//
+// ListComputerSystems は Hyper-V ホスト自身の Msvm_ComputerSystem も返す (#151)。
+// ホストを掴むと SettingData 系 API が「見つからない」で落ちるため除外する。
+// 判別は Name が GUID かどうかで行う。VM の Name は VM GUID、ホストの Name は
+// ホスト名。Caption / Description は [AMENDMENT] でホスト OS の言語に
+// ローカライズされる (実機は "仮想マシン" を返した) ため判別に使えない。
+func firstVirtualMachine(t *testing.T, vms []*Msvm_ComputerSystem) *Msvm_ComputerSystem {
+	t.Helper()
+	for _, vm := range vms {
+		if _, err := uuid.Parse(vm.Name); err == nil {
+			return vm
+		}
+	}
+	t.Skip("Hyper-V ホストに VM が存在しない (ホスト自身のインスタンスのみ)")
+	return nil
 }
 
 // TestIntegration_ListComputerSystems は実機から VM 一覧を取得する。
@@ -230,7 +249,7 @@ func TestIntegration_GetMemoryAndProcessorSettings(t *testing.T) {
 	if len(vms) == 0 {
 		t.Skip("Hyper-V ホストに VM が存在しない")
 	}
-	target := vms[0]
+	target := firstVirtualMachine(t, vms)
 
 	mem, err := client.GetMemorySettings(ctx, target.Name)
 	if err != nil {
@@ -274,7 +293,7 @@ func TestIntegration_ListIntegrationServices(t *testing.T) {
 	if len(vms) == 0 {
 		t.Skip("Hyper-V ホストに VM が存在しない")
 	}
-	target := vms[0]
+	target := firstVirtualMachine(t, vms)
 
 	svcs, err := client.ListIntegrationServices(ctx, target.Name)
 	if err != nil {
@@ -385,34 +404,129 @@ func TestIntegration_SetIntegrationServiceEnabled(t *testing.T) {
 	t.Logf("✅ Heartbeat 状態遷移を実機で確認: Enabled=%v → %v", original, flipped)
 }
 
-// TestIntegration_SetMemorySettings は対象 VM のメモリ設定を読み取り、同じ値で
-// 書き戻す (no-op 相当)。CIM 経由の Modify が動作することを確認する。
+// newThrowawayVM は使い捨ての Gen2 VM を作り、その **GUID** (Msvm_ComputerSystem.Name) を返す。
+// SettingData 系 API は ElementName ではなく GUID を取るため。
+// テスト終了時に t.Cleanup で必ず削除する (引数を取り違えて実機に残骸を作った事故がある)。
+func newThrowawayVM(t *testing.T, ctx context.Context, client *Client) string {
+	t.Helper()
+	vmName := fmt.Sprintf("go-wsman-test-%d", time.Now().UnixNano())
+	result, err := client.DefineSystem(ctx, &Msvm_VirtualSystemSettingData{
+		ElementName:          vmName,
+		VirtualSystemSubType: VirtualSystemSubTypeGen2,
+	})
+	if err != nil {
+		t.Fatalf("DefineSystem(%s): %v", vmName, err)
+	}
+	t.Cleanup(func() {
+		// テスト本体の ctx は既に切れている可能性があるので専用の ctx を張る。
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+		defer cancel()
+		// DestroySystem は VM の GUID (= ResultingSystem) を取る。ElementName を渡すと
+		// ReturnValue=32773 で静かに失敗し、実機に残骸が残る。
+		jobRef, err := client.DestroySystem(cleanupCtx, result.ResultingSystem)
+		if err != nil {
+			t.Errorf("使い捨て VM %s (%s) の削除に失敗。実機に残骸が残っている: %v",
+				vmName, result.ResultingSystem, err)
+			return
+		}
+		// 非同期 Job の場合は完了まで待つ。待たないと「削除要求が出た」だけで
+		// 実際に消えたかを確認していないことになる。
+		if jobRef != "" {
+			if err := client.WaitForJob(cleanupCtx, jobRef); err != nil {
+				t.Errorf("使い捨て VM %s (%s) の削除 Job が完了しなかった。実機に残骸が残っている可能性: %v",
+					vmName, result.ResultingSystem, err)
+			}
+		}
+	})
+	if result.ResultingSystem == "" {
+		t.Fatalf("DefineSystem(%s): ResultingSystem が空で GUID を特定できない", vmName)
+	}
+	t.Logf("使い捨て VM: %s (%s)", vmName, result.ResultingSystem)
+	return result.ResultingSystem
+}
+
+// mustSetMemory はメモリ設定を書き、非同期 Job が返った場合は完了まで待つ。
+// Job を待たずに読み戻すと、黙殺と「まだ反映されていない」を取り違える。
+func mustSetMemory(t *testing.T, ctx context.Context, client *Client, m *Msvm_MemorySettingData, phase string) {
+	t.Helper()
+	jobRef, err := client.SetMemorySettings(ctx, m)
+	if err != nil {
+		t.Fatalf("SetMemorySettings(%s): %v", phase, err)
+	}
+	if jobRef != "" {
+		if err := client.WaitForJob(ctx, jobRef); err != nil {
+			t.Fatalf("WaitForJob(%s, %s): %v", phase, jobRef, err)
+		}
+	}
+}
+
+// TestIntegration_SetMemorySettings は反転 → 確認 → 復元のパターンで
+// メモリ設定の書き込みを検証する (#131、ADR-0003)。
 //
-// HYPERV_TEST_ALLOW_MUTATION + HYPERV_TEST_TARGET_VM_NAME が必要。
+// 以前は「読んだ値をそのまま書き戻して Job が返ったことを確認する」no-op 書き戻し
+// だった。それでは「Set が受理されたが実はサイレントに無視された」ケースを区別
+// できない。このプロジェクトの脅威モデルは「落ちること」ではなく「落ちずに
+// 間違っていること」なので、書いた値が実際に読み戻せることまで見る。
+//
+// 対象は使い捨て VM。既存 VM (HYPERV_TEST_TARGET_VM_NAME) を書き換えると
+// 稼働中のワークロードのメモリを触ることになる。
 func TestIntegration_SetMemorySettings(t *testing.T) {
 	if os.Getenv("HYPERV_TEST_ALLOW_MUTATION") == "" {
-		t.Skip("HYPERV_TEST_ALLOW_MUTATION 未設定")
-	}
-	target := os.Getenv("HYPERV_TEST_TARGET_VM_NAME")
-	if target == "" {
-		t.Skip("HYPERV_TEST_TARGET_VM_NAME 未設定")
+		t.Skip("HYPERV_TEST_ALLOW_MUTATION 未設定（VM 作成・削除を伴う破壊的テスト）")
 	}
 
 	client := getIntegrationClient(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
 	defer cancel()
 
-	mem, err := client.GetMemorySettings(ctx, target)
-	if err != nil {
-		t.Fatalf("GetMemorySettings: %v", err)
-	}
-	t.Logf("Before: VirtualQuantity=%d Weight=%d", mem.VirtualQuantity, mem.Weight)
+	target := newThrowawayVM(t, ctx, client)
 
-	jobRef, err := client.SetMemorySettings(ctx, mem)
+	before, err := client.GetMemorySettings(ctx, target)
 	if err != nil {
-		t.Fatalf("SetMemorySettings: %v", err)
+		t.Fatalf("GetMemorySettings(before): %v", err)
 	}
-	t.Logf("ModifyResourceSettings Job: %s", jobRef)
+	t.Logf("Before: VirtualQuantity=%d Weight=%d", before.VirtualQuantity, before.Weight)
+
+	// 反転: 現在値と必ず異なる値にする。
+	const memoryStepMB = 512
+	want := before.VirtualQuantity + memoryStepMB
+
+	modified := *before
+	modified.VirtualQuantity = want
+
+	// 復元は t.Cleanup に登録する。以降のアサーションが Fatalf で抜けても必ず走るため
+	// (ADR-0003 の「復元は defer で保証する」)。使い捨て VM の削除より後に登録するので
+	// LIFO で復元 → 削除の順に実行される。
+	t.Cleanup(func() {
+		restoreCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		restore := *before
+		if _, err := client.SetMemorySettings(restoreCtx, &restore); err != nil {
+			t.Errorf("復元に失敗: %v", err)
+			return
+		}
+		restored, err := client.GetMemorySettings(restoreCtx, target)
+		if err != nil {
+			t.Errorf("復元後の読み戻しに失敗: %v", err)
+			return
+		}
+		if restored.VirtualQuantity != before.VirtualQuantity {
+			t.Errorf("復元できていない: got %d, want %d", restored.VirtualQuantity, before.VirtualQuantity)
+		}
+	})
+
+	mustSetMemory(t, ctx, client, &modified, "反転")
+
+	// 確認: 書いた値が実際に読み戻せるか。ここが no-op 書き戻しとの差。
+	after, err := client.GetMemorySettings(ctx, target)
+	if err != nil {
+		t.Fatalf("GetMemorySettings(after): %v", err)
+	}
+	if after.VirtualQuantity != want {
+		t.Errorf("🔴 VirtualQuantity=%d を要求したが読み戻しは %d。書き込みが黙殺されている",
+			want, after.VirtualQuantity)
+	}
+
 }
 
 // TestIntegration_RequestStateChange は環境変数で指定された VM に対して
@@ -476,7 +590,7 @@ func TestIntegration_GetComputerSystem(t *testing.T) {
 		t.Skip("Hyper-V ホストに VM が存在しない")
 	}
 
-	target := vms[0]
+	target := firstVirtualMachine(t, vms)
 	got, err := client.GetComputerSystem(ctx, target.Name)
 	if err != nil {
 		t.Fatalf("GetComputerSystem(%s) failed: %v", target.Name, err)
@@ -532,7 +646,7 @@ func TestIntegration_GetSystemSettingData(t *testing.T) {
 		t.Skip("Hyper-V ホストに VM が存在しない")
 	}
 
-	target := vms[0]
+	target := firstVirtualMachine(t, vms)
 	got, err := client.GetSystemSettingData(ctx, target.Name)
 	if err != nil {
 		t.Fatalf("GetSystemSettingData(%s) failed: %v", target.Name, err)
@@ -687,7 +801,7 @@ func TestIntegration_ListIDEControllers(t *testing.T) {
 	if len(vms) == 0 {
 		t.Skip("Hyper-V ホストに VM が存在しない")
 	}
-	target := vms[0]
+	target := firstVirtualMachine(t, vms)
 
 	controllers, err := client.ListIDEControllers(ctx, target.Name)
 	if err != nil {
@@ -719,7 +833,7 @@ func TestIntegration_ListScsiAndDiskDrives(t *testing.T) {
 		t.Skip("Hyper-V ホストに VM が存在しない")
 	}
 	// SCSI Controller を持つ VM (通常 Gen2) を優先的に選ぶ。
-	target := vms[0]
+	target := firstVirtualMachine(t, vms)
 	for _, vm := range vms {
 		scsi, err := client.ListSCSIControllers(ctx, vm.Name)
 		if err == nil && len(scsi) > 0 {

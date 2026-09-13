@@ -266,3 +266,57 @@ func TestCIMCompliance_BootSourceSettingData(t *testing.T) {
 		nil, // 許容逸脱なし
 	)
 }
+
+// --- #140: 「CIM は配列だが struct はスカラー」の意図的逸脱を fixture で追跡する ---
+//
+// UnmarshalList は多値プロパティをスカラーフィールドに入れるとき黙って先頭で切る。
+// 型では防げないので、MOF fixture 突合が唯一の検出機構になる。以下 4 クラスは
+// fixture が無いせいでその検出自体が効いていなかった。
+//
+// fixture を置いた上で skipFields に理由を書くことで、
+// 「検出されていない」状態と「意図的に除外している」状態を区別できるようにする。
+
+// hostResourceScalarDeviation は HostResource をスカラー宣言していることの理由。
+// MOF は string[] だが、公式ドキュメントが「各デバイスに割り当てられるホストリソースは
+// 1 つだけで、配列の先頭要素しか設定できない」と明記しており、実機でも常に 0〜1 要素。
+const hostResourceScalarDeviation = "MOF は string[] だが公式仕様上「先頭要素のみ設定可」。実機も常に 0〜1 要素のため意図的にスカラー宣言 (#140)"
+
+// TestCIMCompliance_EthernetPortAllocationSettingData は NIC 接続設定の cim タグを検証する。
+func TestCIMCompliance_EthernetPortAllocationSettingData(t *testing.T) {
+	assertCIMCompliance(t,
+		&Msvm_EthernetPortAllocationSettingData{},
+		"msvm_ethernetportallocationsettingdata.txt",
+		map[string]string{"HostResource": hostResourceScalarDeviation},
+	)
+}
+
+// TestCIMCompliance_ResourceAllocationSettingData はコントローラ/ドライブ設定の cim タグを検証する。
+func TestCIMCompliance_ResourceAllocationSettingData(t *testing.T) {
+	assertCIMCompliance(t,
+		&Msvm_ResourceAllocationSettingData{},
+		"msvm_resourceallocationsettingdata.txt",
+		map[string]string{"HostResource": hostResourceScalarDeviation},
+	)
+}
+
+// TestCIMCompliance_StorageAllocationSettingData は VHD/ISO 割り当ての cim タグを検証する。
+func TestCIMCompliance_StorageAllocationSettingData(t *testing.T) {
+	assertCIMCompliance(t,
+		&Msvm_StorageAllocationSettingData{},
+		"msvm_storageallocationsettingdata.txt",
+		map[string]string{"HostResource": hostResourceScalarDeviation},
+	)
+}
+
+// TestCIMCompliance_VirtualEthernetSwitchSettingData は仮想スイッチ設定の cim タグを検証する。
+func TestCIMCompliance_VirtualEthernetSwitchSettingData(t *testing.T) {
+	assertCIMCompliance(t,
+		&Msvm_VirtualEthernetSwitchSettingData{},
+		"msvm_virtualethernetswitchsettingdata.txt",
+		map[string]string{
+			// Notes は Msvm_VirtualSystemSettingData 側では []string で受けている。
+			// スイッチ側は Unmarshal 経路が無く実質未使用のためスカラーのまま据え置く。
+			"Notes": "MOF は string[] だが実質単一値 (複数送ると先頭以外が捨てられる)。現状 Unmarshal 経路なし (#140)",
+		},
+	)
+}

@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  実機ダンプ (2026-09-14 採取)。Msvm_ResourceAllocationSettingData の Enumerate 応答を
+  そのまま保存し、GUID だけプレースホルダに置換した。整形のため改行を入れてある。
+
+  ポイント:
+    - 実機は NULL スカラーを <p:Address xsi:nil="true"/> の形で **要素ごと返す**
+      (省略ではない)。同種の応答 570 件のうち 531 件がこの形を含んでいた。
+    - xmlns:xsi は **インスタンス要素側**で宣言される。
+    - <p:PoolID> は空白のみの要素 (NULL ではない)。
+    - Caption / Description はホスト OS の言語にローカライズされる ([AMENDMENT])。
+
+  この形のプロパティを「空文字 1 要素」として保持すると、uint 系フィールドで
+  ParseUint("") エラー、ポインタフィールドで「明示的にゼロ値を送る」という
+  誤った意味になる。#141 の回帰ガード。
+-->
+<s:Envelope xml:lang="ja-JP" xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:n="http://schemas.xmlsoap.org/ws/2004/09/enumeration" xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd">
+<s:Header>
+<a:Action>http://schemas.xmlsoap.org/ws/2004/09/enumeration/PullResponse</a:Action>
+<a:MessageID>uuid:00000000-0000-0000-0000-000000000001</a:MessageID>
+<a:To>http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</a:To>
+<a:RelatesTo>uuid:00000000-0000-0000-0000-000000000002</a:RelatesTo>
+</s:Header>
+<s:Body>
+<n:PullResponse>
+<n:EnumerationContext>uuid:00000000-0000-0000-0000-000000000003</n:EnumerationContext>
+<n:Items>
+<p:Msvm_ResourceAllocationSettingData xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_ResourceAllocationSettingData" xmlns:cim="http://schemas.dmtf.org/wbem/wscim/1/common" xsi:type="p:Msvm_ResourceAllocationSettingData_Type">
+<p:Address xsi:nil="true"/>
+<p:AddressOnParent xsi:nil="true"/>
+<p:AllocationUnits>count</p:AllocationUnits>
+<p:AutomaticAllocation>true</p:AutomaticAllocation>
+<p:AutomaticDeallocation>true</p:AutomaticDeallocation>
+<p:Caption>物理ディスク ドライブの増分設定</p:Caption>
+<p:ConsumerVisibility>2</p:ConsumerVisibility>
+<p:Description>物理ディスク ドライブ リソースの増分設定を示します。</p:Description>
+<p:ElementName xsi:nil="true"/>
+<p:InstanceID>Microsoft:Definition\00000000-0000-0000-0000-00000000ABCD\Increment</p:InstanceID>
+<p:Limit>1</p:Limit>
+<p:MappingBehavior xsi:nil="true"/>
+<p:OtherResourceType xsi:nil="true"/>
+<p:Parent xsi:nil="true"/>
+<p:PoolID>
+</p:PoolID>
+<p:Reservation>0</p:Reservation>
+<p:ResourceSubType>Microsoft:Hyper-V:Physical Disk Drive</p:ResourceSubType>
+<p:ResourceType>17</p:ResourceType>
+<p:TargetVtl>0</p:TargetVtl>
+<p:VirtualQuantity>1</p:VirtualQuantity>
+<p:VirtualQuantityUnits>count</p:VirtualQuantityUnits>
+<p:Weight>0</p:Weight>
+</p:Msvm_ResourceAllocationSettingData>
+</n:Items>
+</n:PullResponse>
+</s:Body>
+</s:Envelope>
