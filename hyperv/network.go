@@ -186,10 +186,13 @@ func (c *Client) AddNetworkAdapter(ctx context.Context, vmName string, opts Netw
 		return result, fmt.Errorf("AddNetworkAdapter: lookup switch: %w", err)
 	}
 
+	// Selector は MOF に存在するキーだけにする。Msvm_VirtualEthernetSwitch は
+	// CIM_ComputerSystem 派生で、SystemCreationClassName / SystemName を持たない
+	// (それらは CIM_LogicalDevice 系のキー)。実機の正常なアロケーションの HostResource も
+	// CreationClassName と Name の 2 つだけを使う。
 	switchEPR := buildEndpointReference(msvmVirtualEthernetSwitchURI, map[string]string{
-		"Name":                    sw.Name,
-		"CreationClassName":       "Msvm_VirtualEthernetSwitch",
-		"SystemCreationClassName": "Msvm_VirtualSystemSettingData",
+		"Name":              sw.Name,
+		"CreationClassName": "Msvm_VirtualEthernetSwitch",
 	})
 	portEPR := buildEndpointReference(msvmSyntheticEthernetPortSettingDataURI, map[string]string{
 		"InstanceID": result.PortRef,

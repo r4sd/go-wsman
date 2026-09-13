@@ -222,3 +222,49 @@ func TestClient_DestroySwitch_Empty(t *testing.T) {
 		t.Error("expected error for empty switchName")
 	}
 }
+
+// TestClient_DestroySwitch_SelectorSet はスイッチ EPR の Selector が
+// MOF に存在するキーだけであることを検証する (#134)。
+//
+// Msvm_VirtualEthernetSwitch は CIM_ComputerSystem 派生で
+// SystemCreationClassName / SystemName を持たない。存在しないキーを送っていると
+// #114 のような障害の切り分けで毎回疑う対象になる。
+//
+// SelectorSet 全体を厳密比較する。Contains だと余計な Selector が増えても通る。
+func TestClient_DestroySwitch_SelectorSet(t *testing.T) {
+	enum := loadGolden(t, "enumerate_response_virtualethernetswitch.xml")
+	pull := loadGolden(t, "pull_response_virtualethernetswitch.xml")
+	resp := loadGolden(t, "invoke_response_destroy_switch.xml")
+
+	var bodies []string
+	server := newSequenceServer(t, []string{enum, pull, resp}, &bodies)
+	defer server.Close()
+
+	client, _ := NewClient(server.URL)
+	if _, err := client.DestroySwitch(context.Background(), "Internal"); err != nil {
+		t.Fatalf("DestroySwitch: %v", err)
+	}
+	if len(bodies) != 3 {
+		t.Fatalf("用意した応答が全て消費されていない: %d リクエスト", len(bodies))
+	}
+
+	const want = `<w:Selector Name="CreationClassName">Msvm_VirtualEthernetSwitch</w:Selector>` +
+		`<w:Selector Name="Name">BBBBBBBB-2222-2222-2222-BBBBBBBBBBBB</w:Selector>`
+	body := unescapeForAssert(bodies[2])
+	if !strings.Contains(body, want) {
+		t.Errorf("SelectorSet が一致しない\n want (完全一致): %s\n body: %s", want, body)
+	}
+	for _, bogus := range []string{"SystemCreationClassName", "SystemName"} {
+		if strings.Contains(body, bogus) {
+			t.Errorf("MOF に存在しない Selector %q を送っている", bogus)
+		}
+	}
+}
+
+// unescapeForAssert は EPR が SOAP パラメータ内で XML エスケープされている場合に
+// 元の文字列へ戻す (アサーションを実際に送られた Selector に対して行うため)。
+func unescapeForAssert(s string) string {
+	// xml.EscapeText は " を数値参照 &#34; で出す (&quot; ではない)。
+	r := strings.NewReplacer("&lt;", "<", "&gt;", ">", "&#34;", `"`, "&quot;", `"`, "&amp;", "&")
+	return r.Replace(s)
+}

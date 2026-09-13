@@ -280,9 +280,18 @@ func TestClient_AddNetworkAdapter_WithSwitch(t *testing.T) {
 	if !strings.Contains(allocBody, ResourceSubTypeEthernetConnection) {
 		t.Errorf("allocation body should contain Ethernet Connection ResourceSubType")
 	}
-	// HostResource にスイッチ EPR が埋め込まれていること (External の Name)
-	if !strings.Contains(allocBody, "AAAAAAAA-1111-1111-1111-AAAAAAAAAAAA") {
-		t.Errorf("allocation body should reference External switch GUID")
+	// HostResource のスイッチ EPR は MOF に存在するキーだけで構成する (#134)。
+	// Msvm_VirtualEthernetSwitch は CIM_ComputerSystem 派生で
+	// SystemCreationClassName / SystemName を持たない。
+	// SelectorSet を厳密比較する (Contains で GUID だけ見ると余計な Selector を見逃す)。
+	const wantSelectors = `<w:Selector Name="CreationClassName">Msvm_VirtualEthernetSwitch</w:Selector>` +
+		`<w:Selector Name="Name">AAAAAAAA-1111-1111-1111-AAAAAAAAAAAA</w:Selector>`
+	unescaped := unescapeForAssert(allocBody)
+	if !strings.Contains(unescaped, wantSelectors) {
+		t.Errorf("スイッチ EPR の SelectorSet が一致しない\n want: %s\n body: %s", wantSelectors, unescaped)
+	}
+	if strings.Contains(unescaped, "SystemCreationClassName") {
+		t.Errorf("MOF に存在しない Selector SystemCreationClassName を送っている")
 	}
 }
 

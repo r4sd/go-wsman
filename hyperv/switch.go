@@ -239,11 +239,10 @@ func (c *Client) DestroySwitch(ctx context.Context, switchName string) (string, 
 		return "", fmt.Errorf("DestroySwitch: lookup: %w", err)
 	}
 
+	// AddNetworkAdapter と同じ理由で Selector は CreationClassName + Name のみ。
 	switchEPR := buildEndpointReference(msvmVirtualEthernetSwitchURI, map[string]string{
-		"CreationClassName":       "Msvm_VirtualEthernetSwitch",
-		"Name":                    sw.Name,
-		"SystemCreationClassName": "Msvm_VirtualEthernetSwitch",
-		"SystemName":              sw.Name,
+		"CreationClassName": "Msvm_VirtualEthernetSwitch",
+		"Name":              sw.Name,
 	})
 
 	resp, err := c.wsman.Invoke(ctx, msvmVirtualEthernetSwitchManagementServiceURI, "DestroySystem",
