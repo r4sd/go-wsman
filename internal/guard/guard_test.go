@@ -344,3 +344,71 @@ func relPath(path string) string {
 	}
 	return filepath.ToSlash(rel)
 }
+
+// macInElementPattern は fixture 中の MAC アドレス値。
+var macInElementPattern = regexp.MustCompile(`<(?:[A-Za-z0-9]+:)?(?:PermanentAddress|Address)>([0-9A-Fa-f]{12})</`)
+
+// macLiteralPattern はソース中に直接書かれた MAC。区切り付き・無しの両方。
+var macLiteralPattern = regexp.MustCompile(`\b(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}\b|"[0-9A-Fa-f]{12}"`)
+
+// allowedMACPrefixes は書いてよい MAC の接頭辞。
+//
+//   - 00155D: Hyper-V が仮想 NIC に振る OUI。録音器のプレースホルダがこれを使う
+//   - 00005E0053: RFC 7042 の文書用アドレス
+var allowedMACPrefixes = []string{"00155D", "00005E0053"}
+
+// TestNoRealMACAddresses は実環境の MAC がリポジトリに入るのを止める (#157)。
+//
+// CI の no-private-addresses は IP しか見ない。実際に、実機 NIC の MAC を録音物に
+// 1 回、テストソースに 1 回書いている (プライベート IP も同型で 1 回)。
+// 「実機で見た値をそのまま書き写す」型なので、機械で止める。
+func TestNoRealMACAddresses(t *testing.T) {
+	allowed := func(mac string) bool {
+		norm := strings.ToUpper(strings.NewReplacer(":", "", "-", "", `"`, "").Replace(mac))
+		for _, p := range allowedMACPrefixes {
+			if strings.HasPrefix(norm, p) {
+				return true
+			}
+		}
+		return false
+	}
+
+	for _, dir := range []string{"wsman", "hyperv"} {
+		err := filepath.WalkDir(filepath.Join(repoRoot, dir), func(path string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return err
+			}
+			ext := filepath.Ext(path)
+			if ext != ".go" && !fixtureExts[ext] {
+				return nil
+			}
+			content, readErr := os.ReadFile(path) //#nosec G304 -- リポジトリ内の走査
+			if readErr != nil {
+				t.Errorf("%s: 読めない: %v", relPath(path), readErr)
+				return nil
+			}
+			var found []string
+			for _, m := range macInElementPattern.FindAllStringSubmatch(string(content), -1) {
+				if !allowed(m[1]) {
+					found = append(found, m[1])
+				}
+			}
+			if ext == ".go" {
+				for _, m := range macLiteralPattern.FindAllString(string(content), -1) {
+					if !allowed(m) {
+						found = append(found, m)
+					}
+				}
+			}
+			if len(found) > 0 {
+				t.Errorf("%s: 実環境の MAC と思われる値がある (%s)。\n"+
+					"  録音物なら録り直す。テストなら RFC 7042 の文書用アドレス (00-00-5E-00-53-xx) を使う。",
+					relPath(path), strings.Join(uniq(found), ", "))
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("%s の走査に失敗: %v", dir, err)
+		}
+	}
+}
