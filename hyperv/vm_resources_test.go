@@ -47,7 +47,10 @@ func TestClient_GetMemorySettings(t *testing.T) {
 	if got.ResourceType != ResourceTypeMemory {
 		t.Errorf("ResourceType: got %d, want %d", got.ResourceType, ResourceTypeMemory)
 	}
-	if got.DynamicMemoryEnabled {
+	// ポインタ化済み (#149)。nil = golden にプロパティが無かった、と区別する。
+	if got.DynamicMemoryEnabled == nil {
+		t.Errorf("DynamicMemoryEnabled: nil (golden にプロパティがあるのに埋まっていない)")
+	} else if *got.DynamicMemoryEnabled {
 		t.Errorf("DynamicMemoryEnabled: want false")
 	}
 	if got.Weight != 5000 {
@@ -103,10 +106,14 @@ func TestClient_SetMemorySettings(t *testing.T) {
 
 	client, _ := NewClient(server.URL)
 
+	dynOff := false
 	settings := &Msvm_MemorySettingData{
 		InstanceID:      "Microsoft:vm-guid\\F4DA67D7",
 		VirtualQuantity: 4096,
 		Weight:          5000,
+		// ポインタフィールドの明示 false (#149)。純関数のテストだけだと
+		// SetMemorySettings がポインタを握り潰す変異を検出できない。
+		DynamicMemoryEnabled: &dynOff,
 	}
 	jobRef, err := client.SetMemorySettings(context.Background(), settings)
 	if err != nil {
@@ -126,6 +133,11 @@ func TestClient_SetMemorySettings(t *testing.T) {
 	}
 	if !strings.Contains(body, "ModifyResourceSettings") {
 		t.Errorf("body should call ModifyResourceSettings")
+	}
+	// 配線の検証 (#149): 明示 false が実際に送信経路へ乗ること。
+	const wantDyn = `<PROPERTY NAME="DynamicMemoryEnabled" TYPE="boolean"><VALUE>false</VALUE></PROPERTY>`
+	if !strings.Contains(body, wantDyn) {
+		t.Errorf("明示的な false が SetMemorySettings の body に乗っていない\n want: %s\n body: %s", wantDyn, body)
 	}
 }
 

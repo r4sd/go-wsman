@@ -62,7 +62,10 @@ func TestClient_GetSystemSettingData(t *testing.T) {
 	if got.AutomaticStartupAction != AutomaticStartupActionRestartIfPreviouslyRunning {
 		t.Errorf("AutomaticStartupAction: got %d", got.AutomaticStartupAction)
 	}
-	if !got.SecureBoot {
+	// ポインタ化済み (#149)。
+	if got.SecureBoot == nil {
+		t.Errorf("SecureBoot: nil (golden にプロパティがあるのに埋まっていない)")
+	} else if !*got.SecureBoot {
 		t.Errorf("SecureBoot: got false, want true")
 	}
 
@@ -329,7 +332,7 @@ func TestClient_ListSystemSettingData(t *testing.T) {
 	if got[1].VirtualSystemSubType != VirtualSystemSubTypeGen1 {
 		t.Errorf("got[1].VirtualSystemSubType: got %q", got[1].VirtualSystemSubType)
 	}
-	if got[1].SecureBoot {
+	if got[1].SecureBoot != nil && *got[1].SecureBoot {
 		t.Errorf("got[1].SecureBoot: want false (Gen1 では SecureBoot 無効)")
 	}
 }
@@ -466,8 +469,9 @@ func TestClient_UpdateVm(t *testing.T) {
 		Notes:                        []string{"updated by go-wsman test"},
 		LockOnDisconnect:             true,
 		AutomaticCriticalErrorAction: 1, // 1 = Pause (CIM 定数)
-		// ポインタフィールドの明示 false。ここが送られないと #135 が直っていない。
+		// ポインタフィールドの明示 false。ここが送られないと #135 / #149 が直っていない。
 		AutomaticSnapshotsEnabled: &falseVal,
+		SecureBoot:                &falseVal,
 	}
 
 	jobRef, err := client.UpdateVm(context.Background(), settings)
@@ -497,9 +501,13 @@ func TestClient_UpdateVm(t *testing.T) {
 	}
 	// 配線の検証: 純関数 (marshalEmbeddedInstance) のテストだけだと、
 	// UpdateVm / clearReadOnlyForModify がポインタを握り潰す変異を検出できない (#135)。
-	const wantProp = `<PROPERTY NAME="AutomaticSnapshotsEnabled" TYPE="boolean"><VALUE>false</VALUE></PROPERTY>`
-	if !strings.Contains(capturedBody, wantProp) {
-		t.Errorf("明示的な false が UpdateVm の body に乗っていない\n want: %s\n body: %s", wantProp, capturedBody)
+	for _, wantProp := range []string{
+		`<PROPERTY NAME="AutomaticSnapshotsEnabled" TYPE="boolean"><VALUE>false</VALUE></PROPERTY>`,
+		`<PROPERTY NAME="SecureBootEnabled" TYPE="boolean"><VALUE>false</VALUE></PROPERTY>`,
+	} {
+		if !strings.Contains(capturedBody, wantProp) {
+			t.Errorf("明示的な false が UpdateVm の body に乗っていない\n want: %s\n body: %s", wantProp, capturedBody)
+		}
 	}
 }
 

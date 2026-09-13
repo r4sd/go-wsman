@@ -101,3 +101,73 @@ func TestUnmarshalPointerField_Absent(t *testing.T) {
 		t.Errorf("応答に無いプロパティが nil でない: %v", *got.Flag)
 	}
 }
+
+// TestMarshalMemoryDynamicMemoryEnabled は DynamicMemoryEnabled の明示 false を検証する (#149)。
+//
+// schema 既定 static_memory=true / ホスト既定 DynamicMemoryEnabled=true なので、
+// この遷移は新規 VM のたびに要求される。値型のままだとゼロ値スキップで黙殺されていた。
+func TestMarshalMemoryDynamicMemoryEnabled(t *testing.T) {
+	f := false
+	got, err := marshalEmbeddedInstance(&Msvm_MemorySettingData{
+		InstanceID:           "Microsoft:GUID\\MEM",
+		DynamicMemoryEnabled: &f,
+	}, "Msvm_MemorySettingData", nsVirtV2)
+	if err != nil {
+		t.Fatalf("marshalEmbeddedInstance: %v", err)
+	}
+	const want = `<PROPERTY NAME="DynamicMemoryEnabled" TYPE="boolean"><VALUE>false</VALUE></PROPERTY>`
+	if !strings.Contains(got, want) {
+		t.Errorf("明示 false が送られていない\n want: %s\n got:  %s", want, got)
+	}
+}
+
+// TestMarshalMemoryDynamicMemoryEnabled_Nil は nil なら送られないことを検証する。
+func TestMarshalMemoryDynamicMemoryEnabled_Nil(t *testing.T) {
+	got, err := marshalEmbeddedInstance(&Msvm_MemorySettingData{
+		InstanceID: "Microsoft:GUID\\MEM",
+	}, "Msvm_MemorySettingData", nsVirtV2)
+	if err != nil {
+		t.Fatalf("marshalEmbeddedInstance: %v", err)
+	}
+	if strings.Contains(got, `NAME="DynamicMemoryEnabled"`) {
+		t.Errorf("nil ポインタが送られている (最小インスタンスが崩れる): %s", got)
+	}
+}
+
+// TestMarshalSecureBootDisabled は SecureBoot の明示 false を検証する (#149)。
+//
+// Gen2 のホスト既定は true。enable_secure_boot=Off は Linux ゲストで一般的な要求。
+func TestMarshalSecureBootDisabled(t *testing.T) {
+	f := false
+	got, err := marshalEmbeddedInstance(&Msvm_VirtualSystemSettingData{
+		InstanceID: "Microsoft:GUID",
+		SecureBoot: &f,
+	}, "Msvm_VirtualSystemSettingData", nsVirtV2)
+	if err != nil {
+		t.Fatalf("marshalEmbeddedInstance: %v", err)
+	}
+	// CIM 正名は SecureBootEnabled (Go の識別子とは別)。
+	const want = `<PROPERTY NAME="SecureBootEnabled" TYPE="boolean"><VALUE>false</VALUE></PROPERTY>`
+	if !strings.Contains(got, want) {
+		t.Errorf("明示 false が送られていない\n want: %s\n got:  %s", want, got)
+	}
+}
+
+// TestUnmarshalSecureBootPointer は read でポインタが埋まり、無ければ nil のままを検証する。
+func TestUnmarshalSecureBootPointer(t *testing.T) {
+	var withProp Msvm_VirtualSystemSettingData
+	if err := UnmarshalList(map[string][]string{"SecureBootEnabled": {"FALSE"}}, &withProp); err != nil {
+		t.Fatalf("UnmarshalList: %v", err)
+	}
+	if withProp.SecureBoot == nil || *withProp.SecureBoot {
+		t.Errorf("SecureBoot: got %v, want &false", withProp.SecureBoot)
+	}
+
+	var absent Msvm_VirtualSystemSettingData
+	if err := UnmarshalList(map[string][]string{"InstanceID": {"x"}}, &absent); err != nil {
+		t.Fatalf("UnmarshalList: %v", err)
+	}
+	if absent.SecureBoot != nil {
+		t.Errorf("応答に無いプロパティが nil でない: %v", *absent.SecureBoot)
+	}
+}
