@@ -161,3 +161,9 @@ func (c *Client) ListComputerSystems(ctx context.Context) ([]*Msvm_ComputerSyste
 	}
 	return result, nil
 }
+
+// StopRecording は wsman.WithRecorder で開始した録音を確定し、カセットを書き出す。
+// 録音していない場合は何もしない (#157)。
+func (c *Client) StopRecording() error {
+	return c.wsman.StopRecording()
+}

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Azure/go-ntlmssp"
+	"gopkg.in/dnaeon/go-vcr.v4/pkg/recorder"
 )
 
 // DefaultMaxPullIterations は Enumerate の Pull ループの最大反復回数。
@@ -26,7 +27,10 @@ type Client struct {
 	timeoutSet         bool             // WithTimeout が呼ばれたかどうか
 	retryConfig        *retryConfig     // nil の場合はリトライなし
 	insecureSkipVerify bool             // WithInsecureSkipVerify で true に。デフォルト false。
-	optErr             error            // オプション適用時のエラー（遅延チェック用）
+	recordCassette     string           // WithRecorder で設定。空なら録音しない (#157)
+	recordScrub        []string         // WithRecorderScrub で追加する、伏せる文字列
+	recorder           *recorder.Recorder
+	optErr             error // オプション適用時のエラー（遅延チェック用）
 }
 
 // send は transport (単一) または pool (NewPooledClient) のどちらか設定されている方で
@@ -88,6 +92,12 @@ func NewClient(endpoint string, opts ...ClientOption) (*Client, error) {
 	// このタイミングで適用する。
 	if c.insecureSkipVerify {
 		applyInsecureSkipVerify(c.transport)
+	}
+
+	// 録音器は最後に差す。applyInsecureSkipVerify が内側の *http.Transport を
+	// 型アサーションで取り出すため、先に包むと TLS 設定が効かなくなる (#157)。
+	if err := attachRecorder(c); err != nil {
+		return nil, err
 	}
 
 	return c, nil
