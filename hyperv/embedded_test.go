@@ -332,3 +332,75 @@ func first(v []string) string {
 	}
 	return v[0]
 }
+
+// TestParseEmbeddedInstance_NestedInstance は要素ツリー形式の embedded object を
+// 黙って取りこぼさず、エラーとして表面化することを検証する (#93)。
+//
+// この parser は PROPERTY のネストを追跡しない。内側 PROPERTY の EndElement が
+// 外側の状態を消すため、ネストを許すと外側プロパティと後続の兄弟が silent に
+// 破損する。実機 Hyper-V の応答では未観測なので、対応する代わりに fail-loud にする。
+func TestParseEmbeddedInstance_NestedInstance(t *testing.T) {
+	tests := []struct {
+		name string
+		xml  string
+		want string // エラーメッセージに含まれるべき文字列
+	}{
+		{
+			name: "PROPERTY の内側の INSTANCE",
+			xml: `<INSTANCE CLASSNAME="Outer">` +
+				`<PROPERTY NAME="Embedded" TYPE="string">` +
+				`<VALUE.OBJECT><INSTANCE CLASSNAME="Inner">` +
+				`<PROPERTY NAME="InnerProp" TYPE="string"><VALUE>x</VALUE></PROPERTY>` +
+				`</INSTANCE></VALUE.OBJECT></PROPERTY>` +
+				`<PROPERTY NAME="Sibling" TYPE="string"><VALUE>keep</VALUE></PROPERTY>` +
+				`</INSTANCE>`,
+			want: "Inner",
+		},
+		{
+			name: "PROPERTY の内側の PROPERTY",
+			xml: `<INSTANCE CLASSNAME="Outer">` +
+				`<PROPERTY NAME="Outer1" TYPE="string">` +
+				`<PROPERTY NAME="Inner1" TYPE="string"><VALUE>x</VALUE></PROPERTY>` +
+				`</PROPERTY></INSTANCE>`,
+			want: "Inner1",
+		},
+		{
+			name: "PROPERTY.ARRAY の内側の INSTANCE",
+			xml: `<INSTANCE CLASSNAME="Outer">` +
+				`<PROPERTY.ARRAY NAME="Arr" TYPE="string"><VALUE.ARRAY>` +
+				`<VALUE.OBJECT><INSTANCE CLASSNAME="Inner"><PROPERTY NAME="P" TYPE="string"><VALUE>x</VALUE></PROPERTY></INSTANCE></VALUE.OBJECT>` +
+				`</VALUE.ARRAY></PROPERTY.ARRAY></INSTANCE>`,
+			want: "Inner",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseEmbeddedInstance(tt.xml)
+			if err == nil {
+				t.Fatalf("ネストを検出せずに成功した (silent corruption): got=%v", got)
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("エラーがネスト元を特定できていない: %q に %q が含まれない", err.Error(), tt.want)
+			}
+		})
+	}
+}
+
+// TestParseEmbeddedInstance_TopLevelInstanceNotRejected は、通常の (ネストしていない)
+// INSTANCE がガードに誤って引っかからないことを確認する negative control。
+func TestParseEmbeddedInstance_TopLevelInstanceNotRejected(t *testing.T) {
+	got, err := parseEmbeddedInstance(
+		`<INSTANCE CLASSNAME="Msvm_VirtualHardDiskSettingData">` +
+			`<PROPERTY NAME="Path" TYPE="string"><VALUE>C:\vm\a.vhdx</VALUE></PROPERTY>` +
+			`<PROPERTY.ARRAY NAME="Notes" TYPE="string"><VALUE.ARRAY><VALUE>a</VALUE><VALUE>b</VALUE></VALUE.ARRAY></PROPERTY.ARRAY>` +
+			`</INSTANCE>`)
+	if err != nil {
+		t.Fatalf("通常の INSTANCE を誤って拒否した: %v", err)
+	}
+	if len(got["Path"]) != 1 || got["Path"][0] != `C:\vm\a.vhdx` {
+		t.Errorf("Path: got %v", got["Path"])
+	}
+	if len(got["Notes"]) != 2 {
+		t.Errorf("Notes: got %v, want 2 要素", got["Notes"])
+	}
+}

@@ -27,6 +27,11 @@ import (
 // (wsman の parseInstances と同じ意味論)。空の VALUE (<VALUE></VALUE>) は
 // 1 要素の空文字として保持する。
 //
+// PROPERTY のネスト (要素ツリー形式の embedded object) は **エラーにする** (#93)。
+// この parser はフラットな状態しか持たないため、内側 PROPERTY の EndElement が
+// 外側の状態を消し、外側プロパティと後続の兄弟が silent に破損する。実機 Hyper-V の
+// 応答では未観測なので、未検証のネスト解析を書くより落ちて気付ける方を選ぶ。
+//
 // 以前は map[string]string を返し複数 VALUE を **連結** していたため、配列プロパティが
 // 静かに壊れていた ("a","b" → "ab")。UnmarshalList への一本化に合わせて修正した。
 func parseEmbeddedInstance(xmlStr string) (map[string][]string, error) {
@@ -36,6 +41,7 @@ func parseEmbeddedInstance(xmlStr string) (map[string][]string, error) {
 	var curName string // 現在の PROPERTY / PROPERTY.ARRAY の NAME
 	var inValue bool   // <VALUE> の内側か
 	var haveProp bool  // 有効な PROPERTY を処理中か
+	var inProp bool    // PROPERTY / PROPERTY.ARRAY の内側か (NAME の有無に依らない)
 	var val strings.Builder
 
 	for {
@@ -47,9 +53,21 @@ func parseEmbeddedInstance(xmlStr string) (map[string][]string, error) {
 		case xml.StartElement:
 			switch t.Name.Local {
 			case "PROPERTY", "PROPERTY.ARRAY":
+				if inProp {
+					return nil, fmt.Errorf(
+						"parseEmbeddedInstance: プロパティ %q の内側にネストした %s (NAME=%q) がある。要素ツリー形式の embedded object は未対応",
+						curName, t.Name.Local, attrValue(t.Attr, "NAME"))
+				}
+				inProp = true
 				curName = attrValue(t.Attr, "NAME")
 				val.Reset()
 				haveProp = curName != ""
+			case "INSTANCE":
+				if inProp {
+					return nil, fmt.Errorf(
+						"parseEmbeddedInstance: プロパティ %q の内側にネストした INSTANCE (CLASSNAME=%q) がある。要素ツリー形式の embedded object は未対応",
+						curName, attrValue(t.Attr, "CLASSNAME"))
+				}
 			case "VALUE":
 				inValue = true
 			}
@@ -74,6 +92,7 @@ func parseEmbeddedInstance(xmlStr string) (map[string][]string, error) {
 				// 「長さ 1 の空要素」という誤った値になる (批判的レビュー指摘)。
 				curName = ""
 				haveProp = false
+				inProp = false
 			}
 		}
 	}
