@@ -248,7 +248,7 @@ func TestParsePullResponse_XsiNilReal(t *testing.T) {
 // xmlns:xsi の宣言位置を 2 通り用意している。Items の innerxml を単独でパースする都合上、
 // Envelope でしか宣言されていない応答では prefix が解決されず Space に prefix が残る。
 func TestParsePullResponse_XsiNilArrayPosition(t *testing.T) {
-	data := loadGolden(t, "pull_response_xsinil_synthetic.xml")
+	data := loadGolden(t, "synthetic/pull_response_xsinil.xml")
 	resp, err := ParsePullResponse(data)
 	if err != nil {
 		t.Fatalf("ParsePullResponse に失敗: %v", err)
