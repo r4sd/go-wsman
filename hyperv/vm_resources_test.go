@@ -47,7 +47,10 @@ func TestClient_GetMemorySettings(t *testing.T) {
 	if got.ResourceType != ResourceTypeMemory {
 		t.Errorf("ResourceType: got %d, want %d", got.ResourceType, ResourceTypeMemory)
 	}
-	if got.DynamicMemoryEnabled {
+	// ポインタ化済み (#149)。nil = golden にプロパティが無かった、と区別する。
+	if got.DynamicMemoryEnabled == nil {
+		t.Errorf("DynamicMemoryEnabled: nil (golden にプロパティがあるのに埋まっていない)")
+	} else if *got.DynamicMemoryEnabled {
 		t.Errorf("DynamicMemoryEnabled: want false")
 	}
 	if got.Weight != 5000 {
@@ -103,10 +106,14 @@ func TestClient_SetMemorySettings(t *testing.T) {
 
 	client, _ := NewClient(server.URL)
 
+	dynOff := false
 	settings := &Msvm_MemorySettingData{
 		InstanceID:      "Microsoft:vm-guid\\F4DA67D7",
 		VirtualQuantity: 4096,
 		Weight:          5000,
+		// ポインタフィールドの明示 false (#149)。純関数のテストだけだと
+		// SetMemorySettings がポインタを握り潰す変異を検出できない。
+		DynamicMemoryEnabled: &dynOff,
 	}
 	jobRef, err := client.SetMemorySettings(context.Background(), settings)
 	if err != nil {
@@ -126,6 +133,11 @@ func TestClient_SetMemorySettings(t *testing.T) {
 	}
 	if !strings.Contains(body, "ModifyResourceSettings") {
 		t.Errorf("body should call ModifyResourceSettings")
+	}
+	// 配線の検証 (#149): 明示 false が実際に送信経路へ乗ること。
+	const wantDyn = `<PROPERTY NAME="DynamicMemoryEnabled" TYPE="boolean"><VALUE>false</VALUE></PROPERTY>`
+	if !strings.Contains(body, wantDyn) {
+		t.Errorf("明示的な false が SetMemorySettings の body に乗っていない\n want: %s\n body: %s", wantDyn, body)
 	}
 }
 
@@ -225,5 +237,36 @@ func TestClient_SetProcessorSettings(t *testing.T) {
 	// bool は CIM-XML 標準 (DSP0201) の小文字 true。
 	if !strings.Contains(body, `<PROPERTY NAME="ExposeVirtualizationExtensions" TYPE="boolean"><VALUE>true</VALUE></PROPERTY>`) {
 		t.Errorf("body should contain ExposeVirtualizationExtensions=true")
+	}
+}
+
+// TestClient_GetMemorySettings_AbsentPointerStaysNil は、応答にプロパティが無ければ
+// ポインタが nil のままであることを **呼び出し経路** で固定する (#135 / #149)。
+//
+// 「未指定」と「false」を区別できることがポインタ化の目的なので、read で常に確保すると
+// 機構ごと無意味になる。純関数 (UnmarshalList) のテストだけだと
+// GetMemorySettings が読み取り時に確保する変異を検出できない。
+func TestClient_GetMemorySettings_AbsentPointerStaysNil(t *testing.T) {
+	enum := loadGolden(t, "enumerate_response_memorysettingdata.xml")
+	pull := loadGolden(t, "pull_response_memorysettingdata_no_dynmem.xml")
+
+	var bodies []string
+	server := newSequenceServer(t, []string{enum, pull}, &bodies)
+	defer server.Close()
+
+	client, _ := NewClient(server.URL)
+	got, err := client.GetMemorySettings(context.Background(), "11111111-aaaa-bbbb-cccc-000000000001")
+	if err != nil {
+		t.Fatalf("GetMemorySettings: %v", err)
+	}
+	if len(bodies) != 2 {
+		t.Fatalf("用意した応答が全て消費されていない: %d リクエスト", len(bodies))
+	}
+	if got.DynamicMemoryEnabled != nil {
+		t.Errorf("応答に無いプロパティが nil でない: %v (read で確保してしまっている)", *got.DynamicMemoryEnabled)
+	}
+	// 他のプロパティは従来どおり読めること (golden を壊していない確認)。
+	if got.VirtualQuantity != 2048 {
+		t.Errorf("VirtualQuantity: got %d, want 2048", got.VirtualQuantity)
 	}
 }

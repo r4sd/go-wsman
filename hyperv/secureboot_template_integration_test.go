@@ -74,9 +74,10 @@ func TestSecureBootTemplateWrite(t *testing.T) {
 
 	// 本題: ModifySystemSettings で SecureBootTemplateId を UEFI CA (Linux 用) に変更する。
 	// provider の applyFirmwareSettings → UpdateVm と同じ経路 (最小インスタンス送信)。
+	sbOn := true
 	jobRef, err := c.UpdateVm(ctx, &Msvm_VirtualSystemSettingData{
 		InstanceID:           before.InstanceID,
-		SecureBoot:           true,
+		SecureBoot:           &sbOn, // ポインタ化済み (#149)
 		SecureBootTemplateId: sbTemplateUEFICA,
 	})
 	if err != nil {

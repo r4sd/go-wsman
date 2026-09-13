@@ -62,7 +62,10 @@ func TestClient_GetSystemSettingData(t *testing.T) {
 	if got.AutomaticStartupAction != AutomaticStartupActionRestartIfPreviouslyRunning {
 		t.Errorf("AutomaticStartupAction: got %d", got.AutomaticStartupAction)
 	}
-	if !got.SecureBoot {
+	// ポインタ化済み (#149)。
+	if got.SecureBoot == nil {
+		t.Errorf("SecureBoot: nil (golden にプロパティがあるのに埋まっていない)")
+	} else if !*got.SecureBoot {
 		t.Errorf("SecureBoot: got false, want true")
 	}
 
@@ -151,8 +154,9 @@ func TestClient_DefineSystem(t *testing.T) {
 	settings := &Msvm_VirtualSystemSettingData{
 		ElementName:          "test-vm-new",
 		VirtualSystemSubType: VirtualSystemSubTypeGen2,
-		// ポインタフィールドの明示 false。create 経路でも握り潰されないこと (#135)。
+		// ポインタフィールドの明示 false。create 経路でも握り潰されないこと (#135 / #149)。
 		AutomaticSnapshotsEnabled: &falseVal,
+		SecureBoot:                &falseVal,
 	}
 
 	got, err := client.DefineSystem(context.Background(), settings)
@@ -185,10 +189,14 @@ func TestClient_DefineSystem(t *testing.T) {
 	if !strings.Contains(capturedBody, "Msvm_VirtualSystemSettingData") {
 		t.Errorf("request body should embed Msvm_VirtualSystemSettingData class element")
 	}
-	// 配線の検証: create 経路が marshal 直前にポインタを nil にする変異を検出する (#135)。
-	const wantProp = `<PROPERTY NAME="AutomaticSnapshotsEnabled" TYPE="boolean"><VALUE>false</VALUE></PROPERTY>`
-	if !strings.Contains(capturedBody, wantProp) {
-		t.Errorf("明示的な false が DefineSystem の body に乗っていない\n want: %s\n body: %s", wantProp, capturedBody)
+	// 配線の検証: create 経路が marshal 直前にポインタを nil にする変異を検出する (#135 / #149)。
+	for _, wantProp := range []string{
+		`<PROPERTY NAME="AutomaticSnapshotsEnabled" TYPE="boolean"><VALUE>false</VALUE></PROPERTY>`,
+		`<PROPERTY NAME="SecureBootEnabled" TYPE="boolean"><VALUE>false</VALUE></PROPERTY>`,
+	} {
+		if !strings.Contains(capturedBody, wantProp) {
+			t.Errorf("明示的な false が DefineSystem の body に乗っていない\n want: %s\n body: %s", wantProp, capturedBody)
+		}
 	}
 }
 
@@ -329,7 +337,11 @@ func TestClient_ListSystemSettingData(t *testing.T) {
 	if got[1].VirtualSystemSubType != VirtualSystemSubTypeGen1 {
 		t.Errorf("got[1].VirtualSystemSubType: got %q", got[1].VirtualSystemSubType)
 	}
-	if got[1].SecureBoot {
+	// golden に SecureBootEnabled=FALSE があるので nil は「読めていない」= バグ。
+	// `!= nil && *x` だけだと全件 nil にする変異が素通りする。
+	if got[1].SecureBoot == nil {
+		t.Errorf("got[1].SecureBoot: nil (golden にプロパティがあるのに埋まっていない)")
+	} else if *got[1].SecureBoot {
 		t.Errorf("got[1].SecureBoot: want false (Gen1 では SecureBoot 無効)")
 	}
 }
@@ -466,8 +478,9 @@ func TestClient_UpdateVm(t *testing.T) {
 		Notes:                        []string{"updated by go-wsman test"},
 		LockOnDisconnect:             true,
 		AutomaticCriticalErrorAction: 1, // 1 = Pause (CIM 定数)
-		// ポインタフィールドの明示 false。ここが送られないと #135 が直っていない。
+		// ポインタフィールドの明示 false。ここが送られないと #135 / #149 が直っていない。
 		AutomaticSnapshotsEnabled: &falseVal,
+		SecureBoot:                &falseVal,
 	}
 
 	jobRef, err := client.UpdateVm(context.Background(), settings)
@@ -497,9 +510,13 @@ func TestClient_UpdateVm(t *testing.T) {
 	}
 	// 配線の検証: 純関数 (marshalEmbeddedInstance) のテストだけだと、
 	// UpdateVm / clearReadOnlyForModify がポインタを握り潰す変異を検出できない (#135)。
-	const wantProp = `<PROPERTY NAME="AutomaticSnapshotsEnabled" TYPE="boolean"><VALUE>false</VALUE></PROPERTY>`
-	if !strings.Contains(capturedBody, wantProp) {
-		t.Errorf("明示的な false が UpdateVm の body に乗っていない\n want: %s\n body: %s", wantProp, capturedBody)
+	for _, wantProp := range []string{
+		`<PROPERTY NAME="AutomaticSnapshotsEnabled" TYPE="boolean"><VALUE>false</VALUE></PROPERTY>`,
+		`<PROPERTY NAME="SecureBootEnabled" TYPE="boolean"><VALUE>false</VALUE></PROPERTY>`,
+	} {
+		if !strings.Contains(capturedBody, wantProp) {
+			t.Errorf("明示的な false が UpdateVm の body に乗っていない\n want: %s\n body: %s", wantProp, capturedBody)
+		}
 	}
 }
 

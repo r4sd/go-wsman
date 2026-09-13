@@ -173,11 +173,14 @@ const (
 // VM 作成時に Hyper-V がデフォルト値で初期化する。変更は ModifyResourceSettings
 // 経由で行う (本パッケージの SetMemorySettings ヘルパーを利用)。
 type Msvm_MemorySettingData struct {
-	InstanceID           string `cim:"InstanceID"`
-	ElementName          string `cim:"ElementName"`
-	ResourceType         uint16 `cim:"ResourceType"`         // 4 = Memory
-	VirtualQuantity      uint64 `cim:"VirtualQuantity"`      // 割り当てメモリ (MB)
-	DynamicMemoryEnabled bool   `cim:"DynamicMemoryEnabled"` // 動的メモリ
+	InstanceID      string `cim:"InstanceID"`
+	ElementName     string `cim:"ElementName"`
+	ResourceType    uint16 `cim:"ResourceType"`    // 4 = Memory
+	VirtualQuantity uint64 `cim:"VirtualQuantity"` // 割り当てメモリ (MB)
+	// DynamicMemoryEnabled はポインタ。ホスト既定が true / 利用側の既定が static (= false) のため
+	// 「true → false」が新規 VM のたびに要求されるが、値型だとゼロ値スキップで黙殺されていた
+	// (#149、機構は #135)。nil = 変更しない / &false = 明示的に false を送る。
+	DynamicMemoryEnabled *bool  `cim:"DynamicMemoryEnabled"` // 動的メモリ
 	Reservation          uint64 `cim:"Reservation"`          // 最小メモリ (MB)
 	Limit                uint64 `cim:"Limit"`                // 最大メモリ (MB)
 	Weight               uint32 `cim:"Weight"`               // メモリ重み (1〜10000、デフォルト 5000)
@@ -334,36 +337,39 @@ type Msvm_StorageAllocationSettingData struct {
 //
 // 配列プロパティ (BootSourceOrder / Notes) は #48 配列対応基盤 + UnmarshalList で対応済。
 type Msvm_VirtualSystemSettingData struct {
-	InstanceID                          string   `cim:"InstanceID"`
-	ElementName                         string   `cim:"ElementName"` // VM 表示名
-	Caption                             string   `cim:"Caption"`
-	Description                         string   `cim:"Description"`
-	VirtualSystemIdentifier             string   `cim:"VirtualSystemIdentifier"` // VM GUID（Msvm_ComputerSystem.Name と一致）
-	VirtualSystemType                   string   `cim:"VirtualSystemType"`       // "Microsoft:Hyper-V:System:Realized" 等
-	VirtualSystemSubType                string   `cim:"VirtualSystemSubType"`    // "Microsoft:Hyper-V:SubType:1" or :2
-	ConfigurationID                     string   `cim:"ConfigurationID"`         // 永続的な構成 ID
-	ConfigurationDataRoot               string   `cim:"ConfigurationDataRoot"`
-	ConfigurationFile                   string   `cim:"ConfigurationFile"`
-	SnapshotDataRoot                    string   `cim:"SnapshotDataRoot"`
-	SuspendDataRoot                     string   `cim:"SuspendDataRoot"`
-	SwapFileDataRoot                    string   `cim:"SwapFileDataRoot"`
-	LogDataRoot                         string   `cim:"LogDataRoot"`
-	AutomaticStartupAction              uint16   `cim:"AutomaticStartupAction"`
-	AutomaticStartupActionDelay         string   `cim:"AutomaticStartupActionDelay,datetime"` // CIM Duration（文字列）
-	AutomaticShutdownAction             uint16   `cim:"AutomaticShutdownAction"`
-	AutomaticRecoveryAction             uint16   `cim:"AutomaticRecoveryAction"`
-	AutomaticCriticalErrorAction        uint16   `cim:"AutomaticCriticalErrorAction"`                 // 0=None, 1=Pause
-	AutomaticCriticalErrorActionTimeout string   `cim:"AutomaticCriticalErrorActionTimeout,datetime"` // CIM datetime (interval)、Pause 継続時間
-	BIOSGUID                            string   `cim:"BIOSGUID"`
-	BIOSNumLock                         bool     `cim:"BIOSNumLock"`
-	SecureBoot                          bool     `cim:"SecureBootEnabled"` // CIM 正名: SecureBootEnabled
-	SecureBootTemplateId                string   `cim:"SecureBootTemplateId"`
-	BootSourceOrder                     []string `cim:"BootSourceOrder"` // Gen2 ブート順序 (EPR/Drive 参照の配列)
-	Notes                               []string `cim:"Notes"`           // VM 備考 (複数行を配列で保持)
-	LockOnDisconnect                    bool     `cim:"LockOnDisconnect"`
-	GuestControlledCacheTypes           bool     `cim:"GuestControlledCacheTypes"`
-	HighMmioGapSize                     uint64   `cim:"HighMmioGapSize"` // High MMIO ギャップサイズ (MB)
-	LowMmioGapSize                      uint64   `cim:"LowMmioGapSize"`  // Low MMIO ギャップサイズ (MB)
+	InstanceID                          string `cim:"InstanceID"`
+	ElementName                         string `cim:"ElementName"` // VM 表示名
+	Caption                             string `cim:"Caption"`
+	Description                         string `cim:"Description"`
+	VirtualSystemIdentifier             string `cim:"VirtualSystemIdentifier"` // VM GUID（Msvm_ComputerSystem.Name と一致）
+	VirtualSystemType                   string `cim:"VirtualSystemType"`       // "Microsoft:Hyper-V:System:Realized" 等
+	VirtualSystemSubType                string `cim:"VirtualSystemSubType"`    // "Microsoft:Hyper-V:SubType:1" or :2
+	ConfigurationID                     string `cim:"ConfigurationID"`         // 永続的な構成 ID
+	ConfigurationDataRoot               string `cim:"ConfigurationDataRoot"`
+	ConfigurationFile                   string `cim:"ConfigurationFile"`
+	SnapshotDataRoot                    string `cim:"SnapshotDataRoot"`
+	SuspendDataRoot                     string `cim:"SuspendDataRoot"`
+	SwapFileDataRoot                    string `cim:"SwapFileDataRoot"`
+	LogDataRoot                         string `cim:"LogDataRoot"`
+	AutomaticStartupAction              uint16 `cim:"AutomaticStartupAction"`
+	AutomaticStartupActionDelay         string `cim:"AutomaticStartupActionDelay,datetime"` // CIM Duration（文字列）
+	AutomaticShutdownAction             uint16 `cim:"AutomaticShutdownAction"`
+	AutomaticRecoveryAction             uint16 `cim:"AutomaticRecoveryAction"`
+	AutomaticCriticalErrorAction        uint16 `cim:"AutomaticCriticalErrorAction"`                 // 0=None, 1=Pause
+	AutomaticCriticalErrorActionTimeout string `cim:"AutomaticCriticalErrorActionTimeout,datetime"` // CIM datetime (interval)、Pause 継続時間
+	BIOSGUID                            string `cim:"BIOSGUID"`
+	BIOSNumLock                         bool   `cim:"BIOSNumLock"`
+	// SecureBoot はポインタ。Gen2 のホスト既定が true で、Linux ゲスト等で
+	// 明示的に false にする要求が一般的なため (#149)。
+	// nil = 変更しない / &false = 明示的に false を送る。
+	SecureBoot                *bool    `cim:"SecureBootEnabled"` // CIM 正名: SecureBootEnabled
+	SecureBootTemplateId      string   `cim:"SecureBootTemplateId"`
+	BootSourceOrder           []string `cim:"BootSourceOrder"` // Gen2 ブート順序 (EPR/Drive 参照の配列)
+	Notes                     []string `cim:"Notes"`           // VM 備考 (複数行を配列で保持)
+	LockOnDisconnect          bool     `cim:"LockOnDisconnect"`
+	GuestControlledCacheTypes bool     `cim:"GuestControlledCacheTypes"`
+	HighMmioGapSize           uint64   `cim:"HighMmioGapSize"` // High MMIO ギャップサイズ (MB)
+	LowMmioGapSize            uint64   `cim:"LowMmioGapSize"`  // Low MMIO ギャップサイズ (MB)
 	// AutomaticSnapshotsEnabled はポインタ。ホスト既定が true / 利用側の既定が false のため
 	// 「true → false」が最頻の遷移だが、値型だとゼロ値スキップで黙殺されていた (#135)。
 	// nil = 変更しない / &false = 明示的に false を送る。
