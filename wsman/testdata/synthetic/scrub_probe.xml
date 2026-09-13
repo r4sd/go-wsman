@@ -2,7 +2,7 @@
 <!--
   🔴 合成データ。実機から採取したものではない。
 
-  derived-from: wsman/testdata/pull_response_xsinil_real.xml
+  derived-from: wsman/testdata/recorded_pull_virtualethernetswitch.xml
 
   匿名化の取りこぼしを検出するための最小データ。実機の応答で起きる表記ゆれを再現する:
     - XML エスケープされた名前 (R&D-vm → R&amp;D-vm)

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"net/http"
@@ -66,11 +67,11 @@ type anonymizer struct {
 	hosts    []string
 	literals []string
 	replaced map[string]string
-	counter  int
+	counters map[string]int // 種別ごと。共有すると IP の採番が 255 を超えて不正な値になる
 }
 
 func newAnonymizer(endpoint string, literals []string) *anonymizer {
-	a := &anonymizer{replaced: make(map[string]string)}
+	a := &anonymizer{replaced: make(map[string]string), counters: make(map[string]int)}
 	for _, lit := range literals {
 		if lit != "" {
 			a.literals = append(a.literals, lit)
@@ -90,19 +91,37 @@ func newAnonymizer(endpoint string, literals []string) *anonymizer {
 	return a
 }
 
+// docIPRanges は伏せた IP の行き先。RFC 5737 の文書用レンジ。
+// 1 レンジ 254 個で足りなくなったら次へ繰り上げる。
+var docIPRanges = []string{"203.0.113", "198.51.100", "192.0.2"}
+
 // placeholderFor は同じ入力に必ず同じ置換結果を返す。
+//
+// 採番は**種別ごと**に持つ。1 つのカウンタを共有すると、GUID を 300 件含む応答の後に
+// IP が来たときに 203.0.113.301 のような不正なアドレスを書いてしまう
+// (= 録音器自身が実機に無い値を作る)。
 func (a *anonymizer) placeholderFor(prefix, s string) string {
 	key := prefix + "\x00" + strings.ToLower(s)
 	if v, ok := a.replaced[key]; ok {
 		return v
 	}
-	a.counter++
+	a.counters[prefix]++
+	n := a.counters[prefix]
+
 	var v string
-	if prefix == "guid" {
+	switch prefix {
+	case "guid":
 		// 出力は RFC 4122 の v4 形に似せる。GUID を期待するパーサを壊さないため。
-		v = fmt.Sprintf("00000000-0000-4000-8000-%012x", a.counter)
-	} else {
-		v = fmt.Sprintf("%s-%d", prefix, a.counter)
+		v = fmt.Sprintf("00000000-0000-4000-8000-%012x", n)
+	case "ip":
+		idx := (n - 1) / 254
+		if idx >= len(docIPRanges) {
+			// 文書用レンジを使い切った。正しくない値を書くより落とす。
+			idx = len(docIPRanges) - 1
+		}
+		v = fmt.Sprintf("%s.%d", docIPRanges[idx], (n-1)%254+1)
+	default:
+		v = fmt.Sprintf("%s-%d", prefix, n)
 	}
 	a.replaced[key] = v
 	return v
@@ -115,22 +134,19 @@ func xmlEscapeForScrub(s string) string {
 }
 
 // replaceFold は大文字小文字を無視して old を replacement に置換する。
+//
+// 小文字化した文字列のバイト位置を原文へ当てる実装にしてはいけない。
+// ToLower はバイト長を変える文字があり (İ → i̇ は 2 バイト → 3 バイト)、
+// 位置がずれて XML のタグを破壊し、伏せたい値の一部が残る。
 func replaceFold(s, old, replacement string) string {
 	if old == "" {
 		return s
 	}
-	var sb strings.Builder
-	lower, lowerOld := strings.ToLower(s), strings.ToLower(old)
-	for {
-		i := strings.Index(lower, lowerOld)
-		if i < 0 {
-			sb.WriteString(s)
-			return sb.String()
-		}
-		sb.WriteString(s[:i])
-		sb.WriteString(replacement)
-		s, lower = s[i+len(old):], lower[i+len(lowerOld):]
+	re, err := regexp.Compile("(?i)" + regexp.QuoteMeta(old))
+	if err != nil {
+		return s
 	}
+	return re.ReplaceAllLiteralString(s, replacement)
 }
 
 // scrubVariants は 1 つの値について、XML 上に現れうる表記ゆれを全部伏せる。
@@ -166,7 +182,7 @@ func (a *anonymizer) scrub(s string) string {
 	}
 	// 複数のアドレスを 1 つに潰すと区別が要るテストで使えないので、決定的に採番する。
 	s = privateIPPattern.ReplaceAllStringFunc(s, func(ip string) string {
-		return "203.0.113." + strings.TrimPrefix(a.placeholderFor("ip", ip), "ip-")
+		return a.placeholderFor("ip", ip)
 	})
 	return anonGUIDPattern.ReplaceAllStringFunc(s, func(g string) string {
 		return a.placeholderFor("guid", g)
@@ -197,7 +213,8 @@ func (r *recorder) RoundTrip(req *http.Request) (*http.Response, error) {
 	_ = resp.Body.Close()
 	resp.Body = io.NopCloser(bytes.NewReader(body))
 	if readErr != nil {
-		return resp, err
+		// 読めなかったことを握り潰すと、上位のパースエラーに化けて原因を誤らせる。
+		return resp, readErr
 	}
 	if writeErr := r.write(body); writeErr != nil {
 		r.mu.Lock()
@@ -213,6 +230,11 @@ func (r *recorder) write(body []byte) error {
 		return nil
 	}
 	scrubbed := r.anon.scrub(string(body))
+	// 置換が XML の構造を壊していないか確かめる。壊れたものを fixture にすると、
+	// 録音器自身が「実機に無い形」を作ることになる。
+	if err := wellFormedXML(scrubbed); err != nil {
+		return fmt.Errorf("匿名化した結果が XML として壊れている: %w", err)
+	}
 
 	r.mu.Lock()
 	r.seq++
@@ -233,6 +255,20 @@ func (r *recorder) write(body []byte) error {
 	r.files = append(r.files, path)
 	r.mu.Unlock()
 	return nil
+}
+
+// wellFormedXML は文字列が整形式 XML かを確かめる。
+func wellFormedXML(s string) error {
+	dec := xml.NewDecoder(strings.NewReader(s))
+	for {
+		_, err := dec.Token()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+	}
 }
 
 // WithRecorder は実機の応答を匿名化した XML として dir へ書き出す。

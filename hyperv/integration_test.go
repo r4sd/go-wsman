@@ -45,14 +45,14 @@ func getIntegrationClient(t *testing.T) *Client {
 		opts = append(opts, wsman.WithInsecureSkipVerify())
 	}
 	// WSMAN_RECORD_DIR が設定されていれば、実機とのやり取りをそのまま
-	// go-vcr のカセットに録音する (#157)。golden を手で書く工程を無くすのが目的なので、
+	// go-vcr のXML として録音する (#157)。golden を手で書く工程を無くすのが目的なので、
 	// 「録音モードを思い出して呼ぶ」のではなく **統合テストを回せば勝手に貯まる**形にする。
 	baseOpts := append([]wsman.ClientOption(nil), opts...) // 録音を含まない素の接続設定
 	if dir := os.Getenv("WSMAN_RECORD_DIR"); dir != "" {
 		if err := os.MkdirAll(dir, 0o750); err != nil {
 			t.Fatalf("WSMAN_RECORD_DIR の作成に失敗: %v", err)
 		}
-		// テスト名をそのままカセット名にする (サブテストの "/" はディレクトリ区切りになるため置換)。
+		// テスト名をそのまま録音ファイル名の接頭辞にする (サブテストの "/" は区切り文字になるため置換)。
 		name := strings.ReplaceAll(t.Name(), "/", "_")
 		opts = append(opts, wsman.WithRecorder(dir, name))
 		// VM 表示名とホストのコンピュータ名は任意のユーザーデータなのでパターンで拾えない。
@@ -1141,7 +1141,7 @@ func TestIntegration_ListBootSources(t *testing.T) {
 // 保存後検証で、そこには集めた名前が渡る。
 func discoverScrubNames(t *testing.T, endpoint string, baseOpts []wsman.ClientOption) []string {
 	t.Helper()
-	// baseOpts は録音オプションを含まない。この列挙自体はカセットに載せない。
+	// baseOpts は録音オプションを含まない。この列挙自体は録音に載せない。
 	probe, err := NewClient(endpoint, baseOpts...)
 	if err != nil {
 		t.Logf("⚠️ 伏せる名前の収集に失敗 (Client 作成): %v", err)
@@ -1158,6 +1158,16 @@ func discoverScrubNames(t *testing.T, endpoint string, baseOpts []wsman.ClientOp
 	for _, cs := range systems {
 		if cs.ElementName != "" {
 			names = append(names, cs.ElementName)
+		}
+	}
+	// 仮想スイッチの表示名も実環境の名前。応答に素で載る。
+	if switches, err := probe.ListVirtualEthernetSwitches(ctx); err != nil {
+		t.Logf("⚠️ スイッチ名の収集に失敗: %v", err)
+	} else {
+		for _, sw := range switches {
+			if sw.ElementName != "" {
+				names = append(names, sw.ElementName)
+			}
 		}
 	}
 	t.Logf("録音時に伏せる名前を %d 件収集した", len(names))

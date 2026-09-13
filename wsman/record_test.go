@@ -193,3 +193,71 @@ func TestWithRecorder_PooledClientRejected(t *testing.T) {
 		t.Errorf("エラーが理由を示していない: %v", err)
 	}
 }
+
+// TestReplaceFold_NonASCII は大文字小文字を無視した置換が非 ASCII で壊れないことを検証する。
+//
+// ToLower はバイト長を変える文字がある (İ は小文字化で 2 → 3 バイト)。小文字化した
+// 文字列のバイト位置を原文へ当てる実装だと、位置がずれてタグを壊し、伏せたい値の一部が残る。
+func TestReplaceFold_NonASCII(t *testing.T) {
+	for _, tt := range []struct {
+		name, in, old, want string
+	}{
+		{"İ を含む前置き", "İstanbul <h>HV01</h>", "hv01", "İstanbul <h>X</h>"},
+		{"ケルビン記号", "K <h>HV01</h>", "hv01", "K <h>X</h>"},
+		{"大文字小文字混在", "<h>Hv01</h>", "hV01", "<h>X</h>"},
+		{"該当なし", "<h>other</h>", "hv01", "<h>other</h>"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := replaceFold(tt.in, tt.old, "X"); got != tt.want {
+				t.Errorf("replaceFold(%q, %q) = %q, want %q", tt.in, tt.old, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestPlaceholderFor_IPRange は伏せた IP が常に正しいアドレスになることを検証する。
+//
+// GUID と採番を共有していると、GUID を多く含む応答の後で 203.0.113.301 のような
+// 不正な値を書いてしまう。録音器自身が実機に無い値を作ることになる。
+func TestPlaceholderFor_IPRange(t *testing.T) {
+	a := newAnonymizer("https://example.invalid/wsman", nil)
+	// GUID を多めに消費してから IP を割り当てる。
+	for i := 0; i < 300; i++ {
+		a.placeholderFor("guid", fmt.Sprintf("guid-%d", i))
+	}
+	for i := 0; i < 600; i++ {
+		got := a.placeholderFor("ip", fmt.Sprintf("src-%d", i))
+		if net.ParseIP(got) == nil {
+			t.Fatalf("%d 個目のプレースホルダが IP として不正: %q", i, got)
+		}
+	}
+	// 決定的であること。
+	if a.placeholderFor("ip", "src-0") != a.placeholderFor("ip", "src-0") {
+		t.Error("同じ入力に違う値を返した")
+	}
+
+	// **採番が他の種別に影響されないこと。** カウンタを共有していると、応答に含まれる
+	// GUID の数で IP の番号が変わり、再録音の差分が読めなくなる。
+	clean := newAnonymizer("https://example.invalid/wsman", nil)
+	dirty := newAnonymizer("https://example.invalid/wsman", nil)
+	for i := 0; i < 300; i++ {
+		dirty.placeholderFor("guid", fmt.Sprintf("guid-%d", i))
+	}
+	if got, want := dirty.placeholderFor("ip", "src-x"), clean.placeholderFor("ip", "src-x"); got != want {
+		t.Errorf("GUID の数で IP の採番が変わった: got %q, want %q", got, want)
+	}
+}
+
+// TestWellFormedXML は匿名化後の整形式チェックが実際に壊れを捕まえることを確認する。
+// 置換が XML を壊したまま fixture にすると、録音器自身が実機に無い形を作ることになる。
+func TestWellFormedXML(t *testing.T) {
+	if err := wellFormedXML("<a><b>x</b></a>"); err != nil {
+		t.Errorf("整形式の XML を拒否した: %v", err)
+	}
+	if err := wellFormedXML("<a><b>x</a>"); err == nil {
+		t.Error("閉じていないタグを見逃した")
+	}
+	if err := wellFormedXML("<a>x<"); err == nil {
+		t.Error("途中で切れた XML を見逃した")
+	}
+}

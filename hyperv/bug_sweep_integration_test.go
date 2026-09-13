@@ -15,26 +15,16 @@ package hyperv
 import (
 	"context"
 	"errors"
-	"os"
 	"testing"
 
 	"github.com/r4sd/go-wsman/wsman"
 )
 
+// sweepClient は getIntegrationClient を使う。独自に NewClient すると
+// WSMAN_RECORD_DIR による録音経路を通らず、ここでの応答だけ採れなくなる (#157)。
 func sweepClient(t *testing.T) *Client {
 	t.Helper()
-	endpoint := os.Getenv("WSMAN_ENDPOINT")
-	username := os.Getenv("WSMAN_USERNAME")
-	password := os.Getenv("WSMAN_PASSWORD")
-	if endpoint == "" || username == "" || password == "" {
-		t.Skip("WSMAN_ENDPOINT / WSMAN_USERNAME / WSMAN_PASSWORD 未設定のためスキップ")
-	}
-	// homelab は自己署名証明書のため InsecureSkipVerify を併用。
-	client, err := NewClient(endpoint, wsman.WithNTLM(username, password), wsman.WithInsecureSkipVerify())
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
-	}
-	return client
+	return getIntegrationClient(t)
 }
 
 func TestBugSweep_WsmanOperations(t *testing.T) {

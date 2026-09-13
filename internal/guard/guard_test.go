@@ -155,17 +155,21 @@ func TestFixturesAreRecordedOrDerived(t *testing.T) {
 				return err
 			}
 			rel := relPath(path)
-			// MOF fixture は CIM 仕様の抜き書きで、実機の応答ではない (突合の基準として使う)。
+			content, readErr := os.ReadFile(path) //#nosec G304 -- testdata の走査
+			if readErr != nil {
+				t.Errorf("%s: 読めない: %v", rel, readErr)
+				return nil
+			}
+			// MOF fixture は CIM 仕様の抜き書きで、実機の応答ではないので録音を求めない。
+			// ただし「mof/ に置けば何でも通る」にはしない (免除がそのまま迂回路になる)。
 			if strings.Contains(rel, "/mof/") {
+				if rawXMLInSource.Match(content) {
+					t.Errorf("%s: MOF fixture に応答 XML が入っている。録音物として testdata/ へ置くこと", rel)
+				}
 				return nil
 			}
 			if _, ok := legacyGoldens[rel]; ok {
 				seen[rel] = true
-				return nil
-			}
-			content, readErr := os.ReadFile(path) //#nosec G304 -- testdata の走査
-			if readErr != nil {
-				t.Errorf("%s: 読めない: %v", rel, readErr)
 				return nil
 			}
 			if strings.Contains(rel, "/synthetic/") {
@@ -201,12 +205,22 @@ func checkDerivedFrom(t *testing.T, content []byte, rel string) {
 		return
 	}
 	origin := string(m[1])
-	if _, err := os.Stat(filepath.Join(repoRoot, origin)); err != nil {
+	originPath := filepath.Join(repoRoot, origin)
+	content, err := os.ReadFile(originPath) //#nosec G304 -- testdata 内の参照先
+	if err != nil {
 		t.Errorf("%s: derived-from が指す %q が存在しない", rel, origin)
 		return
 	}
 	if !fixtureExts[filepath.Ext(origin)] || !strings.Contains(origin, "/testdata/") {
 		t.Errorf("%s: derived-from が fixture 以外 (%q) を指している", rel, origin)
+		return
+	}
+	// 派生元は**録音物**でなければならない。legacy を指せると、印と sha256 を回避する
+	// 最安の抜け道が synthetic/ に移るだけになる。クラスごとに最低 1 回は
+	// 実機から録ることを強制する。
+	if err := wsman.VerifyRecordedHash(content); err != nil {
+		t.Errorf("%s: derived-from が指す %q が録音物ではない (%v)。\n"+
+			"  合成は実機から録ったものの派生でなければならない。まず対象クラスを録音すること。", rel, origin, err)
 	}
 }
 

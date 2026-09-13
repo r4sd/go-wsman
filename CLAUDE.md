@@ -104,7 +104,7 @@ https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/msvm-<class-slug>
 5. go test -race -v ./... -count=1 で全テスト通過を確認
 ```
 
-### fixture は録音する (手書きは置けない)
+### fixture は録音する (手書きは関所で弾く)
 
 > 🔴 **fixture を手で書かない。録音する。**
 >
