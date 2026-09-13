@@ -70,6 +70,10 @@ func loadMOFFixture(t *testing.T, filename string) []mofProperty {
 //
 // 未対応の型は空文字を返す (呼び出し側で明示的に Fatal させるため)。
 func goTypeToCIM(rt reflect.Type) string {
+	// ゼロ値を明示送信するためポインタ化したフィールド (#135) は指す先の型で突合する。
+	if rt.Kind() == reflect.Pointer {
+		rt = rt.Elem()
+	}
 	switch rt.Kind() {
 	case reflect.String:
 		return "string"

@@ -157,7 +157,20 @@ func marshalField(sb *strings.Builder, fv reflect.Value, fieldName, tag string, 
 	if fv.Kind() == reflect.Slice {
 		return marshalSliceField(sb, fv, fieldName, tag, isDatetime)
 	}
-	if fv.IsZero() {
+	// ポインタフィールドは「送る/送らない」を呼び出し側が明示する (#135)。
+	//
+	//	nil    = 送らない (値型のゼロ値スキップと同じ「変更しない」)
+	//	&false = 明示的に false を送る
+	//
+	// 値型だと false / 0 / "" がゼロ値スキップに掛かり、「変更しない」と
+	// 「ゼロ値に変える」を区別する手段が無かった。ゼロ値が意味を持つフィールドだけ
+	// 順次ポインタへ移す (最小インスタンスの原則は値型側でそのまま残る)。
+	if fv.Kind() == reflect.Pointer {
+		if fv.IsNil() {
+			return nil
+		}
+		fv = fv.Elem()
+	} else if fv.IsZero() {
 		return nil
 	}
 	cimType, err := cimTypeName(fv.Kind())

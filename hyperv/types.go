@@ -362,9 +362,12 @@ type Msvm_VirtualSystemSettingData struct {
 	Notes                               []string `cim:"Notes"`           // VM 備考 (複数行を配列で保持)
 	LockOnDisconnect                    bool     `cim:"LockOnDisconnect"`
 	GuestControlledCacheTypes           bool     `cim:"GuestControlledCacheTypes"`
-	HighMmioGapSize                     uint64   `cim:"HighMmioGapSize"`           // High MMIO ギャップサイズ (MB)
-	LowMmioGapSize                      uint64   `cim:"LowMmioGapSize"`            // Low MMIO ギャップサイズ (MB)
-	AutomaticSnapshotsEnabled           bool     `cim:"AutomaticSnapshotsEnabled"` // 自動スナップショット (Win10+ ホスト)
+	HighMmioGapSize                     uint64   `cim:"HighMmioGapSize"` // High MMIO ギャップサイズ (MB)
+	LowMmioGapSize                      uint64   `cim:"LowMmioGapSize"`  // Low MMIO ギャップサイズ (MB)
+	// AutomaticSnapshotsEnabled はポインタ。ホスト既定が true / 利用側の既定が false のため
+	// 「true → false」が最頻の遷移だが、値型だとゼロ値スキップで黙殺されていた (#135)。
+	// nil = 変更しない / &false = 明示的に false を送る。
+	AutomaticSnapshotsEnabled *bool `cim:"AutomaticSnapshotsEnabled"` // 自動スナップショット (Win10+ ホスト)
 	// Gen2 ファームウェア (#51)
 	NetworkBootPreferredProtocol uint16 `cim:"NetworkBootPreferredProtocol"` // 4096=IPv4, 4097=IPv6 (CIM 列挙値、4/6 ではない)
 	ConsoleMode                  uint16 `cim:"ConsoleMode"`                  // 0=Default, 1=COM1, 2=COM2, 3=None
