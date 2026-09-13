@@ -404,10 +404,6 @@ func TestIntegration_SetIntegrationServiceEnabled(t *testing.T) {
 	t.Logf("✅ Heartbeat 状態遷移を実機で確認: Enabled=%v → %v", original, flipped)
 }
 
-// TestIntegration_SetMemorySettings は対象 VM のメモリ設定を読み取り、同じ値で
-// 書き戻す (no-op 相当)。CIM 経由の Modify が動作することを確認する。
-//
-// HYPERV_TEST_ALLOW_MUTATION + HYPERV_TEST_TARGET_VM_NAME が必要。
 // newThrowawayVM は使い捨ての Gen2 VM を作り、その **GUID** (Msvm_ComputerSystem.Name) を返す。
 // SettingData 系 API は ElementName ではなく GUID を取るため。
 // テスト終了時に t.Cleanup で必ず削除する (引数を取り違えて実機に残骸を作った事故がある)。
@@ -422,11 +418,24 @@ func newThrowawayVM(t *testing.T, ctx context.Context, client *Client) string {
 		t.Fatalf("DefineSystem(%s): %v", vmName, err)
 	}
 	t.Cleanup(func() {
+		// テスト本体の ctx は既に切れている可能性があるので専用の ctx を張る。
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+		defer cancel()
 		// DestroySystem は VM の GUID (= ResultingSystem) を取る。ElementName を渡すと
 		// ReturnValue=32773 で静かに失敗し、実機に残骸が残る。
-		if _, err := client.DestroySystem(context.Background(), result.ResultingSystem); err != nil {
+		jobRef, err := client.DestroySystem(cleanupCtx, result.ResultingSystem)
+		if err != nil {
 			t.Errorf("使い捨て VM %s (%s) の削除に失敗。実機に残骸が残っている: %v",
 				vmName, result.ResultingSystem, err)
+			return
+		}
+		// 非同期 Job の場合は完了まで待つ。待たないと「削除要求が出た」だけで
+		// 実際に消えたかを確認していないことになる。
+		if jobRef != "" {
+			if err := client.WaitForJob(cleanupCtx, jobRef); err != nil {
+				t.Errorf("使い捨て VM %s (%s) の削除 Job が完了しなかった。実機に残骸が残っている可能性: %v",
+					vmName, result.ResultingSystem, err)
+			}
 		}
 	})
 	if result.ResultingSystem == "" {
@@ -484,6 +493,28 @@ func TestIntegration_SetMemorySettings(t *testing.T) {
 
 	modified := *before
 	modified.VirtualQuantity = want
+
+	// 復元は t.Cleanup に登録する。以降のアサーションが Fatalf で抜けても必ず走るため
+	// (ADR-0003 の「復元は defer で保証する」)。使い捨て VM の削除より後に登録するので
+	// LIFO で復元 → 削除の順に実行される。
+	t.Cleanup(func() {
+		restoreCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		restore := *before
+		if _, err := client.SetMemorySettings(restoreCtx, &restore); err != nil {
+			t.Errorf("復元に失敗: %v", err)
+			return
+		}
+		restored, err := client.GetMemorySettings(restoreCtx, target)
+		if err != nil {
+			t.Errorf("復元後の読み戻しに失敗: %v", err)
+			return
+		}
+		if restored.VirtualQuantity != before.VirtualQuantity {
+			t.Errorf("復元できていない: got %d, want %d", restored.VirtualQuantity, before.VirtualQuantity)
+		}
+	})
+
 	mustSetMemory(t, ctx, client, &modified, "反転")
 
 	// 確認: 書いた値が実際に読み戻せるか。ここが no-op 書き戻しとの差。
@@ -496,16 +527,6 @@ func TestIntegration_SetMemorySettings(t *testing.T) {
 			want, after.VirtualQuantity)
 	}
 
-	// 復元: 使い捨て VM とはいえ、書いた分は必ず戻す (反転パターンの型を崩さない)。
-	restore := *before
-	mustSetMemory(t, ctx, client, &restore, "復元")
-	restored, err := client.GetMemorySettings(ctx, target)
-	if err != nil {
-		t.Fatalf("GetMemorySettings(restored): %v", err)
-	}
-	if restored.VirtualQuantity != before.VirtualQuantity {
-		t.Errorf("復元できていない: got %d, want %d", restored.VirtualQuantity, before.VirtualQuantity)
-	}
 }
 
 // TestIntegration_RequestStateChange は環境変数で指定された VM に対して

@@ -199,18 +199,56 @@ func TestParsePullResponse(t *testing.T) {
 	})
 }
 
-// TestParsePullResponse_XsiNil は xsi:nil="true" の扱いを検証する (#141)。
+// TestParsePullResponse_XsiNilReal は実機ダンプで NULL スカラーの扱いを検証する (#141)。
 //
-// 実機は NULL スカラーを <p:Parent xsi:nil="true"/> の形で返す (要素は出る)。
+// 実機は NULL スカラーを <p:Address xsi:nil="true"/> の形で要素ごと返す。
 // これを「空文字 1 要素」として保持すると、uint 系フィールドで ParseUint("") エラー、
 // ポインタフィールドで「明示的にゼロ値を送る」という誤った意味になる。
-// よって **全要素が NULL のプロパティはキーごと落とす** (従来どおり)。
+// よって全要素が NULL のプロパティはキーごと落とす。
+func TestParsePullResponse_XsiNilReal(t *testing.T) {
+	data := loadGolden(t, "pull_response_xsinil_real.xml")
+	resp, err := ParsePullResponse(data)
+	if err != nil {
+		t.Fatalf("ParsePullResponse に失敗: %v", err)
+	}
+	if len(resp.Items) != 1 {
+		t.Fatalf("Items 数 = %d, want 1", len(resp.Items))
+	}
+	props := resp.Items[0].PropertiesList()
+
+	// 実機が xsi:nil="true" で返してきたプロパティ。
+	for _, name := range []string{"Address", "AddressOnParent", "ElementName", "MappingBehavior", "OtherResourceType", "Parent"} {
+		if v, ok := props[name]; ok {
+			t.Errorf("%s: キーが作られている (%q)", name, v)
+		}
+	}
+	// 空白のみの要素 (NULL ではない) も従来どおりキーを作らない。
+	if v, ok := props["PoolID"]; ok {
+		t.Errorf("PoolID: キーが作られている (%q)", v)
+	}
+	// NULL でない値は落とさない。
+	for name, want := range map[string]string{
+		"ResourceType":    "17",
+		"VirtualQuantity": "1",
+		"Reservation":     "0",
+		"Weight":          "0",
+		"TargetVtl":       "0",
+	} {
+		if got := props[name]; len(got) != 1 || got[0] != want {
+			t.Errorf("%s = %v, want [%s]", name, got, want)
+		}
+	}
+}
+
+// TestParsePullResponse_XsiNilArrayPosition は配列中の NULL が位置を保つことを検証する (#141)。
 //
-// 一方、複数要素の配列に NULL が混ざる場合は位置を保つ必要がある。
-// 並列配列 (IPAddresses / Subnets 等) で index がずれると、別のエントリの値として
-// 読まれてしまうため。
-func TestParsePullResponse_XsiNil(t *testing.T) {
-	data := loadGolden(t, "pull_response_xsinil.xml")
+// golden は合成データ (実機未観測)。並列配列で index がずれると、別エントリの値として
+// 読まれてしまうため、混在時だけ空文字で位置を埋める。
+//
+// xmlns:xsi の宣言位置を 2 通り用意している。Items の innerxml を単独でパースする都合上、
+// Envelope でしか宣言されていない応答では prefix が解決されず Space に prefix が残る。
+func TestParsePullResponse_XsiNilArrayPosition(t *testing.T) {
+	data := loadGolden(t, "pull_response_xsinil_synthetic.xml")
 	resp, err := ParsePullResponse(data)
 	if err != nil {
 		t.Fatalf("ParsePullResponse に失敗: %v", err)
@@ -219,20 +257,8 @@ func TestParsePullResponse_XsiNil(t *testing.T) {
 		t.Fatalf("Items 数 = %d, want 2", len(resp.Items))
 	}
 
-	t.Run("NULL のみのスカラーはキーを作らない", func(t *testing.T) {
+	t.Run("xmlns:xsi がインスタンス要素で宣言されている", func(t *testing.T) {
 		props := resp.Items[0].PropertiesList()
-		for _, name := range []string{"Parent", "Address", "AutomaticStartupActionSequenceNumber"} {
-			if v, ok := props[name]; ok {
-				t.Errorf("%s: キーが作られている (%v)。空文字を入れると uint/ポインタ系で誤変換になる", name, v)
-			}
-		}
-		if got := props["VirtualQuantity"]; len(got) != 1 || got[0] != "2" {
-			t.Errorf("VirtualQuantity = %v, want [2]", got)
-		}
-	})
-
-	t.Run("配列中の NULL は位置を保つ", func(t *testing.T) {
-		props := resp.Items[1].PropertiesList()
 		if got, want := props["IPAddresses"], []string{"192.0.2.10", "2001:db8::10"}; !equalStrings(got, want) {
 			t.Errorf("IPAddresses = %v, want %v", got, want)
 		}
@@ -241,9 +267,23 @@ func TestParsePullResponse_XsiNil(t *testing.T) {
 		if got, want := props["Subnets"], []string{"255.255.255.0", ""}; !equalStrings(got, want) {
 			t.Errorf("Subnets = %v, want %v (位置がずれている)", got, want)
 		}
-		// 先頭が NULL のケース。
 		if got, want := props["DNSServers"], []string{"", "192.0.2.1"}; !equalStrings(got, want) {
 			t.Errorf("DNSServers = %v, want %v (位置がずれている)", got, want)
+		}
+		// 全要素 NULL はキーごと落とす。
+		if v, ok := props["DefaultGateways"]; ok {
+			t.Errorf("DefaultGateways: キーが作られている (%q)", v)
+		}
+	})
+
+	// isXSINil の prefix 未解決フォールバックを通す経路。
+	t.Run("xmlns:xsi が Envelope でしか宣言されていない", func(t *testing.T) {
+		props := resp.Items[1].PropertiesList()
+		if got, want := props["Subnets"], []string{"", "255.255.0.0"}; !equalStrings(got, want) {
+			t.Errorf("Subnets = %v, want %v (prefix 未解決の xsi:nil を取りこぼしている)", got, want)
+		}
+		if v, ok := props["DefaultGateways"]; ok {
+			t.Errorf("DefaultGateways: キーが作られている (%q)", v)
 		}
 	})
 }

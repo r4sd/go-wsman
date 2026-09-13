@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -374,3 +375,48 @@ func TestClient_NewClient_WithOptions(t *testing.T) {
 		t.Fatal("client should not be nil")
 	}
 }
+
+// TestClient_GetComputerSystem_SelectorSet は Get のリクエストに正しい鍵が
+// 載っていることを検証する。
+//
+// Name セレクタだけでは実機が DestinationUnreachable を返す (2026-09-14 実機確認)。
+// SelectorSet 全体を厳密比較する。Contains だと余計な Selector が増えても通る。
+func TestClient_GetComputerSystem_SelectorSet(t *testing.T) {
+	respXML := loadGolden(t, "get_response_computersystem.xml")
+
+	var body string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("failed to read request body: %v", err)
+		}
+		body = string(b)
+		w.Header().Set("Content-Type", "application/soap+xml; charset=utf-8")
+		_, _ = w.Write([]byte(respXML))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(server.URL)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	if _, err := client.GetComputerSystem(context.Background(), "5C5E2D70-1111-2222-3333-444455556666"); err != nil {
+		t.Fatalf("GetComputerSystem: %v", err)
+	}
+
+	const want = `<w:Selector Name="CreationClassName">Msvm_ComputerSystem</w:Selector>` +
+		`<w:Selector Name="Name">5C5E2D70-1111-2222-3333-444455556666</w:Selector>`
+	// Get のエンベロープは整形されて改行・インデントが入るため、要素間の空白を畳む。
+	got := collapseTagWhitespace(selectorSetInner(t, unescapeForAssert(body)))
+	if got != want {
+		t.Errorf("SelectorSet が一致しない\n got:  %s\n want: %s", got, want)
+	}
+}
+
+// collapseTagWhitespace は要素と要素の間にある空白 (改行・インデント) を取り除く。
+// 要素の中身には触らないので、Selector の値に含まれる空白は潰さない。
+func collapseTagWhitespace(s string) string {
+	return strings.TrimSpace(betweenTagsWhitespace.ReplaceAllString(s, "><"))
+}
+
+var betweenTagsWhitespace = regexp.MustCompile(`>\s+<`)
