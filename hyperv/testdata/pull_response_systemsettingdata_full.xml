@@ -19,7 +19,11 @@
           <p:AutomaticShutdownAction>3</p:AutomaticShutdownAction>
           <p:AutomaticRecoveryAction>2</p:AutomaticRecoveryAction>
           <p:AutomaticCriticalErrorAction>1</p:AutomaticCriticalErrorAction>
-          <p:AutomaticCriticalErrorActionTimeout>00000000003000.000000:000</p:AutomaticCriticalErrorActionTimeout>
+          <!-- read は ISO 8601 duration を返す (実機確認 2026-09-13)。write は CIM ネイティブ
+               書式を要求するという非対称があるので混同しないこと (#119)。
+               以前ここは CIM ネイティブ書式の合成値で、実機の read 形式と矛盾していた (#143)。 -->
+          <p:AutomaticCriticalErrorActionTimeout>P0DT0H30M0S</p:AutomaticCriticalErrorActionTimeout>
+          <p:AutomaticStartupActionDelay>P0DT0H0M0S</p:AutomaticStartupActionDelay>
           <p:SecureBootEnabled>TRUE</p:SecureBootEnabled>
           <p:BootSourceOrder>Microsoft:99999999-aaaa-bbbb-cccc-000000000099\BootSource\0</p:BootSourceOrder>
           <p:BootSourceOrder>Microsoft:99999999-aaaa-bbbb-cccc-000000000099\BootSource\1</p:BootSourceOrder>

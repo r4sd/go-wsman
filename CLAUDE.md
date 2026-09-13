@@ -132,14 +132,30 @@ MOF の `Access type` は `ModifySystemSettings` の受理を**予測しない**
 | フィールド | MOF | 実機 |
 |---|---|---|
 | `SecureBootTemplateId` | Read-only(「ModifyVirtualSystem で変更可」の但し書きあり) | ✅ 書ける |
-| `AutomaticCriticalErrorActionTimeout` | **Read/write** | ❌ `ErrorCode=32768` |
-| `AutomaticStartupActionDelay` | Read-only | ❌ `ErrorCode=32768` |
+| `AutomaticCriticalErrorActionTimeout` | **Read/write** | ✅ 書ける(ただし送り方が特殊。下記) |
+| `AutomaticStartupActionDelay` | Read-only | ✅ 書ける(同上) |
 
 MOF に「ModifyVirtualSystem で変更できる」と明記があれば書ける可能性が高い。
 無ければ**実機で確かめるまで書けると仮定しない**。
 
+逆に `ErrorCode=32768` を「書けない」と早合点しない。上の interval 2 件は長く
+「書けない」と扱われていたが、実際は**こちらの送り方が間違っていた**
+(TYPE 属性が `string`、値が ISO 8601 のまま。#119)。
+
 配列性も同様で、`Notes` は MOF が `string[]` だが**実質単一値**
 (複数要素を送ると先頭以外が捨てられる)。
+
+### read と write で wire format が違うことがある
+
+同じプロパティでも読み書きで形式が変わる。read の値をそのまま送り返すと落ちる。
+
+| プロパティ | read | write |
+|---|---|---|
+| `AutomaticStartupActionDelay` / `AutomaticCriticalErrorActionTimeout` | ISO 8601 duration `P0DT0H30M0S` | CIM ネイティブ `00000000003000.000000:000` + `TYPE="datetime"` |
+| `BootSourceOrder` | 参照文字列(read 形式) | 別の参照文字列形式 |
+
+datetime 型は `cim:"<name>,datetime"` タグで指定する。marshal 側が型と値の
+両方を変換する。**片方だけでは実機が `ErrorCode=32768` を返す**(2×2 を全数試行して確認)。
 
 ### ミューテーション検証の落とし穴
 
