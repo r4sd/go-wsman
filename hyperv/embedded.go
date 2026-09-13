@@ -136,11 +136,11 @@ func marshalEmbeddedInstance(v interface{}, className, _ string) (string, error)
 	rt := rv.Type()
 	for i := 0; i < rt.NumField(); i++ {
 		field := rt.Field(i)
-		tag := field.Tag.Get("cim")
+		tag, isDatetime := parseCimTag(field.Tag.Get("cim"))
 		if tag == "" {
 			continue
 		}
-		if err := marshalField(&sb, rv.Field(i), field.Name, tag); err != nil {
+		if err := marshalField(&sb, rv.Field(i), field.Name, tag, isDatetime); err != nil {
 			return "", err
 		}
 	}
@@ -151,11 +151,11 @@ func marshalEmbeddedInstance(v interface{}, className, _ string) (string, error)
 
 // marshalField は 1 フィールドを PROPERTY / PROPERTY.ARRAY として sb に書く。
 // 出力しない (ゼロ値 / nil ポインタ / 空 slice) 場合は何も書かずに nil を返す。
-func marshalField(sb *strings.Builder, fv reflect.Value, fieldName, tag string) error {
+func marshalField(sb *strings.Builder, fv reflect.Value, fieldName, tag string, isDatetime bool) error {
 	// slice は PROPERTY.ARRAY / VALUE.ARRAY に展開 (CIM-XML 配列の慣習)。
 	// nil/空 slice はゼロ値扱いで出力しない。
 	if fv.Kind() == reflect.Slice {
-		return marshalSliceField(sb, fv, fieldName, tag)
+		return marshalSliceField(sb, fv, fieldName, tag, isDatetime)
 	}
 	// ポインタフィールドは「送る/送らない」を呼び出し側が明示する (#135)。
 	//
@@ -181,14 +181,28 @@ func marshalField(sb *strings.Builder, fv reflect.Value, fieldName, tag string) 
 	if err != nil {
 		return fmt.Errorf("field %q: %w", fieldName, err)
 	}
+	// datetime は TYPE 属性だけでなく **値の書式も** read と非対称 (#119)。
+	// ISO 8601 のまま TYPE="datetime" で送っても ErrorCode=32768 になる。
+	if isDatetime {
+		cimType = "datetime"
+		if val, err = iso8601ToCIMInterval(val); err != nil {
+			return fmt.Errorf("field %q: %w", fieldName, err)
+		}
+	}
 	fmt.Fprintf(sb, `<PROPERTY NAME=%q TYPE=%q><VALUE>%s</VALUE></PROPERTY>`, tag, cimType, xmlEscape(val))
 	return nil
 }
 
 // marshalSliceField は slice フィールドを PROPERTY.ARRAY として書く。
-func marshalSliceField(sb *strings.Builder, fv reflect.Value, fieldName, tag string) error {
+func marshalSliceField(sb *strings.Builder, fv reflect.Value, fieldName, tag string, isDatetime bool) error {
 	if fv.Len() == 0 {
 		return nil
+	}
+	// datetime の配列プロパティは実機にも MOF fixture にも存在しない。
+	// 未検証の変換コードを置くより、要求されたら落とす方が安全
+	// (黙って誤った書式で送ると ErrorCode=32768 になるだけで気付けない)。
+	if isDatetime {
+		return fmt.Errorf("field %q: datetime 配列は未対応 (実機に該当プロパティが無く未検証)", fieldName)
 	}
 	cimType, err := cimTypeName(fv.Type().Elem().Kind())
 	if err != nil {

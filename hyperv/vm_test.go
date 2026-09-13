@@ -383,8 +383,12 @@ func TestClient_GetSystemSettingData_FullFields(t *testing.T) {
 		t.Errorf("AutomaticCriticalErrorAction: got %d, want %d",
 			got.AutomaticCriticalErrorAction, AutomaticCriticalErrorActionPause)
 	}
-	if got.AutomaticCriticalErrorActionTimeout != "00000000003000.000000:000" {
+	// read は ISO 8601 duration (実機確認 2026-09-13)。write の CIM ネイティブ書式とは別 (#119)。
+	if got.AutomaticCriticalErrorActionTimeout != "P0DT0H30M0S" {
 		t.Errorf("AutomaticCriticalErrorActionTimeout: got %q", got.AutomaticCriticalErrorActionTimeout)
+	}
+	if got.AutomaticStartupActionDelay != "P0DT0H0M0S" {
+		t.Errorf("AutomaticStartupActionDelay: got %q", got.AutomaticStartupActionDelay)
 	}
 	if got.HighMmioGapSize != 536870912 {
 		t.Errorf("HighMmioGapSize: got %d", got.HighMmioGapSize)

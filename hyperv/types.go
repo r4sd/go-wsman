@@ -349,11 +349,11 @@ type Msvm_VirtualSystemSettingData struct {
 	SwapFileDataRoot                    string   `cim:"SwapFileDataRoot"`
 	LogDataRoot                         string   `cim:"LogDataRoot"`
 	AutomaticStartupAction              uint16   `cim:"AutomaticStartupAction"`
-	AutomaticStartupActionDelay         string   `cim:"AutomaticStartupActionDelay"` // CIM Duration（文字列）
+	AutomaticStartupActionDelay         string   `cim:"AutomaticStartupActionDelay,datetime"` // CIM Duration（文字列）
 	AutomaticShutdownAction             uint16   `cim:"AutomaticShutdownAction"`
 	AutomaticRecoveryAction             uint16   `cim:"AutomaticRecoveryAction"`
-	AutomaticCriticalErrorAction        uint16   `cim:"AutomaticCriticalErrorAction"`        // 0=None, 1=Pause
-	AutomaticCriticalErrorActionTimeout string   `cim:"AutomaticCriticalErrorActionTimeout"` // CIM datetime (interval)、Pause 継続時間
+	AutomaticCriticalErrorAction        uint16   `cim:"AutomaticCriticalErrorAction"`                 // 0=None, 1=Pause
+	AutomaticCriticalErrorActionTimeout string   `cim:"AutomaticCriticalErrorActionTimeout,datetime"` // CIM datetime (interval)、Pause 継続時間
 	BIOSGUID                            string   `cim:"BIOSGUID"`
 	BIOSNumLock                         bool     `cim:"BIOSNumLock"`
 	SecureBoot                          bool     `cim:"SecureBootEnabled"` // CIM 正名: SecureBootEnabled

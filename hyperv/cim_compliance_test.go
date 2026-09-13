@@ -143,7 +143,7 @@ func assertCIMCompliance(t *testing.T, structVal interface{}, fixtureName string
 
 	for i := 0; i < rt.NumField(); i++ {
 		field := rt.Field(i)
-		tag := field.Tag.Get("cim")
+		tag, _ := parseCimTag(field.Tag.Get("cim"))
 		if tag == "" {
 			continue
 		}
