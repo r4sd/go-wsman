@@ -32,7 +32,7 @@ func UnmarshalList(props map[string][]string, v interface{}) error {
 	rt := rv.Type()
 	for i := 0; i < rt.NumField(); i++ {
 		field := rt.Field(i)
-		tag := field.Tag.Get("cim")
+		tag, _ := parseCimTag(field.Tag.Get("cim"))
 		if tag == "" {
 			continue
 		}
