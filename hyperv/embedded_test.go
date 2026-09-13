@@ -404,3 +404,42 @@ func TestParseEmbeddedInstance_TopLevelInstanceNotRejected(t *testing.T) {
 		t.Errorf("Notes: got %v, want 2 要素", got["Notes"])
 	}
 }
+
+// TestParseEmbeddedInstance_ValueNull は CIM-XML の <VALUE.NULL/> の扱いを検証する (#141)。
+//
+// wsman 側の xsi:nil と同じ意味論に揃える。全要素が NULL のプロパティはキーごと
+// 作らず (スカラーの「値なし」を保つ)、混在する場合だけ空文字で位置を保つ。
+func TestParseEmbeddedInstance_ValueNull(t *testing.T) {
+	got, err := parseEmbeddedInstance(
+		`<INSTANCE CLASSNAME="Synthetic">` +
+			`<PROPERTY NAME="NullScalar" TYPE="uint16"><VALUE.NULL/></PROPERTY>` +
+			`<PROPERTY NAME="Keep" TYPE="string"><VALUE>v</VALUE></PROPERTY>` +
+			`<PROPERTY.ARRAY NAME="Mid" TYPE="string"><VALUE.ARRAY>` +
+			`<VALUE>a</VALUE><VALUE.NULL/><VALUE>c</VALUE>` +
+			`</VALUE.ARRAY></PROPERTY.ARRAY>` +
+			`<PROPERTY.ARRAY NAME="Head" TYPE="string"><VALUE.ARRAY>` +
+			`<VALUE.NULL/><VALUE>b</VALUE>` +
+			`</VALUE.ARRAY></PROPERTY.ARRAY>` +
+			`<PROPERTY.ARRAY NAME="AllNull" TYPE="string"><VALUE.ARRAY>` +
+			`<VALUE.NULL/><VALUE.NULL/>` +
+			`</VALUE.ARRAY></PROPERTY.ARRAY>` +
+			`</INSTANCE>`)
+	if err != nil {
+		t.Fatalf("parseEmbeddedInstance: %v", err)
+	}
+
+	for _, name := range []string{"NullScalar", "AllNull"} {
+		if v, ok := got[name]; ok {
+			t.Errorf("%s: キーが作られている (%v)。NULL のみのプロパティは値なしとして扱う", name, v)
+		}
+	}
+	if v := got["Keep"]; len(v) != 1 || v[0] != "v" {
+		t.Errorf("Keep = %v, want [v]", v)
+	}
+	if v := got["Mid"]; len(v) != 3 || v[0] != "a" || v[1] != "" || v[2] != "c" {
+		t.Errorf("Mid = %q, want [a  c] (位置がずれている)", v)
+	}
+	if v := got["Head"]; len(v) != 2 || v[0] != "" || v[1] != "b" {
+		t.Errorf("Head = %q, want [ b] (位置がずれている)", v)
+	}
+}

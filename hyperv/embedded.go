@@ -27,6 +27,9 @@ import (
 // (wsman の parseInstances と同じ意味論)。空の VALUE (<VALUE></VALUE>) は
 // 1 要素の空文字として保持する。
 //
+// <VALUE.NULL/> は位置だけ確保する。ただし全要素が NULL のプロパティはキーごと
+// 作らない (resolveNullPlaceholders、wsman 側 xsi:nil と同じ意味論 / #141)。
+//
 // PROPERTY のネスト (要素ツリー形式の embedded object) は **エラーにする** (#93)。
 // この parser はフラットな状態しか持たないため、内側 PROPERTY の EndElement が
 // 外側の状態を消し、外側プロパティと後続の兄弟が silent に破損する。実機 Hyper-V の
@@ -70,6 +73,11 @@ func parseEmbeddedInstance(xmlStr string) (map[string][]string, error) {
 				}
 			case "VALUE":
 				inValue = true
+			case "VALUE.NULL":
+				// 配列の途中が NULL でも後続の index がずれないよう位置を確保する。
+				if haveProp {
+					props[curName] = append(props[curName], nullPlaceholder)
+				}
 			}
 		case xml.CharData:
 			if inValue {
@@ -97,10 +105,45 @@ func parseEmbeddedInstance(xmlStr string) (map[string][]string, error) {
 		}
 	}
 
+	resolveNullPlaceholders(props)
+
 	if len(props) == 0 {
 		return nil, fmt.Errorf("parseEmbeddedInstance: no properties found in %q", xmlStr)
 	}
 	return props, nil
+}
+
+// nullPlaceholder は <VALUE.NULL/> の位置だけを確保しておく内部センチネル。
+// NUL 文字を含むため CIM の実値と衝突しない。resolveNullPlaceholders が解決するので
+// 呼び出し側には漏れない。
+const nullPlaceholder = "\x00cim:null\x00"
+
+// resolveNullPlaceholders は nullPlaceholder を確定した値に置き換える (#141)。
+//
+//   - 全要素が NULL のプロパティ → キーごと削除。空文字 1 要素にすると uint 系で
+//     ParseUint("") エラー、ポインタフィールドで「明示的にゼロ値を送る」という
+//     誤った意味になる。VALUE が 1 つも無い場合と同じ扱いに揃える。
+//   - NULL と非 NULL が混在 → NULL を空文字にして位置を保つ。並列配列で index が
+//     ずれると別エントリの値として読まれるため。
+func resolveNullPlaceholders(props map[string][]string) {
+	for name, values := range props {
+		allNull := true
+		for _, v := range values {
+			if v != nullPlaceholder {
+				allNull = false
+				break
+			}
+		}
+		if allNull {
+			delete(props, name)
+			continue
+		}
+		for i, v := range values {
+			if v == nullPlaceholder {
+				values[i] = ""
+			}
+		}
+	}
 }
 
 // attrValue は XML 属性リストから指定名 (大文字小文字無視) の値を返す。

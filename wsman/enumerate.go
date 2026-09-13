@@ -244,9 +244,19 @@ func ParsePullResponse(data []byte) (*PullResponse, error) {
 	return result, nil
 }
 
+// xmlSchemaInstanceNS は xsi:nil 属性の namespace URI。
+const xmlSchemaInstanceNS = "http://www.w3.org/2001/XMLSchema-instance"
+
+// nullPlaceholder は xsi:nil="true" のプロパティの位置だけを確保しておく内部センチネル。
+// NUL 文字を含むため CIM の実値と衝突しない。インスタンス確定時に
+// resolveNullPlaceholders が解決するので、Instance の外には漏れない。
+const nullPlaceholder = "\x00wsman:null\x00"
+
 // parseInstances は Items の innerxml から個別の CIM インスタンスを抽出する。
 // 同名要素 (CIM 配列プロパティ) は順序を保ったまま slice に追加する。
 // プロパティが入れ子 XML を含む場合は入れ子内の最後の非空テキストを値とする (extractProperties と同じ後方互換挙動)。
+//
+// xsi:nil="true" の扱いは resolveNullPlaceholders を参照 (#141)。
 func parseInstances(data []byte) ([]*Instance, error) { //nolint:gocognit // XML トークンストリームの状態機械 (depth 追跡 + token 種別 switch)。分割は可読性を損なう
 	decoder := xml.NewDecoder(bytes.NewReader(data))
 
@@ -254,6 +264,7 @@ func parseInstances(data []byte) ([]*Instance, error) { //nolint:gocognit // XML
 	var currentInstance *Instance
 	var currentProp string
 	var lastNonEmpty string
+	var currentNil bool
 	depth := 0
 
 	for {
@@ -277,6 +288,7 @@ func parseInstances(data []byte) ([]*Instance, error) { //nolint:gocognit // XML
 				// プロパティ要素の開始
 				currentProp = t.Name.Local
 				lastNonEmpty = ""
+				currentNil = isXSINil(t.Attr)
 			}
 		case xml.CharData:
 			if currentProp != "" && currentInstance != nil {
@@ -286,12 +298,18 @@ func parseInstances(data []byte) ([]*Instance, error) { //nolint:gocognit // XML
 			}
 		case xml.EndElement:
 			if depth == 2 && currentInstance != nil && currentProp != "" {
-				if lastNonEmpty != "" {
+				switch {
+				case lastNonEmpty != "":
 					currentInstance.properties[currentProp] = append(currentInstance.properties[currentProp], lastNonEmpty)
+				case currentNil:
+					// 位置だけ確保する。配列の途中が NULL でも後続の index がずれないようにするため。
+					currentInstance.properties[currentProp] = append(currentInstance.properties[currentProp], nullPlaceholder)
 				}
 				currentProp = ""
 				lastNonEmpty = ""
+				currentNil = false
 			} else if depth == 1 && currentInstance != nil {
+				resolveNullPlaceholders(currentInstance.properties)
 				instances = append(instances, currentInstance)
 				currentInstance = nil
 			}
@@ -312,4 +330,48 @@ func escapeXMLText(s string) string {
 		return s
 	}
 	return sb.String()
+}
+
+// isXSINil は要素が xsi:nil="true" を持つか判定する。
+// namespace URI で判定するので prefix の付け方 (xsi / i など) には依存しない。
+func isXSINil(attrs []xml.Attr) bool {
+	for _, a := range attrs {
+		// Items の innerxml を単独でパースする都合上、祖先 (Envelope) 側でしか
+		// xmlns:xsi が宣言されていない応答では prefix が解決されず、Space に
+		// prefix 文字列がそのまま残る。両方受ける。
+		if a.Name.Local == "nil" && (a.Name.Space == xmlSchemaInstanceNS || a.Name.Space == "xsi") {
+			return strings.EqualFold(a.Value, "true") || a.Value == "1"
+		}
+	}
+	return false
+}
+
+// resolveNullPlaceholders は nullPlaceholder を確定した値に置き換える (#141)。
+//
+//   - 全要素が NULL のプロパティ → **キーごと削除**。実機は NULL スカラーを
+//     <p:Parent xsi:nil="true"/> の形で返すため (実機応答 570 件中 531 件が該当)、
+//     空文字 1 要素にすると uint 系フィールドで ParseUint("") エラー、ポインタ
+//     フィールドでは「明示的にゼロ値を送る」という誤った意味になる。
+//   - NULL と非 NULL が混在するプロパティ → NULL を空文字にして **位置を保つ**。
+//     並列配列 (IPAddresses / Subnets / DNSServers 等) で index がずれると、
+//     別エントリの値として読まれてしまうため。
+func resolveNullPlaceholders(props map[string][]string) {
+	for name, values := range props {
+		allNull := true
+		for _, v := range values {
+			if v != nullPlaceholder {
+				allNull = false
+				break
+			}
+		}
+		if allNull {
+			delete(props, name)
+			continue
+		}
+		for i, v := range values {
+			if v == nullPlaceholder {
+				values[i] = ""
+			}
+		}
+	}
 }

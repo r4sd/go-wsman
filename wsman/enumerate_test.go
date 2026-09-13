@@ -198,3 +198,64 @@ func TestParsePullResponse(t *testing.T) {
 		}
 	})
 }
+
+// TestParsePullResponse_XsiNil は xsi:nil="true" の扱いを検証する (#141)。
+//
+// 実機は NULL スカラーを <p:Parent xsi:nil="true"/> の形で返す (要素は出る)。
+// これを「空文字 1 要素」として保持すると、uint 系フィールドで ParseUint("") エラー、
+// ポインタフィールドで「明示的にゼロ値を送る」という誤った意味になる。
+// よって **全要素が NULL のプロパティはキーごと落とす** (従来どおり)。
+//
+// 一方、複数要素の配列に NULL が混ざる場合は位置を保つ必要がある。
+// 並列配列 (IPAddresses / Subnets 等) で index がずれると、別のエントリの値として
+// 読まれてしまうため。
+func TestParsePullResponse_XsiNil(t *testing.T) {
+	data := loadGolden(t, "pull_response_xsinil.xml")
+	resp, err := ParsePullResponse(data)
+	if err != nil {
+		t.Fatalf("ParsePullResponse に失敗: %v", err)
+	}
+	if len(resp.Items) != 2 {
+		t.Fatalf("Items 数 = %d, want 2", len(resp.Items))
+	}
+
+	t.Run("NULL のみのスカラーはキーを作らない", func(t *testing.T) {
+		props := resp.Items[0].PropertiesList()
+		for _, name := range []string{"Parent", "Address", "AutomaticStartupActionSequenceNumber"} {
+			if v, ok := props[name]; ok {
+				t.Errorf("%s: キーが作られている (%v)。空文字を入れると uint/ポインタ系で誤変換になる", name, v)
+			}
+		}
+		if got := props["VirtualQuantity"]; len(got) != 1 || got[0] != "2" {
+			t.Errorf("VirtualQuantity = %v, want [2]", got)
+		}
+	})
+
+	t.Run("配列中の NULL は位置を保つ", func(t *testing.T) {
+		props := resp.Items[1].PropertiesList()
+		if got, want := props["IPAddresses"], []string{"192.0.2.10", "2001:db8::10"}; !equalStrings(got, want) {
+			t.Errorf("IPAddresses = %v, want %v", got, want)
+		}
+		// NULL を落とすと ["255.255.255.0"] になり、IPv6 のサブネットが
+		// IPv4 のものとして読まれる。
+		if got, want := props["Subnets"], []string{"255.255.255.0", ""}; !equalStrings(got, want) {
+			t.Errorf("Subnets = %v, want %v (位置がずれている)", got, want)
+		}
+		// 先頭が NULL のケース。
+		if got, want := props["DNSServers"], []string{"", "192.0.2.1"}; !equalStrings(got, want) {
+			t.Errorf("DNSServers = %v, want %v (位置がずれている)", got, want)
+		}
+	})
+}
+
+func equalStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
