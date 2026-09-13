@@ -1,6 +1,7 @@
 package wsman
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -298,4 +299,34 @@ func equalStrings(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// TestParsePullResponse_Recorded は**録音した実機応答**をそのままパースできることを検証する (#157)。
+//
+// 録音 → testdata へコピー → loadGolden → パーサ、という往復をリポジトリ内で実証するための
+// テスト。これが無いと「録音できる」と「録音したものが使える」の間が空いたままになる。
+func TestParsePullResponse_Recorded(t *testing.T) {
+	data := loadGolden(t, "recorded_pull_guestnetworkadapterconfiguration.xml")
+	resp, err := ParsePullResponse(data)
+	if err != nil {
+		t.Fatalf("録音した応答をパースできない: %v", err)
+	}
+	if len(resp.Items) != 1 {
+		t.Fatalf("Items 数 = %d, want 1", len(resp.Items))
+	}
+	props := resp.Items[0].PropertiesList()
+
+	if got := props["DHCPEnabled"]; len(got) != 1 || got[0] != "true" {
+		t.Errorf("DHCPEnabled = %v, want [true]", got)
+	}
+	if got := props["InstanceID"]; len(got) != 1 || !strings.HasPrefix(got[0], `Microsoft:GuestNetwork\`) {
+		t.Errorf("InstanceID = %v", got)
+	}
+	// 実機が返さなかったプロパティはキーを作らない。
+	// 並列配列 (#141) を持つクラスなので、ここが空でないと位置ずれの議論が始まる。
+	for _, name := range []string{"IPAddresses", "Subnets", "DefaultGateways", "DNSServers"} {
+		if v, ok := props[name]; ok {
+			t.Errorf("%s: 実機が返していないのにキーがある (%v)", name, v)
+		}
+	}
 }

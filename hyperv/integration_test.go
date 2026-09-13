@@ -45,7 +45,7 @@ func getIntegrationClient(t *testing.T) *Client {
 		opts = append(opts, wsman.WithInsecureSkipVerify())
 	}
 	// WSMAN_RECORD_DIR が設定されていれば、実機とのやり取りをそのまま
-	// go-vcr のXML として録音する (#157)。golden を手で書く工程を無くすのが目的なので、
+	// XML として録音する (#157)。golden を手で書く工程を無くすのが目的なので、
 	// 「録音モードを思い出して呼ぶ」のではなく **統合テストを回せば勝手に貯まる**形にする。
 	baseOpts := append([]wsman.ClientOption(nil), opts...) // 録音を含まない素の接続設定
 	if dir := os.Getenv("WSMAN_RECORD_DIR"); dir != "" {
@@ -1172,4 +1172,29 @@ func discoverScrubNames(t *testing.T, endpoint string, baseOpts []wsman.ClientOp
 	}
 	t.Logf("録音時に伏せる名前を %d 件収集した", len(names))
 	return names
+}
+
+// TestIntegration_ListGuestNetworkAdapterConfigurations はゲスト OS 内 NIC 設定の
+// 読み取りを実機で確認する (read-only)。
+//
+// 並列配列 (IPAddresses / Subnets / DefaultGateways / DNSServers) を持つクラスなので、
+// #141 で扱った NULL の位置ずれが実際に起きうる経路でもある。
+func TestIntegration_ListGuestNetworkAdapterConfigurations(t *testing.T) {
+	client := getIntegrationClient(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	got, err := client.ListGuestNetworkAdapterConfigurations(ctx)
+	if err != nil {
+		t.Fatalf("ListGuestNetworkAdapterConfigurations: %v", err)
+	}
+	t.Logf("ゲスト NIC 設定 %d 件", len(got))
+	for _, g := range got {
+		// 並列配列の長さが噛み合っているかを見る。噛み合っていない場合、
+		// 片方だけ NULL が落ちて index がずれている可能性がある (#141)。
+		if len(g.Subnets) > 0 && len(g.IPAddresses) != len(g.Subnets) {
+			t.Errorf("IPAddresses(%d) と Subnets(%d) の長さが違う: %s",
+				len(g.IPAddresses), len(g.Subnets), g.InstanceID)
+		}
+	}
 }

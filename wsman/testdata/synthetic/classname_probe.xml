@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  🔴 合成データ。実機から採取したものではない。
+
+  derived-from: wsman/testdata/recorded_pull_externalethernetport.xml
+
+  「伏せる名前が一般語のとき、CIM のクラス名を壊さないか」を検査するための最小データ。
+  スイッチ名は External / Internal が最も一般的で、素朴な部分文字列置換だと
+  クラス名の中の External まで置換され、実在しないクラス名になる。
+  整形式のままなので構造チェックでは捕まらない。
+
+  __PRIVATE_PATH__ はテスト側で置換する (パス中の出現も伏せられることの確認用)。
+-->
+<p:Msvm_ExternalEthernetPort xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_ExternalEthernetPort">
+  <p:ElementName>External</p:ElementName>
+  <p:ConfigurationFile>__PRIVATE_PATH__</p:ConfigurationFile>
+  <p:HostName>hv01</p:HostName>
+</p:Msvm_ExternalEthernetPort>

@@ -138,7 +138,10 @@ WSMAN_RECORD_DIR=./recorded go test -tags=integration ./hyperv/... -run TestInte
 保存後に読み返して検証し、残っていたら落ちる。
 
 **合成データが要るとき**: `testdata/synthetic/` に置き、ファイル内に
-`derived-from: <録音物のパス>` を書く。派生元の存在は CI が確かめる。
+`derived-from: <録音物のパス>` を書く。CI は**派生元が録音物であること**と、
+合成が扱う CIM クラスが派生元にもあることまで確かめる。
+録音器自身を検査する最小データだけは `purpose: recorder-self-test` を名乗れるが、
+その場合は CIM クラス名を含めないこと。
 
 **ソースに XML を直接書かない。** testdata に関所があってもそこで迂回できるので、
 既存ファイルは出現数まで固定してある (追記も検出される)。

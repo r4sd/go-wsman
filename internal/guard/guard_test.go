@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"testing"
 
@@ -196,17 +197,40 @@ func TestFixturesAreRecordedOrDerived(t *testing.T) {
 	}
 }
 
-// checkDerivedFrom は合成 fixture が実在するファイルから派生していることを確かめる。
+// selfTestMarker は「録音器そのものを検査するための最小データ」の印。
+//
+// 匿名化の実装を試すための合成データは、実機の応答の派生ではない。そこを
+// 無理に derived-from で繋ぐと、**関所を通すためにポインタを付け替える**ことになり、
+// 「主張ではなく証跡を見る」という趣旨を自分で破る (実際に一度やった)。
+//
+// 代わりに明示カテゴリを 1 つ用意し、**CIM クラス名を含まないこと**を条件にする。
+// クラス名を持てない以上、実機の挙動を仕様として固定することはできない。
+const selfTestMarker = "purpose: recorder-self-test"
+
+// cimClassPattern は fixture に現れる CIM クラス名。
+var cimClassPattern = regexp.MustCompile(`Msvm_[A-Za-z0-9]+`)
+
+// checkDerivedFrom は合成 fixture の来歴を確かめる。
 func checkDerivedFrom(t *testing.T, content []byte, rel string) {
 	t.Helper()
+
+	if strings.Contains(string(content), selfTestMarker) {
+		if cls := cimClassPattern.FindAllString(string(content), -1); len(cls) > 0 {
+			t.Errorf("%s: %s を名乗る fixture が CIM クラス名 (%s) を含んでいる。\n"+
+				"  実機の挙動に関わるものは録音するか、録音物からの派生にすること。",
+				rel, selfTestMarker, strings.Join(uniq(cls), ", "))
+		}
+		return
+	}
+
 	m := regexp.MustCompile(`derived-from:\s*(\S+)`).FindSubmatch(content)
 	if m == nil {
-		t.Errorf("%s: 合成 fixture には derived-from: <派生元のパス> が要る", rel)
+		t.Errorf("%s: 合成 fixture には derived-from: <派生元のパス> が要る (録音器の自己検査用なら %q)", rel, selfTestMarker)
 		return
 	}
 	origin := string(m[1])
 	originPath := filepath.Join(repoRoot, origin)
-	content, err := os.ReadFile(originPath) //#nosec G304 -- testdata 内の参照先
+	originContent, err := os.ReadFile(originPath) //#nosec G304 -- testdata 内の参照先
 	if err != nil {
 		t.Errorf("%s: derived-from が指す %q が存在しない", rel, origin)
 		return
@@ -218,10 +242,42 @@ func checkDerivedFrom(t *testing.T, content []byte, rel string) {
 	// 派生元は**録音物**でなければならない。legacy を指せると、印と sha256 を回避する
 	// 最安の抜け道が synthetic/ に移るだけになる。クラスごとに最低 1 回は
 	// 実機から録ることを強制する。
-	if err := wsman.VerifyRecordedHash(content); err != nil {
+	if err := wsman.VerifyRecordedHash(originContent); err != nil {
 		t.Errorf("%s: derived-from が指す %q が録音物ではない (%v)。\n"+
 			"  合成は実機から録ったものの派生でなければならない。まず対象クラスを録音すること。", rel, origin, err)
+		return
 	}
+	// **派生元は本当に派生元か。** 合成が扱う CIM クラスが派生元に無いなら、
+	// それは派生ではなく「関所を通すために付けたポインタ」。実際に一度やった。
+	originClasses := make(map[string]struct{})
+	for _, c := range cimClassPattern.FindAllString(string(originContent), -1) {
+		originClasses[c] = struct{}{}
+	}
+	var missing []string
+	for _, c := range uniq(cimClassPattern.FindAllString(string(content), -1)) {
+		if _, ok := originClasses[c]; !ok {
+			missing = append(missing, c)
+		}
+	}
+	if len(missing) > 0 {
+		t.Errorf("%s: 扱っている CIM クラス %s が派生元 %q に無い。\n"+
+			"  そのクラスを実機から録音してから派生させること。", rel, strings.Join(missing, ", "), origin)
+	}
+}
+
+// uniq は重複を除いた文字列スライスを返す。
+func uniq(in []string) []string {
+	seen := make(map[string]struct{}, len(in))
+	out := make([]string, 0, len(in))
+	for _, v := range in {
+		if _, ok := seen[v]; ok {
+			continue
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // TestNoRawXMLInSources はソースに応答 XML を直接書くことを禁じる。

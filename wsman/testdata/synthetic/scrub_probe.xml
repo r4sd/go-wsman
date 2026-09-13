@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  🔴 合成データ。実機から採取したものではない。
+  🔴 合成データ。実機から採取したものではなく、**何かの派生でもない**。
+  録音器の匿名化そのものを検査するための最小データ。
 
-  derived-from: wsman/testdata/recorded_pull_virtualethernetswitch.xml
+  purpose: recorder-self-test
 
   匿名化の取りこぼしを検出するための最小データ。実機の応答で起きる表記ゆれを再現する:
     - XML エスケープされた名前 (R&D-vm → R&amp;D-vm)

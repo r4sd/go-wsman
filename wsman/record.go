@@ -116,7 +116,9 @@ func (a *anonymizer) placeholderFor(prefix, s string) string {
 	case "ip":
 		idx := (n - 1) / 254
 		if idx >= len(docIPRanges) {
-			// 文書用レンジを使い切った。正しくない値を書くより落とす。
+			// 文書用レンジ (762 個) を使い切った。別々のアドレスが同じ値に潰れるが、
+			// 不正なアドレスを書くよりはましなので最後のレンジで折り返す。
+			// 1 応答で 762 個のプライベート IP は現実的でない (#159 で扱う)。
 			idx = len(docIPRanges) - 1
 		}
 		v = fmt.Sprintf("%s.%d", docIPRanges[idx], (n-1)%254+1)
@@ -131,6 +133,36 @@ func (a *anonymizer) placeholderFor(prefix, s string) string {
 func xmlEscapeForScrub(s string) string {
 	r := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;", "'", "&apos;")
 	return r.Replace(s)
+}
+
+// scrubWordBounded は単語境界に囲まれた出現だけを置換する。
+//
+// 素朴な部分文字列置換だと、一般的なスイッチ名 External が
+// Msvm_ExternalEthernetPort の一部に当たってクラス名を壊す。
+// 一方でパス (C:\VMs\External\cfg.xml) は区切りが非単語文字なので、境界を要求しても当たる。
+func scrubWordBounded(s, value, replacement string) string {
+	for _, v := range []string{value, xmlEscapeForScrub(value)} {
+		if v == "" {
+			continue
+		}
+		pat := regexp.QuoteMeta(v)
+		if isWordChar(v[0]) {
+			pat = `\b` + pat
+		}
+		if isWordChar(v[len(v)-1]) {
+			pat += `\b`
+		}
+		re, err := regexp.Compile("(?i)" + pat)
+		if err != nil {
+			continue
+		}
+		s = re.ReplaceAllLiteralString(s, replacement)
+	}
+	return s
+}
+
+func isWordChar(b byte) bool {
+	return b == '_' || ('0' <= b && b <= '9') || ('a' <= b && b <= 'z') || ('A' <= b && b <= 'Z')
 }
 
 // replaceFold は大文字小文字を無視して old を replacement に置換する。
@@ -167,6 +199,37 @@ func scrubVariants(s, value, replacement string) string {
 	return s
 }
 
+// cimClassPattern は応答に現れる CIM クラス名。
+var cimClassPattern = regexp.MustCompile(`Msvm_[A-Za-z0-9]+`)
+
+// classTokensUnchanged は匿名化の前後で CIM クラス名の集合が変わっていないか確かめる。
+//
+// 伏せる名前が一般語 (スイッチ名の External / Internal 等) だと、単語境界を見ていても
+// クラス名の一部に当たりうる。整形式は保たれるので構造チェックでは捕まらない。
+// 「録音器が実在しないクラス名を書く」= 実機に無いものを仕様として固定する事故なので、
+// ここで止める。
+func classTokensUnchanged(before, after string) error {
+	set := func(s string) map[string]struct{} {
+		m := make(map[string]struct{})
+		for _, v := range cimClassPattern.FindAllString(s, -1) {
+			m[v] = struct{}{}
+		}
+		return m
+	}
+	b, a := set(before), set(after)
+	var lost []string
+	for k := range b {
+		if _, ok := a[k]; !ok {
+			lost = append(lost, k)
+		}
+	}
+	if len(lost) == 0 {
+		return nil
+	}
+	sort.Strings(lost)
+	return fmt.Errorf("匿名化で CIM クラス名が壊れた: %s", strings.Join(lost, ", "))
+}
+
 func (a *anonymizer) scrub(s string) string {
 	if s == "" {
 		return s
@@ -178,7 +241,7 @@ func (a *anonymizer) scrub(s string) string {
 		s = scrubVariants(s, h, anonHostPlaceholder)
 	}
 	for _, lit := range a.literals {
-		s = scrubVariants(s, lit, a.placeholderFor("scrubbed", lit))
+		s = scrubWordBounded(s, lit, a.placeholderFor("scrubbed", lit))
 	}
 	// 複数のアドレスを 1 つに潰すと区別が要るテストで使えないので、決定的に採番する。
 	s = privateIPPattern.ReplaceAllStringFunc(s, func(ip string) string {
@@ -234,6 +297,9 @@ func (r *recorder) write(body []byte) error {
 	// 録音器自身が「実機に無い形」を作ることになる。
 	if err := wellFormedXML(scrubbed); err != nil {
 		return fmt.Errorf("匿名化した結果が XML として壊れている: %w", err)
+	}
+	if err := classTokensUnchanged(string(body), scrubbed); err != nil {
+		return err
 	}
 
 	r.mu.Lock()

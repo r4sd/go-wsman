@@ -262,3 +262,46 @@ func TestWellFormedXML(t *testing.T) {
 		t.Error("途中で切れた XML を見逃した")
 	}
 }
+
+// TestScrubPreservesClassNames は、伏せる名前が一般語でも CIM のクラス名を壊さないことを
+// 検証する (#157)。
+//
+// スイッチ名は External / Internal が最も一般的で、これを素朴に全文置換すると
+// Msvm_ExternalEthernetPort が Msvm_scrubbed-1EthernetPort になる。整形式のままなので
+// 構造チェックでは捕まらず、**録音器が実在しないクラス名を持つ fixture を書く**。
+func TestScrubPreservesClassNames(t *testing.T) {
+	a := newAnonymizer("https://example.invalid/wsman", []string{"External", "hv01"})
+
+	// ソースに XML を直接書かない (関所が禁じている迂回路なので)。
+	in := strings.ReplaceAll(string(loadGolden(t, "synthetic/classname_probe.xml")),
+		"__PRIVATE_PATH__", `C:\VMs\External\cfg.xml`)
+	got := a.scrub(in)
+
+	if !strings.Contains(got, "Msvm_ExternalEthernetPort") {
+		t.Errorf("CIM クラス名が壊れた:\n%s", got)
+	}
+	// 要素テキストとしての出現は伏せる。
+	if strings.Contains(got, ">External<") {
+		t.Errorf("要素テキストの名前が伏せられていない:\n%s", got)
+	}
+	// パスの途中も伏せる (区切り文字は単語境界になる)。
+	if strings.Contains(got, `VMs\External\`) {
+		t.Errorf("パス中の名前が伏せられていない:\n%s", got)
+	}
+	if strings.Contains(got, "hv01") {
+		t.Errorf("ホスト名が伏せられていない:\n%s", got)
+	}
+}
+
+// TestScrubClassTokensUnchanged は、匿名化の前後で CIM クラス名の集合が変わらないことを
+// 検査する仕組みが実際に働くことを確認する。
+func TestScrubClassTokensUnchanged(t *testing.T) {
+	origin := string(loadGolden(t, "synthetic/classname_probe.xml"))
+	if err := classTokensUnchanged(origin, origin); err != nil {
+		t.Errorf("変わっていないのにエラーにした: %v", err)
+	}
+	broken := strings.ReplaceAll(origin, "Msvm_ExternalEthernetPort", "Msvm_scrubbedEthernetPort")
+	if err := classTokensUnchanged(origin, broken); err == nil {
+		t.Error("クラス名の書き換えを見逃した")
+	}
+}
