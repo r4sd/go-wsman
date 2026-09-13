@@ -389,30 +389,104 @@ func TestIntegration_SetIntegrationServiceEnabled(t *testing.T) {
 // 書き戻す (no-op 相当)。CIM 経由の Modify が動作することを確認する。
 //
 // HYPERV_TEST_ALLOW_MUTATION + HYPERV_TEST_TARGET_VM_NAME が必要。
+// newThrowawayVM は使い捨ての Gen2 VM を作り、その **GUID** (Msvm_ComputerSystem.Name) を返す。
+// SettingData 系 API は ElementName ではなく GUID を取るため。
+// テスト終了時に t.Cleanup で必ず削除する (引数を取り違えて実機に残骸を作った事故がある)。
+func newThrowawayVM(t *testing.T, ctx context.Context, client *Client) string {
+	t.Helper()
+	vmName := fmt.Sprintf("go-wsman-test-%d", time.Now().UnixNano())
+	result, err := client.DefineSystem(ctx, &Msvm_VirtualSystemSettingData{
+		ElementName:          vmName,
+		VirtualSystemSubType: VirtualSystemSubTypeGen2,
+	})
+	if err != nil {
+		t.Fatalf("DefineSystem(%s): %v", vmName, err)
+	}
+	t.Cleanup(func() {
+		// DestroySystem は VM の GUID (= ResultingSystem) を取る。ElementName を渡すと
+		// ReturnValue=32773 で静かに失敗し、実機に残骸が残る。
+		if _, err := client.DestroySystem(context.Background(), result.ResultingSystem); err != nil {
+			t.Errorf("使い捨て VM %s (%s) の削除に失敗。実機に残骸が残っている: %v",
+				vmName, result.ResultingSystem, err)
+		}
+	})
+	if result.ResultingSystem == "" {
+		t.Fatalf("DefineSystem(%s): ResultingSystem が空で GUID を特定できない", vmName)
+	}
+	t.Logf("使い捨て VM: %s (%s)", vmName, result.ResultingSystem)
+	return result.ResultingSystem
+}
+
+// mustSetMemory はメモリ設定を書き、非同期 Job が返った場合は完了まで待つ。
+// Job を待たずに読み戻すと、黙殺と「まだ反映されていない」を取り違える。
+func mustSetMemory(t *testing.T, ctx context.Context, client *Client, m *Msvm_MemorySettingData, phase string) {
+	t.Helper()
+	jobRef, err := client.SetMemorySettings(ctx, m)
+	if err != nil {
+		t.Fatalf("SetMemorySettings(%s): %v", phase, err)
+	}
+	if jobRef != "" {
+		if err := client.WaitForJob(ctx, jobRef); err != nil {
+			t.Fatalf("WaitForJob(%s, %s): %v", phase, jobRef, err)
+		}
+	}
+}
+
+// TestIntegration_SetMemorySettings は反転 → 確認 → 復元のパターンで
+// メモリ設定の書き込みを検証する (#131、ADR-0003)。
+//
+// 以前は「読んだ値をそのまま書き戻して Job が返ったことを確認する」no-op 書き戻し
+// だった。それでは「Set が受理されたが実はサイレントに無視された」ケースを区別
+// できない。このプロジェクトの脅威モデルは「落ちること」ではなく「落ちずに
+// 間違っていること」なので、書いた値が実際に読み戻せることまで見る。
+//
+// 対象は使い捨て VM。既存 VM (HYPERV_TEST_TARGET_VM_NAME) を書き換えると
+// 稼働中のワークロードのメモリを触ることになる。
 func TestIntegration_SetMemorySettings(t *testing.T) {
 	if os.Getenv("HYPERV_TEST_ALLOW_MUTATION") == "" {
-		t.Skip("HYPERV_TEST_ALLOW_MUTATION 未設定")
-	}
-	target := os.Getenv("HYPERV_TEST_TARGET_VM_NAME")
-	if target == "" {
-		t.Skip("HYPERV_TEST_TARGET_VM_NAME 未設定")
+		t.Skip("HYPERV_TEST_ALLOW_MUTATION 未設定（VM 作成・削除を伴う破壊的テスト）")
 	}
 
 	client := getIntegrationClient(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
 	defer cancel()
 
-	mem, err := client.GetMemorySettings(ctx, target)
-	if err != nil {
-		t.Fatalf("GetMemorySettings: %v", err)
-	}
-	t.Logf("Before: VirtualQuantity=%d Weight=%d", mem.VirtualQuantity, mem.Weight)
+	target := newThrowawayVM(t, ctx, client)
 
-	jobRef, err := client.SetMemorySettings(ctx, mem)
+	before, err := client.GetMemorySettings(ctx, target)
 	if err != nil {
-		t.Fatalf("SetMemorySettings: %v", err)
+		t.Fatalf("GetMemorySettings(before): %v", err)
 	}
-	t.Logf("ModifyResourceSettings Job: %s", jobRef)
+	t.Logf("Before: VirtualQuantity=%d Weight=%d", before.VirtualQuantity, before.Weight)
+
+	// 反転: 現在値と必ず異なる値にする。
+	const memoryStepMB = 512
+	want := before.VirtualQuantity + memoryStepMB
+
+	modified := *before
+	modified.VirtualQuantity = want
+	mustSetMemory(t, ctx, client, &modified, "反転")
+
+	// 確認: 書いた値が実際に読み戻せるか。ここが no-op 書き戻しとの差。
+	after, err := client.GetMemorySettings(ctx, target)
+	if err != nil {
+		t.Fatalf("GetMemorySettings(after): %v", err)
+	}
+	if after.VirtualQuantity != want {
+		t.Errorf("🔴 VirtualQuantity=%d を要求したが読み戻しは %d。書き込みが黙殺されている",
+			want, after.VirtualQuantity)
+	}
+
+	// 復元: 使い捨て VM とはいえ、書いた分は必ず戻す (反転パターンの型を崩さない)。
+	restore := *before
+	mustSetMemory(t, ctx, client, &restore, "復元")
+	restored, err := client.GetMemorySettings(ctx, target)
+	if err != nil {
+		t.Fatalf("GetMemorySettings(restored): %v", err)
+	}
+	if restored.VirtualQuantity != before.VirtualQuantity {
+		t.Errorf("復元できていない: got %d, want %d", restored.VirtualQuantity, before.VirtualQuantity)
+	}
 }
 
 // TestIntegration_RequestStateChange は環境変数で指定された VM に対して
