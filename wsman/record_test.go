@@ -232,8 +232,9 @@ func TestPlaceholderFor_IPRange(t *testing.T) {
 		}
 	}
 	// 決定的であること。
-	if a.placeholderFor("ip", "src-0") != a.placeholderFor("ip", "src-0") {
-		t.Error("同じ入力に違う値を返した")
+	first := a.placeholderFor("ip", "src-0")
+	if second := a.placeholderFor("ip", "src-0"); first != second {
+		t.Errorf("同じ入力に違う値を返した: %q → %q", first, second)
 	}
 
 	// **採番が他の種別に影響されないこと。** カウンタを共有していると、応答に含まれる
