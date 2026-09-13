@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/Azure/go-ntlmssp"
-	"gopkg.in/dnaeon/go-vcr.v4/pkg/recorder"
 )
 
 // DefaultMaxPullIterations は Enumerate の Pull ループの最大反復回数。
@@ -27,9 +26,10 @@ type Client struct {
 	timeoutSet         bool             // WithTimeout が呼ばれたかどうか
 	retryConfig        *retryConfig     // nil の場合はリトライなし
 	insecureSkipVerify bool             // WithInsecureSkipVerify で true に。デフォルト false。
-	recordCassette     string           // WithRecorder で設定。空なら録音しない (#157)
+	recordDir          string           // WithRecorder で設定。空なら録音しない (#157)
+	recordName         string           // 録音ファイル名の接頭辞
 	recordScrub        []string         // WithRecorderScrub で追加する、伏せる文字列
-	recorder           *recorder.Recorder
+	recorder           *recorder
 	optErr             error // オプション適用時のエラー（遅延チェック用）
 }
 

@@ -4,9 +4,18 @@
 // 全緑なのに実機で落ちる」事故を 7 回繰り返している。**警告文と規約は 1 度も効かなかった**
 // (5 回目は「4 回繰り返している」と CLAUDE.md に書いた同じセッションが数時間後に起こした)。
 //
-// 一方 #138 で Unmarshal を削除して**選択肢自体を消した**型の事故は再発していない。
-// ここも同じ方針を取る。「実機から採取したと書いてあるか」は検証できない (主張の真偽は
-// 機械判定できない) ので、**そもそも手で書いた fixture を置けなくする**。
+// 「実機から採取したと書いてあるか」は機械検証できない (主張の真偽は判定できない)。
+// 検証できるのは証跡の有無だけなので、
+//
+//   - 録音器が書いた印と本文の sha256 を持つファイルだけを「実機由来」として扱う
+//   - 合成は testdata/synthetic/ + derived-from: に限る
+//   - テストソースに応答 XML を直接書かせない (testdata への関所の迂回路)
+//
+// の 3 つを機械で確かめる。
+//
+// **これは万能ではない。** 印も sha256 も自分で計算して貼れるので、意図的な偽造は止まらない。
+// 止まるのは「それらしい XML を思いつきで書く」経路と「録音した後で値を調整する」経路で、
+// 過去 7 件はすべてこの 2 つ。摩擦を上げる仕組みであって、証明ではない。
 //
 // これらは既に必須の "Test / Unit Tests" ジョブで走るので、CI 側の追加配線は要らない。
 package guard
@@ -17,6 +26,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/r4sd/go-wsman/wsman"
 )
 
 // repoRoot はこのパッケージから見たリポジトリのルート。
@@ -24,9 +35,11 @@ const repoRoot = "../.."
 
 // legacyGoldens は本関所の導入より前からある XML fixture。
 //
-// 来歴が確認できていないので**新規追加は許さないが、既存は落とさない**。
+// 録音器の印を持たないので**新規追加は許さないが、既存は落とさない**。
 // 棚卸しを独立した作業として積むと重くて進まないので、**触ったときに録音し直して
 // このリストから外す**運用にする。リストが縮むことが進捗。
+//
+// ファイルを消した/改名したのにエントリが残っていると落ちる (幽霊を残さないため)。
 var legacyGoldens = map[string]struct{}{
 	"hyperv/testdata/enumerate_response_computersystem.xml":         {},
 	"hyperv/testdata/enumerate_response_externalethernetport.xml":   {},
@@ -95,109 +108,161 @@ var legacyGoldens = map[string]struct{}{
 	"wsman/testdata/pull_response_array.xml":                        {},
 	"wsman/testdata/pull_response_end.xml":                          {},
 	"wsman/testdata/pull_response_xsinil_real.xml":                  {},
-	"wsman/testdata/pull_response_xsinil_synthetic.xml":             {},
 	"wsman/testdata/put_request_service.xml":                        {},
 	"wsman/testdata/put_response_service.xml":                       {},
 }
 
-// legacyRawXMLTests は本関所の導入より前から、テストソース中に生の XML を持つファイル。
+// legacyRawXML は本関所の導入より前から、ソース中に応答 XML を持つファイルと
+// その出現数。
 //
 // testdata への関所だけ作っても、テストの中に直接 XML を書けば迂回できる。
-// 迂回路なのでここが最優先だが、既存分は同じく「触ったら外す」で縮める。
-var legacyRawXMLTests = map[string]struct{}{
-	"hyperv/client_test.go":            {},
-	"hyperv/embedded_test.go":          {},
-	"hyperv/firmware_test.go":          {},
-	"hyperv/guest_network_test.go":     {},
-	"hyperv/integration_unit_test.go":  {},
-	"hyperv/resource_settings_test.go": {},
-	"hyperv/vm_resources_test.go":      {},
-	"hyperv/vm_test.go":                {},
-	"wsman/insecure_test.go":           {},
-	"wsman/invoke_test.go":             {},
-	"wsman/transport_test.go":          {},
+// **数まで固定するのは「既存ファイルに新しいケースを足して、そこに生 XML を書く」が
+// 今後の最有力経路だから**。ファイル単位の許可だけだと、そこが素通りになる。
+//
+// 数が増えたら落ちる。減ったらリストを更新すること (それが進捗)。
+var legacyRawXML = map[string]int{
+	"hyperv/client_test.go":            2,
+	"hyperv/embedded.go":               4,
+	"hyperv/embedded_test.go":          12,
+	"hyperv/firmware_test.go":          1,
+	"hyperv/guest_network_test.go":     2,
+	"hyperv/integration_unit_test.go":  2,
+	"hyperv/resource_settings_test.go": 2,
+	"hyperv/vm_resources_test.go":      1,
+	"hyperv/vm_test.go":                1,
+	"wsman/insecure_test.go":           2,
+	"wsman/invoke_test.go":             1,
+	"wsman/transport_test.go":          1,
 }
 
-// rawXMLInSource はテストソースに直接書かれた応答 XML を検出する。
-// SOAP エンベロープと CIM のクラス要素・INSTANCE を見る。
-var rawXMLInSource = regexp.MustCompile(`<s:Envelope|<p:Msvm_|<INSTANCE CLASSNAME`)
-
-// TestNoHandWrittenGoldens は新しい XML fixture が手で追加されていないことを確認する。
+// rawXMLInSource はソースに直接書かれた応答 XML を検出する。
 //
-// 実機の応答が要るなら録音する (WSMAN_RECORD_DIR を設定して統合テストを回すと
-// カセットが貯まる。再生は wsman.NewReplayClient)。
-// 合成データが要るなら testdata/synthetic/ 配下に置き、どの録音物から派生したかを
-// derived-from: で書く。「理由を書く」より強く、参照先の存在を機械で確かめられる。
-func TestNoHandWrittenGoldens(t *testing.T) {
+// prefix を固定しない (s: / p: 以外でも書けてしまうため)。
+var rawXMLInSource = regexp.MustCompile(
+	`<[A-Za-z0-9]{1,8}:Envelope|<[A-Za-z0-9]{1,8}:Msvm_|<INSTANCE CLASSNAME|Msvm_[A-Za-z]+ xmlns`)
+
+// fixtureExts は fixture とみなす拡張子。
+var fixtureExts = map[string]bool{".xml": true, ".yaml": true, ".yml": true, ".txt": true}
+
+// TestFixturesAreRecordedOrDerived は fixture が録音物か、録音物からの派生かを確かめる。
+func TestFixturesAreRecordedOrDerived(t *testing.T) {
+	seen := make(map[string]bool, len(legacyGoldens))
+
 	for _, dir := range []string{"wsman/testdata", "hyperv/testdata"} {
 		root := filepath.Join(repoRoot, dir)
 		err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-			if err != nil || d.IsDir() || !strings.HasSuffix(path, ".xml") {
+			if err != nil || d.IsDir() || !fixtureExts[filepath.Ext(path)] {
 				return err
 			}
-			rel := filepath.ToSlash(strings.TrimPrefix(filepath.Clean(path), filepath.Clean(repoRoot)+"/"))
+			rel := relPath(path)
+			// MOF fixture は CIM 仕様の抜き書きで、実機の応答ではない (突合の基準として使う)。
+			if strings.Contains(rel, "/mof/") {
+				return nil
+			}
 			if _, ok := legacyGoldens[rel]; ok {
+				seen[rel] = true
+				return nil
+			}
+			content, readErr := os.ReadFile(path) //#nosec G304 -- testdata の走査
+			if readErr != nil {
+				t.Errorf("%s: 読めない: %v", rel, readErr)
 				return nil
 			}
 			if strings.Contains(rel, "/synthetic/") {
-				return checkDerivedFrom(t, path, rel)
+				checkDerivedFrom(t, content, rel)
+				return nil
 			}
-			t.Errorf("%s: 新しい XML fixture を手で追加できない。\n"+
-				"  実機の応答が要るなら録音する (WSMAN_RECORD_DIR を設定して統合テストを実行 → wsman.NewReplayClient で再生)。\n"+
-				"  合成データが要るなら testdata/synthetic/ に置き、derived-from: でどの録音物から派生したかを書く。", rel)
+			if err := wsman.VerifyRecordedHash(content); err != nil {
+				t.Errorf("%s: %v\n"+
+					"  実機の応答が要るなら録音する (WSMAN_RECORD_DIR を設定して統合テストを実行)。\n"+
+					"  合成データが要るなら testdata/synthetic/ に置き、derived-from: で派生元を書く。", rel, err)
+			}
 			return nil
 		})
 		if err != nil {
 			t.Fatalf("%s の走査に失敗: %v", dir, err)
 		}
 	}
+
+	// 幽霊エントリを残さない。消した/改名したらリストからも外す。
+	for rel := range legacyGoldens {
+		if !seen[rel] {
+			t.Errorf("legacyGoldens に %s が残っているが、ファイルが無い。リストから外すこと", rel)
+		}
+	}
 }
 
-// checkDerivedFrom は合成 fixture が実在する録音物から派生していることを確かめる。
-func checkDerivedFrom(t *testing.T, path, rel string) error {
+// checkDerivedFrom は合成 fixture が実在するファイルから派生していることを確かめる。
+func checkDerivedFrom(t *testing.T, content []byte, rel string) {
 	t.Helper()
-	content, err := os.ReadFile(path) //#nosec G304 -- testdata の走査
-	if err != nil {
-		t.Errorf("%s: 読めない: %v", rel, err)
-		return nil
-	}
 	m := regexp.MustCompile(`derived-from:\s*(\S+)`).FindSubmatch(content)
 	if m == nil {
 		t.Errorf("%s: 合成 fixture には derived-from: <派生元のパス> が要る", rel)
-		return nil
+		return
 	}
-	origin := filepath.Join(repoRoot, string(m[1]))
-	if _, err := os.Stat(origin); err != nil {
-		t.Errorf("%s: derived-from が指す %q が存在しない", rel, m[1])
+	origin := string(m[1])
+	if _, err := os.Stat(filepath.Join(repoRoot, origin)); err != nil {
+		t.Errorf("%s: derived-from が指す %q が存在しない", rel, origin)
+		return
 	}
-	return nil
+	if !fixtureExts[filepath.Ext(origin)] || !strings.Contains(origin, "/testdata/") {
+		t.Errorf("%s: derived-from が fixture 以外 (%q) を指している", rel, origin)
+	}
 }
 
-// TestNoRawXMLInTestSources はテストソースに応答 XML を直接書くことを禁じる。
+// TestNoRawXMLInSources はソースに応答 XML を直接書くことを禁じる。
 //
-// testdata への関所があっても、テストの中に文字列で書けば迂回できる。
-// 実際に導入時点で 11 ファイルが該当していた。
-func TestNoRawXMLInTestSources(t *testing.T) {
-	for _, dir := range []string{"wsman", "hyperv"} {
-		matches, err := filepath.Glob(filepath.Join(repoRoot, dir, "*_test.go"))
+// testdata への関所があっても、ソースの中に文字列で書けば迂回できる。
+// 既存ファイルは出現数まで固定してあるので、**そこへ新しく足す**のも検出される。
+func TestNoRawXMLInSources(t *testing.T) {
+	matches, err := filepath.Glob(filepath.Join(repoRoot, "*", "*.go"))
+	if err != nil {
+		t.Fatalf("走査に失敗: %v", err)
+	}
+	found := make(map[string]int)
+	for _, path := range matches {
+		rel := relPath(path)
+		content, err := os.ReadFile(path) //#nosec G304 -- ソースの走査
 		if err != nil {
-			t.Fatalf("%s の走査に失敗: %v", dir, err)
+			t.Errorf("%s: 読めない: %v", rel, err)
+			continue
 		}
-		for _, path := range matches {
-			rel := dir + "/" + filepath.Base(path)
-			if _, ok := legacyRawXMLTests[rel]; ok {
-				continue
-			}
-			content, err := os.ReadFile(path) //#nosec G304 -- テストソースの走査
-			if err != nil {
-				t.Errorf("%s: 読めない: %v", rel, err)
-				continue
-			}
-			if rawXMLInSource.Match(content) {
-				t.Errorf("%s: テストソースに応答 XML を直接書かない。\n"+
-					"  録音したカセットを wsman.NewReplayClient で再生するか、"+
-					"合成なら testdata/synthetic/ に置いて derived-from: を書く。", rel)
-			}
+		if n := len(rawXMLInSource.FindAll(content, -1)); n > 0 {
+			found[rel] = n
 		}
 	}
+
+	for rel, n := range found {
+		allowed, ok := legacyRawXML[rel]
+		switch {
+		case !ok:
+			t.Errorf("%s: ソースに応答 XML を直接書かない (%d 箇所)。\n"+
+				"  録音した fixture を loadGolden で読むか、合成なら testdata/synthetic/ に置いて derived-from: を書く。", rel, n)
+		case n > allowed:
+			t.Errorf("%s: 生 XML が %d → %d 箇所に増えている。\n"+
+				"  既存ファイルへの追記もこの関所の対象。fixture に切り出すこと。", rel, allowed, n)
+		}
+	}
+	for rel, allowed := range legacyRawXML {
+		if n := found[rel]; n < allowed {
+			t.Errorf("%s: 生 XML が %d → %d 箇所に減った。legacyRawXML を更新すること (これが進捗)", rel, allowed, n)
+		}
+	}
+}
+
+// relPath はリポジトリルートからの相対パスを "/" 区切りで返す。
+func relPath(path string) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return path
+	}
+	root, err := filepath.Abs(repoRoot)
+	if err != nil {
+		return path
+	}
+	rel, err := filepath.Rel(root, abs)
+	if err != nil {
+		return path
+	}
+	return filepath.ToSlash(rel)
 }

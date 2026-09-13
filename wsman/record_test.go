@@ -2,7 +2,9 @@ package wsman
 
 import (
 	"context"
-	"io"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -13,64 +15,157 @@ import (
 	"testing"
 )
 
-// guidPattern はカセットに実環境の GUID が残っていないか調べるための検査用パターン。
+// guidPattern は録音結果に実環境の GUID が残っていないか調べるための検査用パターン。
 var guidPattern = regexp.MustCompile(`[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}`)
 
-// TestWithRecorder は実機との通信を go-vcr のカセットに録音できること、
-// および保存前に実環境の識別子が匿名化されることを検証する (#157)。
-//
-// golden を人が書く工程を無くすのが目的なので、「録音できる」だけでなく
-// 「そのまま公開リポジトリに置ける状態で落ちる」ところまでを 1 単位とする。
-func TestWithRecorder(t *testing.T) {
-	body := loadGolden(t, "pull_response_xsinil_real.xml")
+// recordOnce は httptest サーバへ 1 往復して録音し、書き出されたファイルを返す。
+func recordOnce(t *testing.T, respBody []byte, opts ...ClientOption) []string {
+	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/soap+xml; charset=utf-8")
-		_, _ = w.Write(body)
+		_, _ = w.Write(respBody)
 	}))
 	defer server.Close()
 
-	cassette := filepath.Join(t.TempDir(), "probe")
-	client, err := NewClient(server.URL, WithRecorder(cassette))
+	dir := t.TempDir()
+	all := append([]ClientOption{WithRecorder(dir, "probe")}, opts...)
+	client, err := NewClient(server.URL, all...)
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
 	// 応答のパース結果はここでは問わない。録音は RoundTripper 層で行うため、
 	// 上位がエラーを返しても記録される。
 	_, _ = client.Enumerate(context.Background(), "http://example.invalid/Msvm_Test")
-
 	if err := client.StopRecording(); err != nil {
 		t.Fatalf("StopRecording: %v", err)
 	}
 
-	raw, err := os.ReadFile(cassette + ".yaml")
+	files, err := filepath.Glob(filepath.Join(dir, "*.xml"))
+	if err != nil || len(files) == 0 {
+		t.Fatalf("録音ファイルが書かれていない (%v)", err)
+	}
+	return files
+}
+
+// recordedFile は検証用に、正しいヘッダを持つ録音ファイルの中身を組み立てる。
+func recordedFile(body string) []byte {
+	sum := sha256.Sum256([]byte(body))
+	return fmt.Appendf(nil, "<!--\n  %s\n  sha256: %s\n-->\n%s",
+		recordedByMarker, hex.EncodeToString(sum[:]), body)
+}
+
+// TestWithRecorder は実機応答を匿名化した XML として書き出せることを検証する (#157)。
+//
+// golden を人が書く工程を無くすのが目的なので、「録音できる」だけでなく
+// 「そのまま公開リポジトリに置ける状態で落ちる」ところまでを 1 単位とする。
+func TestWithRecorder(t *testing.T) {
+	body := loadGolden(t, "pull_response_xsinil_real.xml")
+	files := recordOnce(t, body)
+
+	raw, err := os.ReadFile(files[0])
 	if err != nil {
-		t.Fatalf("カセットが保存されていない: %v", err)
+		t.Fatalf("読めない: %v", err)
 	}
 	got := string(raw)
 
 	if !strings.Contains(got, "Msvm_ResourceAllocationSettingData") {
 		t.Errorf("応答本文が記録されていない:\n%s", got)
 	}
+	if !strings.Contains(got, recordedByMarker) {
+		t.Error("録音器の印が無い")
+	}
+	if err := VerifyRecordedHash(raw); err != nil {
+		t.Errorf("書き出した直後なのにハッシュ検証に失敗: %v", err)
+	}
 
 	// 匿名化: 元の応答に含まれる GUID がそのまま残っていないこと。
 	for _, guid := range guidPattern.FindAllString(string(body), -1) {
 		if strings.Contains(got, guid) {
-			t.Errorf("GUID %q が匿名化されずにカセットへ残っている", guid)
+			t.Errorf("GUID %q が匿名化されずに残っている", guid)
 		}
 	}
-	// ホスト名 (httptest のアドレス) も残さない。
-	if host := strings.TrimPrefix(server.URL, "http://"); strings.Contains(got, host) {
-		t.Errorf("接続先ホスト %q がカセットへ残っている", host)
+	if len(regexp.MustCompile(`00000000-0000-4000-8000-[0-9a-f]{12}`).FindAllString(got, -1)) == 0 {
+		t.Error("プレースホルダ GUID が 1 つも無い。匿名化が働いていない可能性")
+	}
+}
+
+// TestVerifyRecordedHash_DetectsEdit は録音後の手直しをハッシュが捕まえることを確認する。
+//
+// 「録音したが後からアサーションに合わせて値を調整する」改変が実際に起きているので、
+// そこを検出できることがこの仕組みの要。
+func TestVerifyRecordedHash_DetectsEdit(t *testing.T) {
+	files := recordOnce(t, loadGolden(t, "pull_response_xsinil_real.xml"))
+	raw, err := os.ReadFile(files[0])
+	if err != nil {
+		t.Fatalf("読めない: %v", err)
+	}
+	edited := strings.Replace(string(raw), "Msvm_ResourceAllocationSettingData", "Msvm_Tampered", 1)
+	if err := VerifyRecordedHash([]byte(edited)); err == nil {
+		t.Error("録音後の編集を見逃した")
+	}
+	if err := VerifyRecordedHash([]byte("ヘッダの無いファイル")); err == nil {
+		t.Error("録音器の印が無いファイルを通した")
+	}
+}
+
+// TestWithRecorderScrub は、パターンでは拾えない任意の識別子 (VM 表示名・
+// コンピュータ名など) を伏せられること、表記ゆれも取りこぼさないことを検証する。
+//
+// 匿名化は「したつもり」が最も危ない。実機で録ったものをそのまま公開リポジトリへ
+// 置く前提なので、漏れは静かに通さず fail-loud にする。
+func TestWithRecorderScrub(t *testing.T) {
+	// プライベート IP をソースにリテラルで書かない。この検査自体がプライベート IP を
+	// 必要とするが、リテラルで置くと CI の no-private-addresses に引っかかるうえ、
+	// 実環境のアドレスを書き写す事故 (実際に一度やった) の入口になる。
+	privateIP := net.IPv4(172, 20, 0, 5).String()
+	const vmName = "R&D-vm"
+	const hostName = "hv01"
+	// 実機は XML エスケープして返し、大文字小文字も揃わない。その形を合成 fixture に持つ
+	// (テストソースに XML を直接書かない — 関所が禁じている迂回路なので)。
+	body := []byte(strings.ReplaceAll(
+		string(loadGolden(t, "synthetic/scrub_probe.xml")), "__PRIVATE_IP__", privateIP))
+
+	files := recordOnce(t, body, WithRecorderScrub(vmName, hostName))
+	raw, err := os.ReadFile(files[0])
+	if err != nil {
+		t.Fatalf("読めない: %v", err)
+	}
+	got := string(raw)
+
+	if strings.Contains(got, "R&amp;D-vm") {
+		t.Errorf("XML エスケープされた VM 名が残っている:\n%s", got)
+	}
+	if strings.Contains(strings.ToLower(got), "hv01") {
+		t.Errorf("大文字のホスト名が残っている:\n%s", got)
+	}
+	if strings.Contains(got, privateIP) {
+		t.Error("プライベート IP が残っている")
+	}
+}
+
+// TestVerifyRecordedCatchesLeak は保存後の検証が実際に漏れを捕まえることを確認する。
+// 匿名化の実装を信じずに、出力そのものを検査していることの証明。
+func TestVerifyRecordedCatchesLeak(t *testing.T) {
+	leaked := net.IPv4(192, 168, 1, 10).String()
+
+	if err := verifyRecorded(recordedFile("<probe>"+leaked+"</probe>"), nil, ""); err == nil {
+		t.Error("プライベート IP を見逃した")
+	} else if !strings.Contains(err.Error(), leaked) {
+		t.Errorf("エラーが漏れた値を示していない: %v", err)
 	}
 
-	// 決定的であること: 同じ GUID は同じプレースホルダに写る。
-	// (毎回ランダムだと再録音時の差分が読めない)
-	if n := strings.Count(got, "00000000-0000-0000-0000-000000000003"); n != 0 {
-		t.Errorf("元の GUID が %d 箇所残っている", n)
+	// 指定した名前が XML エスケープ後の形で残っていても捕まえる。
+	if err := verifyRecorded(recordedFile("<probe>R&amp;D-vm</probe>"), []string{"R&D-vm"}, ""); err == nil {
+		t.Error("エスケープされた名前の残留を見逃した")
 	}
-	placeholders := regexp.MustCompile(`00000000-0000-4000-8000-[0-9a-f]{12}`).FindAllString(got, -1)
-	if len(placeholders) == 0 {
-		t.Errorf("プレースホルダ GUID が 1 つも無い。匿名化が働いていない可能性:\n%s", got)
+
+	// 大文字小文字が違っても捕まえる。
+	if err := verifyRecorded(recordedFile("<probe>HV01</probe>"), []string{"hv01"}, ""); err == nil {
+		t.Error("大文字小文字違いの残留を見逃した")
+	}
+
+	if err := verifyRecorded(recordedFile("<probe>clean</probe>"), nil, ""); err != nil {
+		t.Errorf("匿名化済みの内容を誤って拒否した: %v", err)
 	}
 }
 
@@ -86,113 +181,15 @@ func TestWithRecorder_NotEnabled(t *testing.T) {
 	}
 }
 
-// TestWithRecorderScrub は、正規表現では拾えない任意の識別子 (VM 表示名・
-// コンピュータ名など) を明示リストで伏せられること、そして **保存後に検証して
-// 残っていたら落ちる**ことを検証する (#157)。
-//
-// 匿名化は「したつもり」が最も危ない。実機で録ったカセットをそのまま公開リポジトリへ
-// 置く前提なので、漏れは静かに通さず fail-loud にする。
-func TestWithRecorderScrub(t *testing.T) {
-	const secretName = "k8s-cp-01"
-	// プライベート IP をソースにリテラルで書かない。この検査自体がプライベート IP を
-	// 必要とするが、リテラルで置くと CI の no-private-addresses に引っかかるうえ、
-	// 実環境のアドレスを書き写す事故 (実際に一度やった) の入口になる。
-	privateIP := net.IPv4(172, 20, 0, 5).String()
-	body := []byte(`<?xml version="1.0"?><r><n>` + secretName + `</n><ip>` + privateIP + `</ip></r>`)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write(body)
-	}))
-	defer server.Close()
-
-	cassette := filepath.Join(t.TempDir(), "scrub")
-	client, err := NewClient(server.URL, WithRecorder(cassette), WithRecorderScrub(secretName))
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
-	}
-	_, _ = client.Enumerate(context.Background(), "http://example.invalid/Msvm_Test")
-	if err := client.StopRecording(); err != nil {
-		t.Fatalf("StopRecording: %v", err)
-	}
-
-	raw, err := os.ReadFile(cassette + ".yaml")
-	if err != nil {
-		t.Fatalf("カセットが保存されていない: %v", err)
-	}
-	got := string(raw)
-	if strings.Contains(got, secretName) {
-		t.Errorf("明示指定した %q がカセットに残っている", secretName)
-	}
-	// プライベート IP は指定しなくても伏せる (公開リポジトリの CI が落とす対象)。
-	if strings.Contains(got, privateIP) {
-		t.Errorf("プライベート IP がカセットに残っている")
-	}
-}
-
-// TestRecorderVerifyCatchesLeak は保存後の検証が実際に漏れを捕まえることを確認する。
-// 匿名化の実装を信じずに、出力そのものを検査していることの証明。
-func TestRecorderVerifyCatchesLeak(t *testing.T) {
-	leaked := net.IPv4(192, 168, 1, 10).String()
-	err := verifyCassetteScrubbed([]byte("host: "+leaked+"\n"), nil, "")
+// TestWithRecorder_PooledClientRejected はプール経由の録音が静かに空振らないことを確認する。
+// プール内で作られる接続は誰も StopRecording しないため、録音したつもりで 0 件になる。
+func TestWithRecorder_PooledClientRejected(t *testing.T) {
+	_, err := NewPooledClient(2, "https://example.invalid:5986/wsman",
+		WithRecorder(t.TempDir(), "probe"))
 	if err == nil {
-		t.Fatal("プライベート IP を見逃した")
+		t.Fatal("プール経由の録音を許してしまった (静かに空振る)")
 	}
-	if !strings.Contains(err.Error(), leaked) {
-		t.Errorf("エラーが漏れた値を示していない: %v", err)
-	}
-
-	if err := verifyCassetteScrubbed([]byte("host: hyperv-host.example.invalid\n"), nil, ""); err != nil {
-		t.Errorf("匿名化済みの内容を誤って拒否した: %v", err)
-	}
-}
-
-// TestNewReplayClient は録音したカセットをユニットテストで再生できることを検証する (#157)。
-//
-// これが無いと「手書き golden を禁止する」だけになって代替が無い。
-// 録音 → 再生が閉じて初めて「golden を人が書く工程」を消せる。
-func TestNewReplayClient(t *testing.T) {
-	// まず httptest 相手に録音する (実機が無い CI でも回る形にするため)。
-	// Enumerate は Enumerate → Pull の 2 往復なので、Action で応答を出し分ける。
-	enumResp := loadGolden(t, "enumerate_response.xml")
-	pullResp := loadGolden(t, "pull_response_xsinil_real.xml")
-	endResp := loadGolden(t, "pull_response_end.xml")
-	pulls := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		reqBody, _ := io.ReadAll(r.Body)
-		w.Header().Set("Content-Type", "application/soap+xml; charset=utf-8")
-		if strings.Contains(string(reqBody), "enumeration/Enumerate") {
-			_, _ = w.Write(enumResp)
-			return
-		}
-		pulls++
-		if pulls == 1 {
-			_, _ = w.Write(pullResp)
-			return
-		}
-		_, _ = w.Write(endResp) // EndOfSequence
-	}))
-	cassette := filepath.Join(t.TempDir(), "replay")
-	rec, err := NewClient(server.URL, WithRecorder(cassette))
-	if err != nil {
-		t.Fatalf("NewClient(record): %v", err)
-	}
-	_, _ = rec.Enumerate(context.Background(), "http://example.invalid/Msvm_Test")
-	if err := rec.StopRecording(); err != nil {
-		t.Fatalf("StopRecording: %v", err)
-	}
-	server.Close() // 以降ネットワークは無い。再生できれば本当にカセット由来。
-
-	replay, err := NewReplayClient(cassette, server.URL)
-	if err != nil {
-		t.Fatalf("NewReplayClient: %v", err)
-	}
-	items, err := replay.Enumerate(context.Background(), "http://example.invalid/Msvm_Test")
-	if err != nil {
-		t.Fatalf("再生に失敗: %v", err)
-	}
-	if len(items) == 0 {
-		t.Fatal("再生した応答からインスタンスが取れていない")
-	}
-	if got := items[0].PropertiesList()["ResourceType"]; len(got) != 1 || got[0] != "17" {
-		t.Errorf("ResourceType = %v, want [17] (カセットの中身が再生されていない)", got)
+	if !strings.Contains(err.Error(), "NewPooledClient") {
+		t.Errorf("エラーが理由を示していない: %v", err)
 	}
 }

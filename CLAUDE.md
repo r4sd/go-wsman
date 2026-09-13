@@ -117,24 +117,31 @@ https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/msvm-<class-slug>
 > 一方 #138 で `Unmarshal` を削除して**選択肢自体を消した**型は再発していない。
 >
 > だから「実機から採取したと書いてあるか」は見ない (主張の真偽は機械検証できない)。
-> **手で書いた fixture を置けなくしてある** (`internal/guard`)。
+> 録音器が書いた印と本文の sha256 を持つファイルだけを実機由来として扱う (`internal/guard`)。
+>
+> ⚠️ **これは証明ではない。** 印も sha256 も自分で計算して貼れる。止まるのは
+> 「それらしい XML を思いつきで書く」経路と「録音した後で値を調整する」経路で、
+> 過去 7 件はすべてこの 2 つ。**摩擦を上げる仕組み**と理解しておく。
 
 **実機の応答が要るとき**: 録音する。
 
 ```bash
-WSMAN_RECORD_DIR=./cassettes go test -tags=integration ./hyperv/... -run TestIntegration_Xxx
+WSMAN_RECORD_DIR=./recorded go test -tags=integration ./hyperv/... -run TestIntegration_Xxx
 ```
 
-統合テストを回すだけで全応答がカセットに貯まる。匿名化 (GUID / ホスト名 / VM 表示名 /
-プライベート IP / 資格情報) は自動で、伏せる名前は実機から自分で集める。
-保存後に読み返して検証し、残っていたら落ちる。
+統合テストを回すだけで、応答が 1 つずつ匿名化済みの XML として貯まる。
+使うものを `testdata/` へコピーするだけでよい。
 
-再生は `wsman.NewReplayClient(cassettePath, endpoint)`。ネットワークへは出ない。
+匿名化するもの: GUID / 接続先ホスト / プライベート IP / VM 表示名・コンピュータ名。
+最後のものはパターンで拾えないので**実機から自動収集する** (環境変数で人が渡す形にすると
+設定し忘れで静かに漏れる)。XML エスケープ後の形と大文字小文字の違いも含めて伏せ、
+保存後に読み返して検証し、残っていたら落ちる。
 
 **合成データが要るとき**: `testdata/synthetic/` に置き、ファイル内に
 `derived-from: <録音物のパス>` を書く。派生元の存在は CI が確かめる。
 
-**テストソースに XML を直接書かない。** testdata に関所があってもそこで迂回できる。
+**ソースに XML を直接書かない。** testdata に関所があってもそこで迂回できるので、
+既存ファイルは出現数まで固定してある (追記も検出される)。
 
 - 配置: `{package}/testdata/`
 - 命名: `{operation}_response_{class}.xml`（wsman パッケージの慣例に合わせる）

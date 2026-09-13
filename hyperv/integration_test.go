@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -55,7 +54,7 @@ func getIntegrationClient(t *testing.T) *Client {
 		}
 		// テスト名をそのままカセット名にする (サブテストの "/" はディレクトリ区切りになるため置換)。
 		name := strings.ReplaceAll(t.Name(), "/", "_")
-		opts = append(opts, wsman.WithRecorder(filepath.Join(dir, name)))
+		opts = append(opts, wsman.WithRecorder(dir, name))
 		// VM 表示名とホストのコンピュータ名は任意のユーザーデータなのでパターンで拾えない。
 		// 環境変数で渡す形にすると「設定し忘れ」で静かに漏れる — 今回潰したい失敗の型そのもの。
 		// なので実機から自分で集める。

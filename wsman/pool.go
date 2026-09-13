@@ -54,6 +54,11 @@ func NewPooledClient(size int, endpoint string, opts ...ClientOption) (*Client, 
 		if err != nil {
 			return nil, fmt.Errorf("NewPooledClient: client %d: %w", i, err)
 		}
+		// 録音はプールでは静かに空振る。内部の Client が個別に録音器を持つが、
+		// 外側の Client には付かず StopRecording も届かない。落として気付かせる (#157)。
+		if c.recordDir != "" {
+			return nil, fmt.Errorf("NewPooledClient: WithRecorder とは併用できない (プール内の接続は録音されない)")
+		}
 		slots <- c.transport
 	}
 
