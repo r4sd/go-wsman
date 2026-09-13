@@ -393,7 +393,10 @@ func TestClient_GetSystemSettingData_FullFields(t *testing.T) {
 	if got.GuestControlledCacheTypes {
 		t.Errorf("GuestControlledCacheTypes: want false")
 	}
-	if !got.AutomaticSnapshotsEnabled {
+	// ポインタ化済み (#135)。nil = 応答にプロパティが無かった、と区別する。
+	if got.AutomaticSnapshotsEnabled == nil {
+		t.Errorf("AutomaticSnapshotsEnabled: nil (golden にプロパティがあるのに埋まっていない)")
+	} else if !*got.AutomaticSnapshotsEnabled {
 		t.Errorf("AutomaticSnapshotsEnabled: want true")
 	}
 	if !got.PauseAfterBootFailure {

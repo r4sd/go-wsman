@@ -56,6 +56,15 @@ func UnmarshalList(props map[string][]string, v interface{}) error {
 }
 
 func setField(fv reflect.Value, raw string) error {
+	// ポインタフィールドは値がある時だけ確保する (#135)。
+	// 応答にプロパティが無ければ呼び出し元が setField を呼ばないので nil のまま残り、
+	// 「未指定」と「false」を区別できる。
+	if fv.Kind() == reflect.Pointer {
+		if fv.IsNil() {
+			fv.Set(reflect.New(fv.Type().Elem()))
+		}
+		fv = fv.Elem()
+	}
 	switch fv.Kind() {
 	case reflect.String:
 		fv.SetString(raw)
