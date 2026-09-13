@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/r4sd/go-wsman/wsman"
 )
 
@@ -104,6 +105,24 @@ func TestIntegration_AddScsiController(t *testing.T) {
 	if len(after) != len(before)+1 {
 		t.Errorf("AddScsiController 後は Controller が 1 増えるべき: before=%d after=%d", len(before), len(after))
 	}
+}
+
+// firstVirtualMachine は列挙結果から最初の **VM** を返す。
+//
+// ListComputerSystems は Hyper-V ホスト自身の Msvm_ComputerSystem も返す (#151)。
+// ホストを掴むと SettingData 系 API が「見つからない」で落ちるため除外する。
+// 判別は Name が GUID かどうかで行う。VM の Name は VM GUID、ホストの Name は
+// ホスト名。Caption / Description は [AMENDMENT] でホスト OS の言語に
+// ローカライズされる (実機は "仮想マシン" を返した) ため判別に使えない。
+func firstVirtualMachine(t *testing.T, vms []*Msvm_ComputerSystem) *Msvm_ComputerSystem {
+	t.Helper()
+	for _, vm := range vms {
+		if _, err := uuid.Parse(vm.Name); err == nil {
+			return vm
+		}
+	}
+	t.Skip("Hyper-V ホストに VM が存在しない (ホスト自身のインスタンスのみ)")
+	return nil
 }
 
 // TestIntegration_ListComputerSystems は実機から VM 一覧を取得する。
@@ -230,7 +249,7 @@ func TestIntegration_GetMemoryAndProcessorSettings(t *testing.T) {
 	if len(vms) == 0 {
 		t.Skip("Hyper-V ホストに VM が存在しない")
 	}
-	target := vms[0]
+	target := firstVirtualMachine(t, vms)
 
 	mem, err := client.GetMemorySettings(ctx, target.Name)
 	if err != nil {
@@ -274,7 +293,7 @@ func TestIntegration_ListIntegrationServices(t *testing.T) {
 	if len(vms) == 0 {
 		t.Skip("Hyper-V ホストに VM が存在しない")
 	}
-	target := vms[0]
+	target := firstVirtualMachine(t, vms)
 
 	svcs, err := client.ListIntegrationServices(ctx, target.Name)
 	if err != nil {
@@ -550,7 +569,7 @@ func TestIntegration_GetComputerSystem(t *testing.T) {
 		t.Skip("Hyper-V ホストに VM が存在しない")
 	}
 
-	target := vms[0]
+	target := firstVirtualMachine(t, vms)
 	got, err := client.GetComputerSystem(ctx, target.Name)
 	if err != nil {
 		t.Fatalf("GetComputerSystem(%s) failed: %v", target.Name, err)
@@ -606,7 +625,7 @@ func TestIntegration_GetSystemSettingData(t *testing.T) {
 		t.Skip("Hyper-V ホストに VM が存在しない")
 	}
 
-	target := vms[0]
+	target := firstVirtualMachine(t, vms)
 	got, err := client.GetSystemSettingData(ctx, target.Name)
 	if err != nil {
 		t.Fatalf("GetSystemSettingData(%s) failed: %v", target.Name, err)
@@ -761,7 +780,7 @@ func TestIntegration_ListIDEControllers(t *testing.T) {
 	if len(vms) == 0 {
 		t.Skip("Hyper-V ホストに VM が存在しない")
 	}
-	target := vms[0]
+	target := firstVirtualMachine(t, vms)
 
 	controllers, err := client.ListIDEControllers(ctx, target.Name)
 	if err != nil {
@@ -793,7 +812,7 @@ func TestIntegration_ListScsiAndDiskDrives(t *testing.T) {
 		t.Skip("Hyper-V ホストに VM が存在しない")
 	}
 	// SCSI Controller を持つ VM (通常 Gen2) を優先的に選ぶ。
-	target := vms[0]
+	target := firstVirtualMachine(t, vms)
 	for _, vm := range vms {
 		scsi, err := client.ListSCSIControllers(ctx, vm.Name)
 		if err == nil && len(scsi) > 0 {

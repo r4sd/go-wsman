@@ -37,7 +37,7 @@ import (
 //
 // 以前は map[string]string を返し複数 VALUE を **連結** していたため、配列プロパティが
 // 静かに壊れていた ("a","b" → "ab")。UnmarshalList への一本化に合わせて修正した。
-func parseEmbeddedInstance(xmlStr string) (map[string][]string, error) {
+func parseEmbeddedInstance(xmlStr string) (map[string][]string, error) { //nolint:gocognit // XML トークンストリームの状態機械 (ネスト検出 + NULL 位置保持 + token 種別 switch)。wsman.parseInstances と同型で、分割は可読性を損なう
 	props := make(map[string][]string)
 	dec := xml.NewDecoder(strings.NewReader(xmlStr))
 

@@ -50,7 +50,12 @@ func NewPooledClient(size int, endpoint string, opts ...wsman.ClientOption) (*Cl
 
 // GetComputerSystem は Name（VM GUID）で単一 VM を取得する。
 func (c *Client) GetComputerSystem(ctx context.Context, name string) (*Msvm_ComputerSystem, error) {
+	// Name だけだと実機が DestinationUnreachable を返す。CreationClassName を
+	// 添えると通る (2026-09-14 実機確認)。CIM_System の Key は CreationClassName +
+	// Name だが、MOF ページの Key 修飾子の記載は当てにならないので実機で確かめた。
+	// CreationClassName は MOF で「常に "Msvm_ComputerSystem"」と定義されている。
 	resp, err := c.wsman.Get(ctx, msvmComputerSystemURI,
+		wsman.Selector{Name: "CreationClassName", Value: "Msvm_ComputerSystem"},
 		wsman.Selector{Name: "Name", Value: name},
 	)
 	if err != nil {
@@ -136,7 +141,11 @@ func matchSettingDataVM(instanceID, vmGUID string) bool {
 	return strings.HasPrefix(instanceID, settingDataInstanceIDPrefix+vmGUID)
 }
 
-// ListComputerSystems は全 VM を Enumerate で取得する。
+// ListComputerSystems は Msvm_ComputerSystem を素のまま Enumerate する。
+//
+// ⚠️ 戻り値には **Hyper-V ホスト自身**のインスタンスが含まれる (Name = ホスト名)。
+// VM だけが欲しい場合は呼び出し側で除く必要がある (#151)。
+// Caption / Description は [AMENDMENT] でローカライズされるため判別に使えない。
 func (c *Client) ListComputerSystems(ctx context.Context) ([]*Msvm_ComputerSystem, error) {
 	instances, err := c.wsman.Enumerate(ctx, msvmComputerSystemURI)
 	if err != nil {
