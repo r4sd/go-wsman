@@ -21,7 +21,7 @@ import (
 )
 
 // sweepClient は getIntegrationClient を使う。独自に NewClient すると
-// WSMAN_RECORD_DIR による録音経路を通らず、ここでの応答だけ採れなくなる (#157)。
+// WSMAN_RECORD_DIR による記録経路を通らず、ここでの応答だけ採れなくなる (#157)。
 func sweepClient(t *testing.T) *Client {
 	t.Helper()
 	return getIntegrationClient(t)

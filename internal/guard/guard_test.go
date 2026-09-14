@@ -7,14 +7,14 @@
 // 「実機から採取したと書いてあるか」は機械検証できない (主張の真偽は判定できない)。
 // 検証できるのは証跡の有無だけなので、
 //
-//   - 録音器が書いた印と本文の sha256 を持つファイルだけを「実機由来」として扱う
+//   - 記録器が書いた印と本文の sha256 を持つファイルだけを「実機由来」として扱う
 //   - 合成は testdata/synthetic/ + derived-from: に限る
 //   - テストソースに応答 XML を直接書かせない (testdata への関所の迂回路)
 //
 // の 3 つを機械で確かめる。
 //
 // **これは万能ではない。** 印も sha256 も自分で計算して貼れるので、意図的な偽造は止まらない。
-// 止まるのは「それらしい XML を思いつきで書く」経路と「録音した後で値を調整する」経路で、
+// 止まるのは「それらしい XML を思いつきで書く」経路と「記録した後で値を調整する」経路で、
 // 過去 7 件はすべてこの 2 つ。摩擦を上げる仕組みであって、証明ではない。
 //
 // これらは既に必須の "Test / Unit Tests" ジョブで走るので、CI 側の追加配線は要らない。
@@ -36,8 +36,8 @@ const repoRoot = "../.."
 
 // legacyGoldens は本関所の導入より前からある XML fixture。
 //
-// 録音器の印を持たないので**新規追加は許さないが、既存は落とさない**。
-// 棚卸しを独立した作業として積むと重くて進まないので、**触ったときに録音し直して
+// 記録器の印を持たないので**新規追加は許さないが、既存は落とさない**。
+// 棚卸しを独立した作業として積むと重くて進まないので、**触ったときに記録し直して
 // このリストから外す**運用にする。リストが縮むことが進捗。
 //
 // ファイルを消した/改名したのにエントリが残っていると落ちる (幽霊を残さないため)。
@@ -145,7 +145,7 @@ var rawXMLInSource = regexp.MustCompile(
 // fixtureExts は fixture とみなす拡張子。
 var fixtureExts = map[string]bool{".xml": true, ".yaml": true, ".yml": true, ".txt": true}
 
-// TestFixturesAreRecordedOrDerived は fixture が録音物か、録音物からの派生かを確かめる。
+// TestFixturesAreRecordedOrDerived は fixture が実機の記録か、実機の記録からの派生かを確かめる。
 func TestFixturesAreRecordedOrDerived(t *testing.T) {
 	seen := make(map[string]bool, len(legacyGoldens))
 
@@ -161,11 +161,11 @@ func TestFixturesAreRecordedOrDerived(t *testing.T) {
 				t.Errorf("%s: 読めない: %v", rel, readErr)
 				return nil
 			}
-			// MOF fixture は CIM 仕様の抜き書きで、実機の応答ではないので録音を求めない。
+			// MOF fixture は CIM 仕様の抜き書きで、実機の応答ではないので記録を求めない。
 			// ただし「mof/ に置けば何でも通る」にはしない (免除がそのまま迂回路になる)。
 			if strings.Contains(rel, "/mof/") {
 				if rawXMLInSource.Match(content) {
-					t.Errorf("%s: MOF fixture に応答 XML が入っている。録音物として testdata/ へ置くこと", rel)
+					t.Errorf("%s: MOF fixture に応答 XML が入っている。実機の記録として testdata/ へ置くこと", rel)
 				}
 				return nil
 			}
@@ -179,7 +179,7 @@ func TestFixturesAreRecordedOrDerived(t *testing.T) {
 			}
 			if err := wsman.VerifyRecordedHash(content); err != nil {
 				t.Errorf("%s: %v\n"+
-					"  実機の応答が要るなら録音する (WSMAN_RECORD_DIR を設定して統合テストを実行)。\n"+
+					"  実機の応答が要るなら記録する (WSMAN_RECORD_DIR を設定して統合テストを実行)。\n"+
 					"  合成データが要るなら testdata/synthetic/ に置き、derived-from: で派生元を書く。", rel, err)
 			}
 			return nil
@@ -197,7 +197,7 @@ func TestFixturesAreRecordedOrDerived(t *testing.T) {
 	}
 }
 
-// selfTestMarker は「録音器そのものを検査するための最小データ」の印。
+// selfTestMarker は「記録器そのものを検査するための最小データ」の印。
 //
 // 匿名化の実装を試すための合成データは、実機の応答の派生ではない。そこを
 // 無理に derived-from で繋ぐと、**関所を通すためにポインタを付け替える**ことになり、
@@ -217,7 +217,7 @@ func checkDerivedFrom(t *testing.T, content []byte, rel string) {
 	if strings.Contains(string(content), selfTestMarker) {
 		if cls := cimClassPattern.FindAllString(string(content), -1); len(cls) > 0 {
 			t.Errorf("%s: %s を名乗る fixture が CIM クラス名 (%s) を含んでいる。\n"+
-				"  実機の挙動に関わるものは録音するか、録音物からの派生にすること。",
+				"  実機の挙動に関わるものは記録するか、実機の記録からの派生にすること。",
 				rel, selfTestMarker, strings.Join(uniq(cls), ", "))
 		}
 		// クラス名が無くても、応答の骨格を持つものは実機の挙動を主張できてしまう
@@ -225,7 +225,7 @@ func checkDerivedFrom(t *testing.T, content []byte, rel string) {
 		for _, shape := range []string{"Fault", "PullResponse", "EnumerateResponse", "Items"} {
 			if strings.Contains(string(content), shape) {
 				t.Errorf("%s: %s を名乗る fixture が応答の骨格 (%s) を含んでいる。\n"+
-					"  この免除は録音器そのものの検査だけに使うこと。", rel, selfTestMarker, shape)
+					"  この免除は記録器そのものの検査だけに使うこと。", rel, selfTestMarker, shape)
 			}
 		}
 		return
@@ -233,7 +233,7 @@ func checkDerivedFrom(t *testing.T, content []byte, rel string) {
 
 	m := regexp.MustCompile(`derived-from:\s*(\S+)`).FindSubmatch(content)
 	if m == nil {
-		t.Errorf("%s: 合成 fixture には derived-from: <派生元のパス> が要る (録音器の自己検査用なら %q)", rel, selfTestMarker)
+		t.Errorf("%s: 合成 fixture には derived-from: <派生元のパス> が要る (記録器の自己検査用なら %q)", rel, selfTestMarker)
 		return
 	}
 	origin := string(m[1])
@@ -247,12 +247,12 @@ func checkDerivedFrom(t *testing.T, content []byte, rel string) {
 		t.Errorf("%s: derived-from が fixture 以外 (%q) を指している", rel, origin)
 		return
 	}
-	// 派生元は**録音物**でなければならない。legacy を指せると、印と sha256 を回避する
+	// 派生元は**実機の記録**でなければならない。legacy を指せると、印と sha256 を回避する
 	// 最安の抜け道が synthetic/ に移るだけになる。クラスごとに最低 1 回は
 	// 実機から録ることを強制する。
 	if err := wsman.VerifyRecordedHash(originContent); err != nil {
-		t.Errorf("%s: derived-from が指す %q が録音物ではない (%v)。\n"+
-			"  合成は実機から録ったものの派生でなければならない。まず対象クラスを録音すること。", rel, origin, err)
+		t.Errorf("%s: derived-from が指す %q が実機の記録ではない (%v)。\n"+
+			"  合成は実機から録ったものの派生でなければならない。まず対象クラスを記録すること。", rel, origin, err)
 		return
 	}
 	// **派生元は本当に派生元か。** 合成が扱う CIM クラスが派生元に無いなら、
@@ -269,7 +269,7 @@ func checkDerivedFrom(t *testing.T, content []byte, rel string) {
 	}
 	if len(missing) > 0 {
 		t.Errorf("%s: 扱っている CIM クラス %s が派生元 %q に無い。\n"+
-			"  そのクラスを実機から録音してから派生させること。", rel, strings.Join(missing, ", "), origin)
+			"  そのクラスを実機から記録してから派生させること。", rel, strings.Join(missing, ", "), origin)
 	}
 }
 
@@ -315,7 +315,7 @@ func TestNoRawXMLInSources(t *testing.T) {
 		switch {
 		case !ok:
 			t.Errorf("%s: ソースに応答 XML を直接書かない (%d 箇所)。\n"+
-				"  録音した fixture を loadGolden で読むか、合成なら testdata/synthetic/ に置いて derived-from: を書く。", rel, n)
+				"  記録した fixture を loadGolden で読むか、合成なら testdata/synthetic/ に置いて derived-from: を書く。", rel, n)
 		case n > allowed:
 			t.Errorf("%s: 生 XML が %d → %d 箇所に増えている。\n"+
 				"  既存ファイルへの追記もこの関所の対象。fixture に切り出すこと。", rel, allowed, n)
@@ -353,13 +353,13 @@ var macLiteralPattern = regexp.MustCompile(`\b(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-
 
 // allowedMACPrefixes は書いてよい MAC の接頭辞。
 //
-//   - 00155D: Hyper-V が仮想 NIC に振る OUI。録音器のプレースホルダがこれを使う
+//   - 00155D: Hyper-V が仮想 NIC に振る OUI。記録器のプレースホルダがこれを使う
 //   - 00005E0053: RFC 7042 の文書用アドレス
 var allowedMACPrefixes = []string{"00155D", "00005E0053"}
 
 // TestNoRealMACAddresses は実環境の MAC がリポジトリに入るのを止める (#157)。
 //
-// CI の no-private-addresses は IP しか見ない。実際に、実機 NIC の MAC を録音物に
+// CI の no-private-addresses は IP しか見ない。実際に、実機 NIC の MAC を実機の記録に
 // 1 回、テストソースに 1 回書いている (プライベート IP も同型で 1 回)。
 // 「実機で見た値をそのまま書き写す」型なので、機械で止める。
 func TestNoRealMACAddresses(t *testing.T) {
@@ -402,7 +402,7 @@ func TestNoRealMACAddresses(t *testing.T) {
 			}
 			if len(found) > 0 {
 				t.Errorf("%s: 実環境の MAC と思われる値がある (%s)。\n"+
-					"  録音物なら録り直す。テストなら RFC 7042 の文書用アドレス (00-00-5E-00-53-xx) を使う。",
+					"  実機の記録なら録り直す。テストなら RFC 7042 の文書用アドレス (00-00-5E-00-53-xx) を使う。",
 					relPath(path), strings.Join(uniq(found), ", "))
 			}
 			return nil

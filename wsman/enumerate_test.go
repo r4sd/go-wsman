@@ -301,15 +301,15 @@ func equalStrings(a, b []string) bool {
 	return true
 }
 
-// TestParsePullResponse_Recorded は**録音した実機応答**をそのままパースできることを検証する (#157)。
+// TestParsePullResponse_Recorded は**記録した実機応答**をそのままパースできることを検証する (#157)。
 //
-// 録音 → testdata へコピー → loadGolden → パーサ、という往復をリポジトリ内で実証するための
-// テスト。これが無いと「録音できる」と「録音したものが使える」の間が空いたままになる。
+// 記録 → testdata へコピー → loadGolden → パーサ、という往復をリポジトリ内で実証するための
+// テスト。これが無いと「記録できる」と「記録したものが使える」の間が空いたままになる。
 func TestParsePullResponse_Recorded(t *testing.T) {
 	data := loadGolden(t, "recorded_pull_guestnetworkadapterconfiguration.xml")
 	resp, err := ParsePullResponse(data)
 	if err != nil {
-		t.Fatalf("録音した応答をパースできない: %v", err)
+		t.Fatalf("記録した応答をパースできない: %v", err)
 	}
 	if len(resp.Items) != 1 {
 		t.Fatalf("Items 数 = %d, want 1", len(resp.Items))
@@ -324,7 +324,7 @@ func TestParsePullResponse_Recorded(t *testing.T) {
 	}
 	// 並列配列 (#141) を持つクラスなので、長さが噛み合っているかだけ見る。
 	// 「配列が空であること」は**このホストのゲストが IP を報告していない**という
-	// 環境事実なので、再録音で IP を返す VM が混ざると赤になる。ここでは固定しない。
+	// 環境事実なので、記録し直しで IP を返す VM が混ざると赤になる。ここでは固定しない。
 	if len(props["Subnets"]) > 0 && len(props["IPAddresses"]) != len(props["Subnets"]) {
 		t.Errorf("IPAddresses(%d) と Subnets(%d) の長さが違う",
 			len(props["IPAddresses"]), len(props["Subnets"]))

@@ -18,7 +18,7 @@ import (
 	"time"
 )
 
-// 録音 (#157)。
+// 記録 (#157)。
 //
 // このリポジトリは「手書き golden が実機に無い挙動を仕様として固定する」事故を
 // 7 回繰り返している。警告文と規約は 1 度も効かなかった (5 回目は「4 回繰り返した」と
@@ -27,14 +27,14 @@ import (
 // 効くのは「正しい道を間違った道より安くする」ことなので、実機応答の採取を
 // 1 コマンドにする。
 //
-// **go-vcr を一度採用して外した経緯**: 録音・再生の OSS として go-vcr v4 を入れたが、
+// **go-vcr を一度採用して外した経緯**: 記録・再生の OSS として go-vcr v4 を入れたが、
 // 本リポジトリの単体テストは ParsePullResponse(loadGolden(...)) 型で、HTTP 会話の
 // 再生を必要としない。再生を使おうとすると WS-Man 固有の照合 (全リクエストが同じ URL への
 // POST で、MessageID は毎回変わる) を自作することになり、「肩に乗ったつもりで肩の上で
 // 別の車輪を作る」状態だった。応答の採取だけに絞り、依存を外した。
 // 会話の再生が要る形のテストが出てきたら改めて検討する。
 
-// recordedByMarker は録音器が書いたファイルであることを示す印。
+// recordedByMarker は記録器が書いたファイルであることを示す印。
 // 関所 (internal/guard) がこの行と sha256 を確かめる。
 const recordedByMarker = "recorded-by: go-wsman/wsman.WithRecorder"
 
@@ -50,7 +50,7 @@ var (
 	// 落とす対象なので、指定が無くても伏せる。
 	privateIPPattern = regexp.MustCompile(`\b(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})\b`)
 
-	// recordedHeaderPattern は録音ファイル先頭のヘッダコメント。
+	// recordedHeaderPattern は記録ファイル先頭のヘッダコメント。
 	recordedHeaderPattern = regexp.MustCompile(`(?s)\A<!--.*?-->\n`)
 
 	// recordedHashPattern はヘッダ中の本文ハッシュ。
@@ -65,7 +65,7 @@ var (
 
 // anonymizer は実環境の識別子をプレースホルダへ決定的に写す。
 //
-// 決定的にするのは、再録音したときの差分を読めるようにするため。
+// 決定的にするのは、記録し直したときの差分を読めるようにするため。
 // ランダムだと毎回全行が変わって「実機の挙動が変わったのか、採り直しただけか」が
 // 区別できなくなる。
 type anonymizer struct {
@@ -105,7 +105,7 @@ var docIPRanges = []string{"203.0.113", "198.51.100", "192.0.2"}
 //
 // 採番は**種別ごと**に持つ。1 つのカウンタを共有すると、GUID を 300 件含む応答の後に
 // IP が来たときに 203.0.113.301 のような不正なアドレスを書いてしまう
-// (= 録音器自身が実機に無い値を作る)。
+// (= 記録器自身が実機に無い値を作る)。
 func (a *anonymizer) placeholderFor(prefix, s string) string {
 	key := prefix + "\x00" + strings.ToLower(s)
 	if v, ok := a.replaced[key]; ok {
@@ -178,7 +178,7 @@ func scrubWordBounded(s, value, replacement string) string {
 //
 // RE2 の \b は "_" を単語文字として扱うが、Hyper-V の差分ディスクは
 // <VM名>_<GUID>.avhdx という命名なので、"_" を区切りとして扱わないと VM 名が伏せられない
-// (チェックポイントを 1 つでも持つ VM がいると録音が成立しなくなる)。
+// (チェックポイントを 1 つでも持つ VM がいると記録が成立しなくなる)。
 //
 // 一方で Msvm_ExternalEthernetPort の External は右隣が "E" なので守られる。
 func boundedByNonAlnum(s string, start, end int) bool {
@@ -235,7 +235,7 @@ var cimClassPattern = regexp.MustCompile(`(?:Msvm|CIM|Win32)_[A-Za-z0-9]+`)
 //
 // 伏せる名前が一般語 (スイッチ名の External / Internal 等) だと、単語境界を見ていても
 // クラス名の一部に当たりうる。整形式は保たれるので構造チェックでは捕まらない。
-// 「録音器が実在しないクラス名を書く」= 実機に無いものを仕様として固定する事故なので、
+// 「記録器が実在しないクラス名を書く」= 実機に無いものを仕様として固定する事故なので、
 // ここで止める。
 func classTokensUnchanged(before, after string) error {
 	set := func(s string) map[string]struct{} {
@@ -328,7 +328,7 @@ func (r *recorder) write(body []byte) error {
 	}
 	scrubbed := r.anon.scrub(string(body))
 	// 置換が XML の構造を壊していないか確かめる。壊れたものを fixture にすると、
-	// 録音器自身が「実機に無い形」を作ることになる。
+	// 記録器自身が「実機に無い形」を作ることになる。
 	if err := wellFormedXML(scrubbed); err != nil {
 		return fmt.Errorf("匿名化した結果が XML として壊れている: %w", err)
 	}
@@ -344,12 +344,12 @@ func (r *recorder) write(body []byte) error {
 	path := filepath.Join(r.dir, fmt.Sprintf("%s-%03d.xml", r.name, seq))
 	sum := sha256.Sum256([]byte(scrubbed))
 	header := fmt.Sprintf("<!--\n  %s\n  recorded-at: %s\n  sha256: %s\n\n"+
-		"  実機から録音した応答。手で編集しない (sha256 が合わなくなり CI が落ちる)。\n"+
+		"  実機から記録した応答。手で編集しない (sha256 が合わなくなり CI が落ちる)。\n"+
 		"  値を変えたいなら合成として testdata/synthetic/ へ置き derived-from: を書くこと。\n-->\n",
 		recordedByMarker, time.Now().UTC().Format(time.RFC3339), hex.EncodeToString(sum[:]))
 
 	if err := os.WriteFile(path, []byte(header+scrubbed), 0o600); err != nil {
-		return fmt.Errorf("録音の書き出しに失敗 (%s): %w", path, err)
+		return fmt.Errorf("記録の書き出しに失敗 (%s): %w", path, err)
 	}
 	r.mu.Lock()
 	r.files = append(r.files, path)
@@ -373,13 +373,13 @@ func wellFormedXML(s string) error {
 
 // WithRecorder は実機の応答を匿名化した XML として dir へ書き出す。
 //
-// ファイル名は <name>-001.xml のような連番。先頭に録音器が書いた印と本文の
+// ファイル名は <name>-001.xml のような連番。先頭に記録器が書いた印と本文の
 // sha256 が入り、関所 (internal/guard) がそれを確かめる。
 //
 // 匿名化するもの: GUID / 接続先ホスト / プライベート IP / [WithRecorderScrub] で
 // 指定した文字列。いずれも XML エスケープ後の形と大文字小文字の違いを含めて伏せる。
 //
-// 録音を確定させるには必ず [Client.StopRecording] を呼ぶこと。
+// 記録を確定させるには必ず [Client.StopRecording] を呼ぶこと。
 func WithRecorder(dir, name string) ClientOption {
 	return func(c *Client) {
 		c.recordDir = dir
@@ -387,7 +387,7 @@ func WithRecorder(dir, name string) ClientOption {
 	}
 }
 
-// WithRecorderScrub は録音時に伏せる文字列を追加する。
+// WithRecorderScrub は記録時に伏せる文字列を追加する。
 //
 // GUID・接続先ホスト・プライベート IP はパターンで拾えるが、VM の表示名や
 // ホストのコンピュータ名は**任意のユーザーデータ**なので拾えない。
@@ -401,8 +401,8 @@ func WithRecorderScrub(values ...string) ClientOption {
 	}
 }
 
-// StopRecording は録音を確定し、書き出したファイルを検査する。
-// 録音していない Client では何もしない。
+// StopRecording は記録を確定し、書き出したファイルを検査する。
+// 記録していない Client では何もしない。
 func (c *Client) StopRecording() error {
 	if c.recorder == nil {
 		return nil
@@ -416,7 +416,7 @@ func (c *Client) StopRecording() error {
 	rec.mu.Unlock()
 
 	if len(errs) > 0 {
-		return fmt.Errorf("録音中にエラーがあった: %w", errs[0])
+		return fmt.Errorf("記録中にエラーがあった: %w", errs[0])
 	}
 
 	// 匿名化を「したつもり」で終わらせない。書いたファイルそのものを読み返して
@@ -424,7 +424,7 @@ func (c *Client) StopRecording() error {
 	for _, path := range files {
 		raw, err := os.ReadFile(path) //#nosec G304 -- 自分が直前に書いたファイル
 		if err != nil {
-			return fmt.Errorf("録音したファイルを読み返せない (%s): %w", path, err)
+			return fmt.Errorf("記録したファイルを読み返せない (%s): %w", path, err)
 		}
 		if err := verifyRecorded(raw, c.recordScrub, c.endpoint); err != nil {
 			return fmt.Errorf("%s: %w", path, err)
@@ -433,11 +433,11 @@ func (c *Client) StopRecording() error {
 	return nil
 }
 
-// verifyRecorded は録音ファイルに実環境の識別子が残っていないか、
+// verifyRecorded は記録ファイルに実環境の識別子が残っていないか、
 // 本文がヘッダの sha256 と一致するかを検査する。
 //
 // 匿名化の実装を信頼せず、出力を直接見る。漏れたまま公開リポジトリへ commit するより、
-// 録音し直す方が安いので fail-loud にする。
+// 記録し直す方が安いので fail-loud にする。
 func verifyRecorded(content []byte, scrub []string, endpoint string) error {
 	if err := VerifyRecordedHash(content); err != nil {
 		return err
@@ -476,14 +476,14 @@ func verifyRecorded(content []byte, scrub []string, endpoint string) error {
 	return fmt.Errorf("匿名化されていない値が残っている: %s", strings.Join(uniqueStrings(leaks), ", "))
 }
 
-// VerifyRecordedHash は録音ファイルのヘッダにある sha256 と本文が一致するか確かめる。
+// VerifyRecordedHash は記録ファイルのヘッダにある sha256 と本文が一致するか確かめる。
 //
-// 録音した後に値を「アサーションに合わせて調整」する改変を検出するためのもの
+// 記録した後に値を「アサーションに合わせて調整」する改変を検出するためのもの
 // (実際にその痕跡が残っている既存ファイルがある)。関所からも使う。
 func VerifyRecordedHash(content []byte) error {
 	s := string(content)
 	if !strings.Contains(s, recordedByMarker) {
-		return fmt.Errorf("録音器が書いた印 (%q) が無い", recordedByMarker)
+		return fmt.Errorf("記録器が書いた印 (%q) が無い", recordedByMarker)
 	}
 	m := recordedHashPattern.FindStringSubmatch(s)
 	if m == nil {
@@ -491,8 +491,8 @@ func VerifyRecordedHash(content []byte) error {
 	}
 	sum := sha256.Sum256([]byte(stripRecordedHeader(s)))
 	if got := hex.EncodeToString(sum[:]); got != m[1] {
-		return fmt.Errorf("本文がヘッダの sha256 と一致しない (録音後に編集された)。" +
-			"録音し直すか、合成として testdata/synthetic/ へ移すこと")
+		return fmt.Errorf("本文がヘッダの sha256 と一致しない (記録後に編集された)。" +
+			"記録し直すか、合成として testdata/synthetic/ へ移すこと")
 	}
 	return nil
 }
@@ -515,7 +515,7 @@ func uniqueStrings(in []string) []string {
 	return out
 }
 
-// attachRecorder は transport 確定後に録音器をチェーンへ差し込む。
+// attachRecorder は transport 確定後に記録器をチェーンへ差し込む。
 //
 // NewClient の最後で呼ぶこと。WithInsecureSkipVerify が内側の *http.Transport を
 // 型アサーションで取り出すため、それより先に包むと TLS 設定が効かなくなる。
@@ -527,7 +527,7 @@ func attachRecorder(c *Client) error {
 		return fmt.Errorf("WithRecorder: transport が確定していない")
 	}
 	if err := os.MkdirAll(c.recordDir, 0o750); err != nil {
-		return fmt.Errorf("WithRecorder: 録音先を作れない (%s): %w", c.recordDir, err)
+		return fmt.Errorf("WithRecorder: 記録先を作れない (%s): %w", c.recordDir, err)
 	}
 	name := c.recordName
 	if name == "" {

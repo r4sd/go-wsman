@@ -45,14 +45,14 @@ func getIntegrationClient(t *testing.T) *Client {
 		opts = append(opts, wsman.WithInsecureSkipVerify())
 	}
 	// WSMAN_RECORD_DIR が設定されていれば、実機とのやり取りをそのまま
-	// XML として録音する (#157)。golden を手で書く工程を無くすのが目的なので、
-	// 「録音モードを思い出して呼ぶ」のではなく **統合テストを回せば勝手に貯まる**形にする。
-	baseOpts := append([]wsman.ClientOption(nil), opts...) // 録音を含まない素の接続設定
+	// XML として記録する (#157)。golden を手で書く工程を無くすのが目的なので、
+	// 「記録モードを思い出して呼ぶ」のではなく **統合テストを回せば勝手に貯まる**形にする。
+	baseOpts := append([]wsman.ClientOption(nil), opts...) // 記録を含まない素の接続設定
 	if dir := os.Getenv("WSMAN_RECORD_DIR"); dir != "" {
 		if err := os.MkdirAll(dir, 0o750); err != nil {
 			t.Fatalf("WSMAN_RECORD_DIR の作成に失敗: %v", err)
 		}
-		// テスト名をそのまま録音ファイル名の接頭辞にする (サブテストの "/" は区切り文字になるため置換)。
+		// テスト名をそのまま記録ファイル名の接頭辞にする (サブテストの "/" は区切り文字になるため置換)。
 		name := strings.ReplaceAll(t.Name(), "/", "_")
 		opts = append(opts, wsman.WithRecorder(dir, name))
 		// VM 表示名とホストのコンピュータ名は任意のユーザーデータなのでパターンで拾えない。
@@ -67,7 +67,7 @@ func getIntegrationClient(t *testing.T) *Client {
 	}
 	t.Cleanup(func() {
 		if err := client.StopRecording(); err != nil {
-			t.Errorf("録音の確定に失敗: %v", err)
+			t.Errorf("記録の確定に失敗: %v", err)
 		}
 	})
 	return client
@@ -1131,17 +1131,17 @@ func TestIntegration_ListBootSources(t *testing.T) {
 	}
 }
 
-// discoverScrubNames は録音前に実機から「伏せるべき名前」を集める (#157)。
+// discoverScrubNames は記録前に実機から「伏せるべき名前」を集める (#157)。
 //
 // VM の表示名とホストのコンピュータ名は任意のユーザーデータで、GUID のように
 // パターンで拾えない。環境変数で人が渡す形にすると設定し忘れで静かに漏れるので、
-// 録音用とは別の Client で 1 回列挙して自動で集める。
+// 記録用とは別の Client で 1 回列挙して自動で集める。
 //
 // 集め損ねた名前があってもここでは落とさない。最終的な安全網は StopRecording の
 // 保存後検証で、そこには集めた名前が渡る。
 func discoverScrubNames(t *testing.T, endpoint string, baseOpts []wsman.ClientOption) []string {
 	t.Helper()
-	// baseOpts は録音オプションを含まない。この列挙自体は録音に載せない。
+	// baseOpts は記録オプションを含まない。この列挙自体は記録に載せない。
 	probe, err := NewClient(endpoint, baseOpts...)
 	if err != nil {
 		t.Logf("⚠️ 伏せる名前の収集に失敗 (Client 作成): %v", err)
@@ -1170,7 +1170,7 @@ func discoverScrubNames(t *testing.T, endpoint string, baseOpts []wsman.ClientOp
 			}
 		}
 	}
-	t.Logf("録音時に伏せる名前を %d 件収集した", len(names))
+	t.Logf("記録時に伏せる名前を %d 件収集した", len(names))
 	return names
 }
 

@@ -15,10 +15,10 @@ import (
 	"testing"
 )
 
-// guidPattern は録音結果に実環境の GUID が残っていないか調べるための検査用パターン。
+// guidPattern は記録結果に実環境の GUID が残っていないか調べるための検査用パターン。
 var guidPattern = regexp.MustCompile(`[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}`)
 
-// recordOnce は httptest サーバへ 1 往復して録音し、書き出されたファイルを返す。
+// recordOnce は httptest サーバへ 1 往復して記録し、書き出されたファイルを返す。
 func recordOnce(t *testing.T, respBody []byte, opts ...ClientOption) []string {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -33,7 +33,7 @@ func recordOnce(t *testing.T, respBody []byte, opts ...ClientOption) []string {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	// 応答のパース結果はここでは問わない。録音は RoundTripper 層で行うため、
+	// 応答のパース結果はここでは問わない。記録は RoundTripper 層で行うため、
 	// 上位がエラーを返しても記録される。
 	_, _ = client.Enumerate(context.Background(), "http://example.invalid/Msvm_Test")
 	if err := client.StopRecording(); err != nil {
@@ -42,12 +42,12 @@ func recordOnce(t *testing.T, respBody []byte, opts ...ClientOption) []string {
 
 	files, err := filepath.Glob(filepath.Join(dir, "*.xml"))
 	if err != nil || len(files) == 0 {
-		t.Fatalf("録音ファイルが書かれていない (%v)", err)
+		t.Fatalf("記録ファイルが書かれていない (%v)", err)
 	}
 	return files
 }
 
-// recordedFile は検証用に、正しいヘッダを持つ録音ファイルの中身を組み立てる。
+// recordedFile は検証用に、正しいヘッダを持つ記録ファイルの中身を組み立てる。
 func recordedFile(body string) []byte {
 	sum := sha256.Sum256([]byte(body))
 	return fmt.Appendf(nil, "<!--\n  %s\n  sha256: %s\n-->\n%s",
@@ -56,7 +56,7 @@ func recordedFile(body string) []byte {
 
 // TestWithRecorder は実機応答を匿名化した XML として書き出せることを検証する (#157)。
 //
-// golden を人が書く工程を無くすのが目的なので、「録音できる」だけでなく
+// golden を人が書く工程を無くすのが目的なので、「記録できる」だけでなく
 // 「そのまま公開リポジトリに置ける状態で落ちる」ところまでを 1 単位とする。
 func TestWithRecorder(t *testing.T) {
 	body := loadGolden(t, "pull_response_xsinil_real.xml")
@@ -72,7 +72,7 @@ func TestWithRecorder(t *testing.T) {
 		t.Errorf("応答本文が記録されていない:\n%s", got)
 	}
 	if !strings.Contains(got, recordedByMarker) {
-		t.Error("録音器の印が無い")
+		t.Error("記録器の印が無い")
 	}
 	if err := VerifyRecordedHash(raw); err != nil {
 		t.Errorf("書き出した直後なのにハッシュ検証に失敗: %v", err)
@@ -89,9 +89,9 @@ func TestWithRecorder(t *testing.T) {
 	}
 }
 
-// TestVerifyRecordedHash_DetectsEdit は録音後の手直しをハッシュが捕まえることを確認する。
+// TestVerifyRecordedHash_DetectsEdit は記録後の手直しをハッシュが捕まえることを確認する。
 //
-// 「録音したが後からアサーションに合わせて値を調整する」改変が実際に起きているので、
+// 「記録したが後からアサーションに合わせて値を調整する」改変が実際に起きているので、
 // そこを検出できることがこの仕組みの要。
 func TestVerifyRecordedHash_DetectsEdit(t *testing.T) {
 	files := recordOnce(t, loadGolden(t, "pull_response_xsinil_real.xml"))
@@ -101,10 +101,10 @@ func TestVerifyRecordedHash_DetectsEdit(t *testing.T) {
 	}
 	edited := strings.Replace(string(raw), "Msvm_ResourceAllocationSettingData", "Msvm_Tampered", 1)
 	if err := VerifyRecordedHash([]byte(edited)); err == nil {
-		t.Error("録音後の編集を見逃した")
+		t.Error("記録後の編集を見逃した")
 	}
 	if err := VerifyRecordedHash([]byte("ヘッダの無いファイル")); err == nil {
-		t.Error("録音器の印が無いファイルを通した")
+		t.Error("記録器の印が無いファイルを通した")
 	}
 }
 
@@ -186,17 +186,17 @@ func TestWithRecorder_NotEnabled(t *testing.T) {
 		t.Fatalf("NewClient: %v", err)
 	}
 	if err := client.StopRecording(); err != nil {
-		t.Errorf("録音していない Client の StopRecording はエラーにしない: %v", err)
+		t.Errorf("記録していない Client の StopRecording はエラーにしない: %v", err)
 	}
 }
 
-// TestWithRecorder_PooledClientRejected はプール経由の録音が静かに空振らないことを確認する。
-// プール内で作られる接続は誰も StopRecording しないため、録音したつもりで 0 件になる。
+// TestWithRecorder_PooledClientRejected はプール経由の記録が静かに空振らないことを確認する。
+// プール内で作られる接続は誰も StopRecording しないため、記録したつもりで 0 件になる。
 func TestWithRecorder_PooledClientRejected(t *testing.T) {
 	_, err := NewPooledClient(2, "https://example.invalid:5986/wsman",
 		WithRecorder(t.TempDir(), "probe"))
 	if err == nil {
-		t.Fatal("プール経由の録音を許してしまった (静かに空振る)")
+		t.Fatal("プール経由の記録を許してしまった (静かに空振る)")
 	}
 	if !strings.Contains(err.Error(), "NewPooledClient") {
 		t.Errorf("エラーが理由を示していない: %v", err)
@@ -227,7 +227,7 @@ func TestReplaceFold_NonASCII(t *testing.T) {
 // TestPlaceholderFor_IPRange は伏せた IP が常に正しいアドレスになることを検証する。
 //
 // GUID と採番を共有していると、GUID を多く含む応答の後で 203.0.113.301 のような
-// 不正な値を書いてしまう。録音器自身が実機に無い値を作ることになる。
+// 不正な値を書いてしまう。記録器自身が実機に無い値を作ることになる。
 func TestPlaceholderFor_IPRange(t *testing.T) {
 	a := newAnonymizer("https://example.invalid/wsman", nil)
 	// GUID を多めに消費してから IP を割り当てる。
@@ -247,7 +247,7 @@ func TestPlaceholderFor_IPRange(t *testing.T) {
 	}
 
 	// **採番が他の種別に影響されないこと。** カウンタを共有していると、応答に含まれる
-	// GUID の数で IP の番号が変わり、再録音の差分が読めなくなる。
+	// GUID の数で IP の番号が変わり、記録し直しの差分が読めなくなる。
 	clean := newAnonymizer("https://example.invalid/wsman", nil)
 	dirty := newAnonymizer("https://example.invalid/wsman", nil)
 	for i := 0; i < 300; i++ {
@@ -259,7 +259,7 @@ func TestPlaceholderFor_IPRange(t *testing.T) {
 }
 
 // TestWellFormedXML は匿名化後の整形式チェックが実際に壊れを捕まえることを確認する。
-// 置換が XML を壊したまま fixture にすると、録音器自身が実機に無い形を作ることになる。
+// 置換が XML を壊したまま fixture にすると、記録器自身が実機に無い形を作ることになる。
 func TestWellFormedXML(t *testing.T) {
 	if err := wellFormedXML("<a><b>x</b></a>"); err != nil {
 		t.Errorf("整形式の XML を拒否した: %v", err)
@@ -277,7 +277,7 @@ func TestWellFormedXML(t *testing.T) {
 //
 // スイッチ名は External / Internal が最も一般的で、これを素朴に全文置換すると
 // Msvm_ExternalEthernetPort が Msvm_scrubbed-1EthernetPort になる。整形式のままなので
-// 構造チェックでは捕まらず、**録音器が実在しないクラス名を持つ fixture を書く**。
+// 構造チェックでは捕まらず、**記録器が実在しないクラス名を持つ fixture を書く**。
 func TestScrubPreservesClassNames(t *testing.T) {
 	a := newAnonymizer("https://example.invalid/wsman", []string{"External", "hv01"})
 
@@ -317,7 +317,7 @@ func TestScrubClassTokensUnchanged(t *testing.T) {
 
 // TestScrubMACAddress は物理 NIC の MAC が伏せられることを検証する (#157)。
 //
-// 公開リポジトリに録音物を置く前提で、MAC は OUI からベンダが割れる。
+// 公開リポジトリに実機の記録を置く前提で、MAC は OUI からベンダが割れる。
 // 12 桁 hex を無条件に置換すると GUID プレースホルダの末尾にも当たるので、要素単位で扱う。
 func TestScrubMACAddress(t *testing.T) {
 	// 実環境の MAC をテストに書かない (実際に一度やった)。RFC 7042 の文書用アドレスを使う。
@@ -341,7 +341,7 @@ func TestScrubMACAddress(t *testing.T) {
 //
 // Hyper-V の差分ディスクは <VM名>_<GUID>.avhdx という命名なので、"_" を単語文字として
 // 扱うと VM 名が伏せられない。チェックポイントを 1 つでも持つ VM がいるホストでは
-// 保存後検証が落ちて**録音自体が成立しなくなる**。
+// 保存後検証が落ちて**記録自体が成立しなくなる**。
 func TestScrubDifferencingDiskName(t *testing.T) {
 	const vmName = "probe-vm-01"
 	a := newAnonymizer("https://example.invalid/wsman", []string{vmName})

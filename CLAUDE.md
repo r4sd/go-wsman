@@ -104,9 +104,9 @@ https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/msvm-<class-slug>
 5. go test -race -v ./... -count=1 で全テスト通過を確認
 ```
 
-### fixture は録音する (手書きは関所で弾く)
+### fixture は記録する (手書きは関所で弾く)
 
-> 🔴 **fixture を手で書かない。録音する。**
+> 🔴 **fixture を手で書かない。記録する。**
 >
 > 手書き golden が「実機に無い挙動」を仕様として固定する事故を **7 回**繰り返している
 > (#124 / #126 / #136 / #137 / #143 / provider #145 / PR #152)。
@@ -117,13 +117,13 @@ https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/msvm-<class-slug>
 > 一方 #138 で `Unmarshal` を削除して**選択肢自体を消した**型は再発していない。
 >
 > だから「実機から採取したと書いてあるか」は見ない (主張の真偽は機械検証できない)。
-> 録音器が書いた印と本文の sha256 を持つファイルだけを実機由来として扱う (`internal/guard`)。
+> 記録器が書いた印と本文の sha256 を持つファイルだけを実機由来として扱う (`internal/guard`)。
 >
 > ⚠️ **これは証明ではない。** 印も sha256 も自分で計算して貼れる。止まるのは
-> 「それらしい XML を思いつきで書く」経路と「録音した後で値を調整する」経路で、
+> 「それらしい XML を思いつきで書く」経路と「記録した後で値を調整する」経路で、
 > 過去 7 件はすべてこの 2 つ。**摩擦を上げる仕組み**と理解しておく。
 
-**実機の応答が要るとき**: 録音する。
+**実機の応答が要るとき**: 記録する。
 
 ```bash
 WSMAN_RECORD_DIR=./recorded go test -tags=integration ./hyperv/... -run TestIntegration_Xxx
@@ -138,9 +138,9 @@ WSMAN_RECORD_DIR=./recorded go test -tags=integration ./hyperv/... -run TestInte
 保存後に読み返して検証し、残っていたら落ちる。
 
 **合成データが要るとき**: `testdata/synthetic/` に置き、ファイル内に
-`derived-from: <録音物のパス>` を書く。CI は**派生元が録音物であること**と、
+`derived-from: <実機の記録のパス>` を書く。CI は**派生元が実機の記録であることこと**と、
 合成が扱う CIM クラスが派生元にもあることまで確かめる。
-録音器自身を検査する最小データだけは `purpose: recorder-self-test` を名乗れるが、
+記録器自身を検査する最小データだけは `purpose: recorder-self-test` を名乗れるが、
 その場合は CIM クラス名を含めないこと。
 
 **ソースに XML を直接書かない。** testdata に関所があってもそこで迂回できるので、
