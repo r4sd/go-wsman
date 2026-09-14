@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -43,10 +44,32 @@ func getIntegrationClient(t *testing.T) *Client {
 	if os.Getenv("WSMAN_INSECURE") == "true" {
 		opts = append(opts, wsman.WithInsecureSkipVerify())
 	}
+	// WSMAN_RECORD_DIR が設定されていれば、実機とのやり取りをそのまま
+	// XML として記録する (#157)。golden を手で書く工程を無くすのが目的なので、
+	// 「記録モードを思い出して呼ぶ」のではなく **統合テストを回せば勝手に貯まる**形にする。
+	baseOpts := append([]wsman.ClientOption(nil), opts...) // 記録を含まない素の接続設定
+	if dir := os.Getenv("WSMAN_RECORD_DIR"); dir != "" {
+		if err := os.MkdirAll(dir, 0o750); err != nil {
+			t.Fatalf("WSMAN_RECORD_DIR の作成に失敗: %v", err)
+		}
+		// テスト名をそのまま記録ファイル名の接頭辞にする (サブテストの "/" は区切り文字になるため置換)。
+		name := strings.ReplaceAll(t.Name(), "/", "_")
+		opts = append(opts, wsman.WithRecorder(dir, name))
+		// VM 表示名とホストのコンピュータ名は任意のユーザーデータなのでパターンで拾えない。
+		// 環境変数で渡す形にすると「設定し忘れ」で静かに漏れる — 今回潰したい失敗の型そのもの。
+		// なので実機から自分で集める。
+		opts = append(opts, wsman.WithRecorderScrub(discoverScrubNames(t, endpoint, baseOpts)...))
+	}
+
 	client, err := NewClient(endpoint, opts...)
 	if err != nil {
 		t.Fatalf("NewClient failed: %v", err)
 	}
+	t.Cleanup(func() {
+		if err := client.StopRecording(); err != nil {
+			t.Errorf("記録の確定に失敗: %v", err)
+		}
+	})
 	return client
 }
 
@@ -1104,6 +1127,74 @@ func TestIntegration_ListBootSources(t *testing.T) {
 		t.Logf("VM %q: BootSources = %d", vm.ElementName, len(sources))
 		for i, s := range sources {
 			t.Logf("  [%d] Type=%d Description=%q InstanceID=%s", i, s.BootSourceType, s.BootSourceDescription, s.InstanceID)
+		}
+	}
+}
+
+// discoverScrubNames は記録前に実機から「伏せるべき名前」を集める (#157)。
+//
+// VM の表示名とホストのコンピュータ名は任意のユーザーデータで、GUID のように
+// パターンで拾えない。環境変数で人が渡す形にすると設定し忘れで静かに漏れるので、
+// 記録用とは別の Client で 1 回列挙して自動で集める。
+//
+// 集め損ねた名前があってもここでは落とさない。最終的な安全網は StopRecording の
+// 保存後検証で、そこには集めた名前が渡る。
+func discoverScrubNames(t *testing.T, endpoint string, baseOpts []wsman.ClientOption) []string {
+	t.Helper()
+	// baseOpts は記録オプションを含まない。この列挙自体は記録に載せない。
+	probe, err := NewClient(endpoint, baseOpts...)
+	if err != nil {
+		t.Logf("⚠️ 伏せる名前の収集に失敗 (Client 作成): %v", err)
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	systems, err := probe.ListComputerSystems(ctx)
+	if err != nil {
+		t.Logf("⚠️ 伏せる名前の収集に失敗 (ListComputerSystems): %v", err)
+		return nil
+	}
+	names := make([]string, 0, len(systems))
+	for _, cs := range systems {
+		if cs.ElementName != "" {
+			names = append(names, cs.ElementName)
+		}
+	}
+	// 仮想スイッチの表示名も実環境の名前。応答に素で載る。
+	if switches, err := probe.ListVirtualEthernetSwitches(ctx); err != nil {
+		t.Logf("⚠️ スイッチ名の収集に失敗: %v", err)
+	} else {
+		for _, sw := range switches {
+			if sw.ElementName != "" {
+				names = append(names, sw.ElementName)
+			}
+		}
+	}
+	t.Logf("記録時に伏せる名前を %d 件収集した", len(names))
+	return names
+}
+
+// TestIntegration_ListGuestNetworkAdapterConfigurations はゲスト OS 内 NIC 設定の
+// 読み取りを実機で確認する (read-only)。
+//
+// 並列配列 (IPAddresses / Subnets / DefaultGateways / DNSServers) を持つクラスなので、
+// #141 で扱った NULL の位置ずれが実際に起きうる経路でもある。
+func TestIntegration_ListGuestNetworkAdapterConfigurations(t *testing.T) {
+	client := getIntegrationClient(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	got, err := client.ListGuestNetworkAdapterConfigurations(ctx)
+	if err != nil {
+		t.Fatalf("ListGuestNetworkAdapterConfigurations: %v", err)
+	}
+	t.Logf("ゲスト NIC 設定 %d 件", len(got))
+	for _, g := range got {
+		// 並列配列の長さが噛み合っているかを見る。噛み合っていない場合、
+		// 片方だけ NULL が落ちて index がずれている可能性がある (#141)。
+		if len(g.Subnets) > 0 && len(g.IPAddresses) != len(g.Subnets) {
+			t.Errorf("IPAddresses(%d) と Subnets(%d) の長さが違う: %s",
+				len(g.IPAddresses), len(g.Subnets), g.InstanceID)
 		}
 	}
 }

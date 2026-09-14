@@ -2,6 +2,8 @@
 <!--
   🔴 合成データ。実機から採取したものではない。
 
+  derived-from: wsman/testdata/recorded_pull_guestnetworkadapterconfiguration.xml
+
   「複数要素の配列の途中に NULL が入る」形は実機で未観測のため、位置保持の
   回帰テスト用に手で作った。実機がこの形を返す証拠は無い (#141 は防御的な修正)。
   実機が実際に返す NULL の形は pull_response_xsinil_real.xml を見ること。
