@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  合成データ。xmlns:xsi を Envelope でしか宣言しない Get 応答 (#153)。
+  🔴 合成データ。実機から採取したものではない。
+
+  derived-from: wsman/testdata/recorded_pull_guestnetworkadapterconfiguration.xml
+
+  xmlns:xsi を Envelope でしか宣言しない Get 応答 (#153)。
   Body innerxml を単独パースすると prefix が未解決のまま残り、isXSINil の
   フォールバック分岐を通る。
 -->

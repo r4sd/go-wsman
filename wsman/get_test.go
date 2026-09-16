@@ -187,7 +187,7 @@ func TestParseGetResponse(t *testing.T) {
 // parseInstances と同じ xsi:nil 意味論になることを検証する (#153)。
 func TestParseGetResponse_XsiNilArrayPosition(t *testing.T) {
 	t.Run("xmlns:xsi がインスタンス要素で宣言されている", func(t *testing.T) {
-		data := loadGolden(t, "get_response_xsinil_array.xml")
+		data := loadGolden(t, "synthetic/get_response_xsinil_array.xml")
 		resp, err := ParseGetResponse(data)
 		if err != nil {
 			t.Fatalf("ParseGetResponse に失敗: %v", err)
@@ -210,7 +210,7 @@ func TestParseGetResponse_XsiNilArrayPosition(t *testing.T) {
 	})
 
 	t.Run("xmlns:xsi が Envelope でしか宣言されていない", func(t *testing.T) {
-		data := loadGolden(t, "get_response_xsinil_envelope.xml")
+		data := loadGolden(t, "synthetic/get_response_xsinil_envelope.xml")
 		resp, err := ParseGetResponse(data)
 		if err != nil {
 			t.Fatalf("ParseGetResponse に失敗: %v", err)
