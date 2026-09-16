@@ -6,6 +6,8 @@
 
   Get / Invoke 経路 (extractProperties) の xsi:nil 位置保持回帰用 (#153)。
   実機の Get 応答で配列途中 NULL は未観測。意味論は parseInstances (#141) に揃える。
+
+  このクラスに実在するプロパティだけを置くこと (合成でも「実機に無いもの」を作らない)。
 -->
 <s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd" xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_GuestNetworkAdapterConfiguration">
   <s:Header>
@@ -22,7 +24,6 @@
       <p:DNSServers xsi:nil="true"/>
       <p:DNSServers>192.0.2.1</p:DNSServers>
       <p:DefaultGateways xsi:nil="true"/>
-      <p:Parent xsi:nil="true"/>
     </p:Msvm_GuestNetworkAdapterConfiguration>
   </s:Body>
 </s:Envelope>

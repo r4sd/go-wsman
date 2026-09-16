@@ -202,7 +202,7 @@ func TestParseGetResponse_XsiNilArrayPosition(t *testing.T) {
 		if got, want := list["DNSServers"], []string{"", "192.0.2.1"}; !equalStrings(got, want) {
 			t.Errorf("DNSServers = %v, want %v (位置がずれている)", got, want)
 		}
-		for _, name := range []string{"DefaultGateways", "Parent"} {
+		for _, name := range []string{"DefaultGateways"} {
 			if v, ok := list[name]; ok {
 				t.Errorf("%s: キーが作られている (%q)", name, v)
 			}
