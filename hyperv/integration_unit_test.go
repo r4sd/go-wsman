@@ -34,22 +34,41 @@ func compPull(class string, items ...string) string {
 </s:Envelope>`, class, strings.Join(items, "\n"))
 }
 
-// integrationSequence は 6 クラス分の [enum, pull] 応答列を、integrationComponentEnumOrder と
-// 同じ順序 (Heartbeat, KVP, Shutdown, TimeSync, VSS, GuestService) で組み立てる。
+// integrationClassOrder は integrationComponentEnumOrder に対応する CIM クラス名の順序。
+var integrationClassOrder = []string{
+	"Msvm_HeartbeatComponentSettingData",
+	"Msvm_KvpExchangeComponentSettingData",
+	"Msvm_ShutdownComponentSettingData",
+	"Msvm_TimeSyncComponentSettingData",
+	"Msvm_VssComponentSettingData",
+	"Msvm_GuestServiceInterfaceComponentSettingData",
+}
+
+// integrationSequence は 6 クラス分の [enum, pull] 応答列を integrationClassOrder の順で組み立てる。
 func integrationSequence(pulls map[string]string) []string {
-	classes := []string{
-		"Msvm_HeartbeatComponentSettingData",
-		"Msvm_KvpExchangeComponentSettingData",
-		"Msvm_ShutdownComponentSettingData",
-		"Msvm_TimeSyncComponentSettingData",
-		"Msvm_VssComponentSettingData",
-		"Msvm_GuestServiceInterfaceComponentSettingData",
-	}
-	seq := make([]string, 0, len(classes)*2)
-	for _, cls := range classes {
+	seq := make([]string, 0, len(integrationClassOrder)*2)
+	for _, cls := range integrationClassOrder {
 		seq = append(seq, enumResponseGeneric, pulls[cls])
 	}
 	return seq
+}
+
+// assertEnumeratedClassOrder は i 番目の Enumerate が integrationClassOrder[i] のクラス宛てで
+// あることを確かめる。
+//
+// 応答列サーバは呼び出し回数だけで応答を返し、リクエストの ResourceURI を見ない。そのため
+// これが無いと「Component は列挙順の i 番目」「応答は列挙順の i 番目」を突き合わせるだけの
+// トートロジーになり、integrationComponentByName の URI を 2 つ入れ替えても全テストが緑になる。
+// Component をループ側から取るようになった以降、この取り違えは Read と Write の両方が
+// 一貫して別のコンポーネントを指す silent corruption になるため、ここで縛る。
+func assertEnumeratedClassOrder(t *testing.T, bodies []string) {
+	t.Helper()
+	for i, cls := range integrationClassOrder {
+		body := bodies[i*2] // [enum, pull] の enum 側
+		if !strings.Contains(body, "/"+cls) {
+			t.Errorf("bodies[%d]: %s 宛ての Enumerate でない: %s", i*2, cls, body)
+		}
+	}
 }
 
 // TestClient_ListIntegrationServices は 6 クラスを列挙して表示名と有効状態を写し、
@@ -116,6 +135,8 @@ func TestClient_ListIntegrationServices(t *testing.T) {
 		}
 	}
 
+	assertEnumeratedClassOrder(t, bodies)
+
 	// Hyper-V は WQL フィルタ列挙を拒否するため、全 6 クラスの Enumerate を無フィルタで送ること (#80)。
 	for i, b := range bodies {
 		if strings.Contains(b, "Filter") || strings.Contains(b, "SELECT") {
@@ -167,14 +188,21 @@ func TestClient_ListIntegrationServices_LocalizedElementName(t *testing.T) {
 	const vm = "11111111-aaaa-bbbb-cccc-000000000001"
 	id := func(res string) string { return "Microsoft:" + vm + "\\" + res }
 
-	// 日本語ホストが返す ElementName。Component は CIM クラス側から決まるので影響を受けない。
+	// ElementName がローカライズされていても Component が CIM クラス側から決まることを見る。
+	//
+	// 🔴 実測値は "キー値ペア交換" の 1 件だけ (terraform-provider-hyperv #98 の再現ログ。
+	// 日本語ホストで unknown component "キー値ペア交換" が出た)。残り 5 件は**実機の値ではなく
+	// 合成文字列**で、日本語ホストがこう返すと主張するものではない。
+	// このテストの主張は「Component が ElementName に依存しない」ことなので、英語の正規名と
+	// 一致しない文字列でありさえすればよく、実機の翻訳を当てる必要がない。
+	// 実測していない翻訳を書くと、それが実機の挙動として固定されてしまう。
 	localized := map[string]string{
-		"Msvm_HeartbeatComponentSettingData":             "ハートビート",
-		"Msvm_KvpExchangeComponentSettingData":           "キー値ペア交換",
-		"Msvm_ShutdownComponentSettingData":              "シャットダウン",
-		"Msvm_TimeSyncComponentSettingData":              "時刻同期",
-		"Msvm_VssComponentSettingData":                   "バックアップ (ボリューム シャドウ コピー)",
-		"Msvm_GuestServiceInterfaceComponentSettingData": "ゲスト サービス インターフェイス",
+		"Msvm_KvpExchangeComponentSettingData":           "キー値ペア交換", // 実測 (provider #98)
+		"Msvm_HeartbeatComponentSettingData":             "[合成] Heartbeat のローカライズ名",
+		"Msvm_ShutdownComponentSettingData":              "[合成] Shutdown のローカライズ名",
+		"Msvm_TimeSyncComponentSettingData":              "[合成] TimeSync のローカライズ名",
+		"Msvm_VssComponentSettingData":                   "[合成] Vss のローカライズ名",
+		"Msvm_GuestServiceInterfaceComponentSettingData": "[合成] GuestServiceInterface のローカライズ名",
 	}
 	pulls := make(map[string]string, len(localized))
 	for cls, name := range localized {
@@ -195,12 +223,12 @@ func TestClient_ListIntegrationServices_LocalizedElementName(t *testing.T) {
 	}
 
 	wantComponent := map[IntegrationServiceComponent]string{
-		IntegrationServiceHeartbeat:             "ハートビート",
-		IntegrationServiceKeyValuePairExchange:  "キー値ペア交換",
-		IntegrationServiceShutdown:              "シャットダウン",
-		IntegrationServiceTimeSynchronization:   "時刻同期",
-		IntegrationServiceVSS:                   "バックアップ (ボリューム シャドウ コピー)",
-		IntegrationServiceGuestServiceInterface: "ゲスト サービス インターフェイス",
+		IntegrationServiceHeartbeat:             localized["Msvm_HeartbeatComponentSettingData"],
+		IntegrationServiceKeyValuePairExchange:  localized["Msvm_KvpExchangeComponentSettingData"],
+		IntegrationServiceShutdown:              localized["Msvm_ShutdownComponentSettingData"],
+		IntegrationServiceTimeSynchronization:   localized["Msvm_TimeSyncComponentSettingData"],
+		IntegrationServiceVSS:                   localized["Msvm_VssComponentSettingData"],
+		IntegrationServiceGuestServiceInterface: localized["Msvm_GuestServiceInterfaceComponentSettingData"],
 	}
 	var prev IntegrationServiceComponent
 	for _, svc := range got {
@@ -212,14 +240,13 @@ func TestClient_ListIntegrationServices_LocalizedElementName(t *testing.T) {
 		if svc.Name != wantName {
 			t.Errorf("%q Name: got %q, want %q (ElementName は実機の値のまま残す)", svc.Component, svc.Name, wantName)
 		}
-		// Component はそのまま書き込み系に渡せること (ロケール非依存の契約の本体)。
-		if _, ok := integrationComponentByName[svc.Component]; !ok {
-			t.Errorf("Component %q が SetIntegrationServiceEnabled に渡せない", svc.Component)
-		}
 		// ローカライズされた Name ではなく Component の昇順で安定させる。
 		if prev != "" && svc.Component < prev {
 			t.Errorf("結果が Component 昇順でない: %q < %q", svc.Component, prev)
 		}
 		prev = svc.Component
 	}
+
+	// Component が「i 番目に列挙したクラス」と結び付いていることの本体。
+	assertEnumeratedClassOrder(t, bodies)
 }
