@@ -34,7 +34,7 @@ func compPull(class string, items ...string) string {
 </s:Envelope>`, class, strings.Join(items, "\n"))
 }
 
-// integrationSequence は 6 クラス分の [enum, pull] 応答列を、integrationComponentURIs と
+// integrationSequence は 6 クラス分の [enum, pull] 応答列を、integrationComponentEnumOrder と
 // 同じ順序 (Heartbeat, KVP, Shutdown, TimeSync, VSS, GuestService) で組み立てる。
 func integrationSequence(pulls map[string]string) []string {
 	classes := []string{
@@ -157,5 +157,69 @@ func TestClient_ListIntegrationServices_EmptyVMGUID(t *testing.T) {
 	client, _ := NewClient("https://example.invalid:5986/wsman")
 	if _, err := client.ListIntegrationServices(context.Background(), ""); err == nil {
 		t.Fatal("空 vmGUID はエラーになるべき")
+	}
+}
+
+// TestClient_ListIntegrationServices_LocalizedElementName は ElementName がホスト OS 言語に
+// ローカライズされていても、Component が列挙した CIM クラスから正しく決まることを検証する (#161)。
+// Name (表示名) は実機が返したまま、Component は英語固定の識別子になる。
+func TestClient_ListIntegrationServices_LocalizedElementName(t *testing.T) {
+	const vm = "11111111-aaaa-bbbb-cccc-000000000001"
+	id := func(res string) string { return "Microsoft:" + vm + "\\" + res }
+
+	// 日本語ホストが返す ElementName。Component は CIM クラス側から決まるので影響を受けない。
+	localized := map[string]string{
+		"Msvm_HeartbeatComponentSettingData":             "ハートビート",
+		"Msvm_KvpExchangeComponentSettingData":           "キー値ペア交換",
+		"Msvm_ShutdownComponentSettingData":              "シャットダウン",
+		"Msvm_TimeSyncComponentSettingData":              "時刻同期",
+		"Msvm_VssComponentSettingData":                   "バックアップ (ボリューム シャドウ コピー)",
+		"Msvm_GuestServiceInterfaceComponentSettingData": "ゲスト サービス インターフェイス",
+	}
+	pulls := make(map[string]string, len(localized))
+	for cls, name := range localized {
+		pulls[cls] = compPull(cls, compInstance(cls, id(cls), name, EnabledStateEnabled))
+	}
+
+	var bodies []string
+	server := newSequenceServer(t, integrationSequence(pulls), &bodies)
+	defer server.Close()
+
+	client, _ := NewClient(server.URL)
+	got, err := client.ListIntegrationServices(context.Background(), vm)
+	if err != nil {
+		t.Fatalf("ListIntegrationServices: %v", err)
+	}
+	if len(got) != len(localized) {
+		t.Fatalf("len: got %d, want %d (%v)", len(got), len(localized), got)
+	}
+
+	wantComponent := map[IntegrationServiceComponent]string{
+		IntegrationServiceHeartbeat:             "ハートビート",
+		IntegrationServiceKeyValuePairExchange:  "キー値ペア交換",
+		IntegrationServiceShutdown:              "シャットダウン",
+		IntegrationServiceTimeSynchronization:   "時刻同期",
+		IntegrationServiceVSS:                   "バックアップ (ボリューム シャドウ コピー)",
+		IntegrationServiceGuestServiceInterface: "ゲスト サービス インターフェイス",
+	}
+	var prev IntegrationServiceComponent
+	for _, svc := range got {
+		wantName, ok := wantComponent[svc.Component]
+		if !ok {
+			t.Errorf("想定外の Component %q (Name=%q)", svc.Component, svc.Name)
+			continue
+		}
+		if svc.Name != wantName {
+			t.Errorf("%q Name: got %q, want %q (ElementName は実機の値のまま残す)", svc.Component, svc.Name, wantName)
+		}
+		// Component はそのまま書き込み系に渡せること (ロケール非依存の契約の本体)。
+		if _, ok := integrationComponentByName[svc.Component]; !ok {
+			t.Errorf("Component %q が SetIntegrationServiceEnabled に渡せない", svc.Component)
+		}
+		// ローカライズされた Name ではなく Component の昇順で安定させる。
+		if prev != "" && svc.Component < prev {
+			t.Errorf("結果が Component 昇順でない: %q < %q", svc.Component, prev)
+		}
+		prev = svc.Component
 	}
 }
