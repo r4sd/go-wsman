@@ -1,6 +1,7 @@
 package wsman
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -248,7 +249,7 @@ func TestParsePullResponse_XsiNilReal(t *testing.T) {
 // xmlns:xsi の宣言位置を 2 通り用意している。Items の innerxml を単独でパースする都合上、
 // Envelope でしか宣言されていない応答では prefix が解決されず Space に prefix が残る。
 func TestParsePullResponse_XsiNilArrayPosition(t *testing.T) {
-	data := loadGolden(t, "pull_response_xsinil_synthetic.xml")
+	data := loadGolden(t, "synthetic/pull_response_xsinil.xml")
 	resp, err := ParsePullResponse(data)
 	if err != nil {
 		t.Fatalf("ParsePullResponse に失敗: %v", err)
@@ -298,4 +299,34 @@ func equalStrings(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// TestParsePullResponse_Recorded は**記録した実機応答**をそのままパースできることを検証する (#157)。
+//
+// 記録 → testdata へコピー → loadGolden → パーサ、という往復をリポジトリ内で実証するための
+// テスト。これが無いと「記録できる」と「記録したものが使える」の間が空いたままになる。
+func TestParsePullResponse_Recorded(t *testing.T) {
+	data := loadGolden(t, "recorded_pull_guestnetworkadapterconfiguration.xml")
+	resp, err := ParsePullResponse(data)
+	if err != nil {
+		t.Fatalf("記録した応答をパースできない: %v", err)
+	}
+	if len(resp.Items) != 1 {
+		t.Fatalf("Items 数 = %d, want 1", len(resp.Items))
+	}
+	props := resp.Items[0].PropertiesList()
+
+	if got := props["DHCPEnabled"]; len(got) != 1 || got[0] != "true" {
+		t.Errorf("DHCPEnabled = %v, want [true]", got)
+	}
+	if got := props["InstanceID"]; len(got) != 1 || !strings.HasPrefix(got[0], `Microsoft:GuestNetwork\`) {
+		t.Errorf("InstanceID = %v", got)
+	}
+	// 並列配列 (#141) を持つクラスなので、長さが噛み合っているかだけ見る。
+	// 「配列が空であること」は**このホストのゲストが IP を報告していない**という
+	// 環境事実なので、記録し直しで IP を返す VM が混ざると赤になる。ここでは固定しない。
+	if len(props["Subnets"]) > 0 && len(props["IPAddresses"]) != len(props["Subnets"]) {
+		t.Errorf("IPAddresses(%d) と Subnets(%d) の長さが違う",
+			len(props["IPAddresses"]), len(props["Subnets"]))
+	}
 }

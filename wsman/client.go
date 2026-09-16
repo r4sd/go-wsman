@@ -26,7 +26,11 @@ type Client struct {
 	timeoutSet         bool             // WithTimeout が呼ばれたかどうか
 	retryConfig        *retryConfig     // nil の場合はリトライなし
 	insecureSkipVerify bool             // WithInsecureSkipVerify で true に。デフォルト false。
-	optErr             error            // オプション適用時のエラー（遅延チェック用）
+	recordDir          string           // WithRecorder で設定。空なら記録しない (#157)
+	recordName         string           // 記録ファイル名の接頭辞
+	recordScrub        []string         // WithRecorderScrub で追加する、伏せる文字列
+	recorder           *recorder
+	optErr             error // オプション適用時のエラー（遅延チェック用）
 }
 
 // send は transport (単一) または pool (NewPooledClient) のどちらか設定されている方で
@@ -88,6 +92,12 @@ func NewClient(endpoint string, opts ...ClientOption) (*Client, error) {
 	// このタイミングで適用する。
 	if c.insecureSkipVerify {
 		applyInsecureSkipVerify(c.transport)
+	}
+
+	// 記録器は最後に差す。applyInsecureSkipVerify が内側の *http.Transport を
+	// 型アサーションで取り出すため、先に包むと TLS 設定が効かなくなる (#157)。
+	if err := attachRecorder(c); err != nil {
+		return nil, err
 	}
 
 	return c, nil

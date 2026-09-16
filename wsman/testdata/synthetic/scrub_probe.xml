@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  🔴 合成データ。実機から採取したものではなく、**何かの派生でもない**。
+  記録器の匿名化そのものを検査するための最小データ。
+
+  purpose: recorder-self-test
+
+  匿名化の取りこぼしを検出するための最小データ。実機の応答で起きる表記ゆれを再現する:
+    - XML エスケープされた名前 (R&D-vm → R&amp;D-vm)
+    - 大文字小文字の違い (HV01 と hv01)
+
+  __PRIVATE_IP__ はテスト側で置換する。プライベート IP をファイルに書くと
+  公開リポジトリの CI (no-private-addresses) が落とすため。
+-->
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope">
+  <n>R&amp;D-vm</n>
+  <h>HV01</h>
+  <ip>__PRIVATE_IP__</ip>
+</s:Envelope>
