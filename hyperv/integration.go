@@ -26,17 +26,20 @@ import (
 //	Msvm_GuestServiceInterfaceComponentSettingData → "Guest Service Interface"  (MOF に既定値なし・実行時設定)
 //
 // 例: ドイツ語ホストでは "Gastdienstschnittstelle" 等 (dsccommunity/HyperVDsc #76)。
-// ロケール非依存の識別が必要になったら InstanceID 末尾の component GUID かクラス名で判定する
-// (書き込みプリミティブ #56 v2.1 で検討)。
+// そのため ListIntegrationServices はどのコンポーネントかを ElementName からは決めず、
+// 列挙した CIM クラスから決める (IntegrationService.Component、#161)。
 //
 // Source: https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/msvm-*componentsettingdata
-var integrationComponentURIs = []string{
-	nsVirtV2 + "/Msvm_HeartbeatComponentSettingData",
-	nsVirtV2 + "/Msvm_KvpExchangeComponentSettingData",
-	nsVirtV2 + "/Msvm_ShutdownComponentSettingData",
-	nsVirtV2 + "/Msvm_TimeSyncComponentSettingData",
-	nsVirtV2 + "/Msvm_VssComponentSettingData",
-	nsVirtV2 + "/Msvm_GuestServiceInterfaceComponentSettingData",
+//
+// integrationComponentEnumOrder は列挙する順序。URI 自体は integrationComponentByName が持つ
+// (クラス情報の出どころを 1 つにして、増減時に片方だけ直す事故を防ぐ)。
+var integrationComponentEnumOrder = []IntegrationServiceComponent{
+	IntegrationServiceHeartbeat,
+	IntegrationServiceKeyValuePairExchange,
+	IntegrationServiceShutdown,
+	IntegrationServiceTimeSynchronization,
+	IntegrationServiceVSS,
+	IntegrationServiceGuestServiceInterface,
 }
 
 // IntegrationServiceComponent は 6 つの統合サービスのうちどれかを、MOF の ElementName 既定値
@@ -76,12 +79,17 @@ var integrationComponentByName = map[IntegrationServiceComponent]integrationComp
 
 // IntegrationService は VM の統合サービス 1 件の有効/無効状態を表す。
 //
-// Name は CIM ElementName (= PowerShell Get-VMIntegrationService の Name)。両者は同一文字列を
-// 返すため Read パリティが保たれるが、ElementName はホスト OS 言語にローカライズされる点に注意
-// (integrationComponentURIs のコメント参照)。Enabled は EnabledState==2 を true に写したもの。
+// Component は列挙した CIM クラスから決まるロケール非依存の識別子で、そのまま
+// SetIntegrationServiceEnabled / GetIntegrationServiceEnabled に渡せる。**Read の結果を
+// Write に渡すときはこちらを使う。**
+//
+// Name は CIM ElementName (= PowerShell Get-VMIntegrationService の Name)。PS と同一文字列を
+// 返すので表示・PS パリティにはこちらを使うが、**ホスト OS 言語にローカライズされる**
+// (integrationComponentEnumOrder のコメント参照)。Enabled は EnabledState==2 を true に写したもの。
 type IntegrationService struct {
-	Name    string
-	Enabled bool
+	Component IntegrationServiceComponent
+	Name      string
+	Enabled   bool
 }
 
 // integrationComponentSettingData は 6 つの Component SettingData クラスに共通する、
@@ -102,14 +110,19 @@ type integrationComponentSettingData struct {
 // WQL フィルタ列挙を拒否する (#80) ため無フィルタ列挙 + Go 側述語フィルタで絞る。
 //
 // PowerShell Get-VMIntegrationService と同じ表示名 (ElementName) と有効状態 (EnabledState==2)
-// を返すため、provider の Read が PS 実装と同一結果を得られる。返り値は Name の昇順で安定化する。
+// を返すため、provider の Read が PS 実装と同一結果を得られる。表示名はローカライズされるので、
+// 結果を書き込み系に渡すときは Component を使う (#161)。
+//
+// 返り値は Component の昇順で安定化する。ローカライズされる ElementName で並べると
+// ホスト言語によって順序が変わるため。英語ホストでは ElementName と一致するので順序は変わらない。
 func (c *Client) ListIntegrationServices(ctx context.Context, vmGUID string) ([]IntegrationService, error) {
 	if vmGUID == "" {
 		return nil, fmt.Errorf("ListIntegrationServices: vmGUID must not be empty")
 	}
 
-	result := make([]IntegrationService, 0, len(integrationComponentURIs))
-	for _, uri := range integrationComponentURIs {
+	result := make([]IntegrationService, 0, len(integrationComponentEnumOrder))
+	for _, component := range integrationComponentEnumOrder {
+		uri := integrationComponentByName[component].uri
 		instances, err := c.enumerateFiltered(ctx, uri, func(inst *wsman.Instance) bool {
 			return matchSettingDataVM(inst.Property("InstanceID"), vmGUID)
 		})
@@ -122,13 +135,14 @@ func (c *Client) ListIntegrationServices(ctx context.Context, vmGUID string) ([]
 				return nil, fmt.Errorf("ListIntegrationServices: unmarshal %s: %w", uri, err)
 			}
 			result = append(result, IntegrationService{
-				Name:    comp.ElementName,
-				Enabled: comp.EnabledState == EnabledStateEnabled,
+				Component: component,
+				Name:      comp.ElementName,
+				Enabled:   comp.EnabledState == EnabledStateEnabled,
 			})
 		}
 	}
 
-	sort.Slice(result, func(i, j int) bool { return result[i].Name < result[j].Name })
+	sort.Slice(result, func(i, j int) bool { return result[i].Component < result[j].Component })
 	return result, nil
 }
 
