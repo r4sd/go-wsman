@@ -182,3 +182,45 @@ func TestParseGetResponse(t *testing.T) {
 		}
 	})
 }
+
+// TestParseGetResponse_XsiNilArrayPosition は Get 経路 (extractProperties) が
+// parseInstances と同じ xsi:nil 意味論になることを検証する (#153)。
+func TestParseGetResponse_XsiNilArrayPosition(t *testing.T) {
+	t.Run("xmlns:xsi がインスタンス要素で宣言されている", func(t *testing.T) {
+		data := loadGolden(t, "synthetic/get_response_xsinil_array.xml")
+		resp, err := ParseGetResponse(data)
+		if err != nil {
+			t.Fatalf("ParseGetResponse に失敗: %v", err)
+		}
+		list := resp.PropertiesList()
+		if got, want := list["IPAddresses"], []string{"192.0.2.10", "2001:db8::10"}; !equalStrings(got, want) {
+			t.Errorf("IPAddresses = %v, want %v", got, want)
+		}
+		if got, want := list["Subnets"], []string{"255.255.255.0", ""}; !equalStrings(got, want) {
+			t.Errorf("Subnets = %v, want %v (位置がずれている)", got, want)
+		}
+		if got, want := list["DNSServers"], []string{"", "192.0.2.1"}; !equalStrings(got, want) {
+			t.Errorf("DNSServers = %v, want %v (位置がずれている)", got, want)
+		}
+		for _, name := range []string{"DefaultGateways"} {
+			if v, ok := list[name]; ok {
+				t.Errorf("%s: キーが作られている (%q)", name, v)
+			}
+		}
+	})
+
+	t.Run("xmlns:xsi が Envelope でしか宣言されていない", func(t *testing.T) {
+		data := loadGolden(t, "synthetic/get_response_xsinil_envelope.xml")
+		resp, err := ParseGetResponse(data)
+		if err != nil {
+			t.Fatalf("ParseGetResponse に失敗: %v", err)
+		}
+		list := resp.PropertiesList()
+		if got, want := list["Subnets"], []string{"", "255.255.0.0"}; !equalStrings(got, want) {
+			t.Errorf("Subnets = %v, want %v (prefix 未解決の xsi:nil を取りこぼしている)", got, want)
+		}
+		if v, ok := list["DefaultGateways"]; ok {
+			t.Errorf("DefaultGateways: キーが作られている (%q)", v)
+		}
+	})
+}

@@ -105,11 +105,14 @@ func ParseGetResponse(data []byte) (*GetResponse, error) {
 // 同名要素 (CIM 配列プロパティ) は順序を保ったまま slice に追加する。
 // プロパティが入れ子 XML を含む場合 (EPR 等)、入れ子内の最後の非空テキストを値とする
 // (後方互換: 旧実装が Job プロパティから InstanceID を取り出す慣習に依存しているため)。
-func extractProperties(data []byte, props map[string][]string) error {
+//
+// xsi:nil="true" の扱いは parseInstances / resolveNullPlaceholders と同じ (#153)。
+func extractProperties(data []byte, props map[string][]string) error { //nolint:gocognit // XML トークンストリームの状態機械 (depth 追跡 + token 種別 switch)。
 	decoder := xml.NewDecoder(strings.NewReader(string(data)))
 
 	var currentElement string
 	var lastNonEmpty string
+	var currentNil bool
 	depth := 0
 
 	for {
@@ -128,6 +131,7 @@ func extractProperties(data []byte, props map[string][]string) error {
 				// CIM インスタンスの直下のプロパティ要素
 				currentElement = t.Name.Local
 				lastNonEmpty = ""
+				currentNil = isXSINil(t.Attr)
 			}
 		case xml.CharData:
 			if currentElement != "" {
@@ -137,15 +141,21 @@ func extractProperties(data []byte, props map[string][]string) error {
 			}
 		case xml.EndElement:
 			if depth == 2 && currentElement != "" {
-				if lastNonEmpty != "" {
+				switch {
+				case lastNonEmpty != "":
 					props[currentElement] = append(props[currentElement], lastNonEmpty)
+				case currentNil:
+					// 位置だけ確保する。配列の途中が NULL でも後続の index がずれないようにするため。
+					props[currentElement] = append(props[currentElement], nullPlaceholder)
 				}
 				currentElement = ""
 				lastNonEmpty = ""
+				currentNil = false
 			}
 			depth--
 		}
 	}
 
+	resolveNullPlaceholders(props)
 	return nil
 }
