@@ -320,3 +320,24 @@ func TestCIMCompliance_VirtualEthernetSwitchSettingData(t *testing.T) {
 		},
 	)
 }
+
+// TestCIMCompliance_StorageJob は getJob が Msvm_StorageJob の Get 応答を
+// Msvm_ConcreteJob struct で受けている流用 (#94) を機械で裏取りする。
+//
+// 両クラスとも `class Msvm_* : CIM_ConcreteJob` で同じ親を継承し、getJob が読む 5 プロパティは
+// 名前・型とも一致する。JobState の enum も両クラス同一 (Completed=7 / Terminated=8 /
+// Killed=9 / Exception=10 — WaitForJob が分岐に使う値)。
+//
+// このテストが守れる範囲 (過大評価しないこと): MOF 上 Msvm_ConcreteJob のプロパティ集合は
+// Msvm_StorageJob の部分集合なので、「ConcreteJob にあって StorageJob に無い」プロパティは
+// 現時点で存在しない。よって本テストが単独で捕まえるのは実質「実在しないプロパティ名を
+// cim タグに書いた」場合に限られ、msvm_concretejob.txt 側の突合と結果が重なる。
+// それでも 2 つ目の fixture を置くのは、流用の前提 (StorageJob 側にも全部ある) を
+// **コメントではなくファイルとして** 残し、将来 MOF が分岐したら落ちるようにするため。
+func TestCIMCompliance_StorageJob(t *testing.T) {
+	assertCIMCompliance(t,
+		&Msvm_ConcreteJob{}, // getJob は Msvm_StorageJob 応答もこの struct で受ける
+		"msvm_storagejob.txt",
+		nil, // 許容逸脱なし
+	)
+}
