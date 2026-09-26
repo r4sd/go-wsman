@@ -7,11 +7,8 @@
 # fixture ポリシー: struct が cim タグで参照するプロパティのみ列挙する。
 #
 # 用途 (#94): getJob は Msvm_StorageJob の Get 応答を Msvm_ConcreteJob struct で
-# Unmarshal する。両クラスとも `class Msvm_* : CIM_ConcreteJob` で同じ親を継承し、
-# 下記 5 プロパティは名前・型とも一致する (いずれも CIM_Job / CIM_ConcreteJob 由来)。
-# JobState の enum も両クラスで同一 (New=2 / Starting=3 / Running=4 / Suspended=5 /
-# Shutting Down=6 / Completed=7 / Terminated=8 / Killed=9 / Exception=10 / Service=11)。
-# WaitForJob が分岐に使う 7/8/9/10 はこの範囲に収まる。
+# Unmarshal する。この fixture はその流用の前提 (StorageJob 側にも同名・同型で全部ある) を
+# ファイルとして残すためのもの。
 
 InstanceID string
 JobState uint16

@@ -129,22 +129,17 @@ func (c *Client) WaitForJobEPR(ctx context.Context, epr *wsman.EndpointReference
 
 // getJob は指定 ResourceURI + InstanceID の Job を取得する。
 //
-// resourceURI が Msvm_StorageJob(ImageManagementService 経路)でも戻り値は
-// Msvm_ConcreteJob struct で受ける。両者は継承関係ではなく、どちらも CIM_ConcreteJob を
-// 親に持つ**兄弟**クラスで、この struct が読む 5 プロパティは名前・型とも一致する:
+// resourceURI が Msvm_StorageJob(ImageManagementService 経路)でも戻り値を
+// Msvm_ConcreteJob struct で受けられるのは、両者が継承関係ではなく、どちらも
+// CIM_ConcreteJob を親に持つ兄弟クラスで、この struct が読むプロパティと JobState の
+// enum が名前・型レベルで一致するため。
 //
-//	InstanceID string / JobState uint16 / PercentComplete uint16 /
-//	ErrorCode uint16 / ErrorDescription string
-//
-// JobState の enum も両クラスで同一なので、WaitForJobEPR の Completed(7) /
-// Terminated(8) / Killed(9) / Exception(10) 判定はどちらの経路でも同じ意味になる。
-//
-// MOF 一次資料(2026-09-27 確認、いずれも `class Msvm_* : CIM_ConcreteJob`):
+// MOF 一次資料(2026-09-27 時点、いずれも `class Msvm_* : CIM_ConcreteJob`):
 //   - https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/msvm-storagejob
 //   - https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/msvm-concretejob
 //
-// この一致は testdata/mof/msvm_storagejob.txt と TestCIMCompliance_StorageJob で
-// 機械突合している(コメントだけだと struct 変更時に静かに嘘になるため)。
+// 一致の中身は testdata/mof/msvm_storagejob.txt に写してあり、
+// TestCIMCompliance_ConcreteJob_AgainstStorageJobMOF が struct と突合する。
 func (c *Client) getJob(ctx context.Context, resourceURI, instanceID string) (*Msvm_ConcreteJob, error) {
 	resp, err := c.wsman.Get(ctx, resourceURI,
 		wsman.Selector{Name: "InstanceID", Value: instanceID},
