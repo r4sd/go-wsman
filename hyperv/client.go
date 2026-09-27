@@ -157,6 +157,11 @@ func (c *Client) ListComputerSystems(ctx context.Context) ([]*Msvm_ComputerSyste
 		if err := UnmarshalList(inst.PropertiesList(), &cs); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal Msvm_ComputerSystem: %w", err)
 		}
+		// Msvm_ComputerSystem はホスト自身も表す。VM 一覧として使う側が毎回
+		// 除外を書くのは漏れるので、ここで落とす (#139)。
+		if cs.IsHostComputerSystem() {
+			continue
+		}
 		result = append(result, &cs)
 	}
 	return result, nil
