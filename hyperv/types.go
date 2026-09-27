@@ -454,6 +454,10 @@ const (
 //
 // 非同期 (ReturnValue=4096) を返す CIM メソッドの完了待ちに使う。InstanceID で
 // Get し、JobState の終端到達を待つ (WaitForJob)。
+//
+// この struct は VSMS 経路の Msvm_ConcreteJob だけでなく、ImageManagementService 経路の
+// **Msvm_StorageJob 応答も**受ける (getJob)。フィールドを足すときは両クラスの MOF に
+// あることを確かめること (testdata/mof/ に両方の fixture がある)。
 type Msvm_ConcreteJob struct {
 	InstanceID       string `cim:"InstanceID"`
 	JobState         uint16 `cim:"JobState"`
