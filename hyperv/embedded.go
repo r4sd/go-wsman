@@ -251,7 +251,7 @@ func marshalField(sb *strings.Builder, fv reflect.Value, fieldName, tag string, 
 			return fmt.Errorf("field %q: %w", fieldName, err)
 		}
 	}
-	fmt.Fprintf(sb, `<PROPERTY NAME=%q TYPE=%q><VALUE>%s</VALUE></PROPERTY>`, tag, cimType, xmlEscape(val))
+	fmt.Fprintf(sb, `<PROPERTY NAME=%q TYPE=%q><VALUE>%s</VALUE></PROPERTY>`, tag, cimType, cimValueEscape(val))
 	return nil
 }
 
@@ -276,7 +276,7 @@ func marshalSliceField(sb *strings.Builder, fv reflect.Value, fieldName, tag str
 		if err != nil {
 			return fmt.Errorf("field %q [%d]: %w", fieldName, j, err)
 		}
-		fmt.Fprintf(sb, "<VALUE>%s</VALUE>", xmlEscape(val))
+		fmt.Fprintf(sb, "<VALUE>%s</VALUE>", cimValueEscape(val))
 	}
 	sb.WriteString(`</VALUE.ARRAY></PROPERTY.ARRAY>`)
 	return nil
@@ -331,7 +331,14 @@ func stringify(fv reflect.Value) (string, error) {
 	}
 }
 
-// xmlEscape は要素テキスト内の特殊文字を XML エスケープする。
+// xmlEscape は **標準 XML パーサが読む箇所**の要素テキストをエスケープする。
+//
+// 用途は EPR (buildEndpointReference) で、SOAP 本文に生挿入され WinRM の標準 XML
+// パーサが読む。ここは名前付き実体参照で問題ない。
+//
+// ⚠️ **embedded instance の値には使わない。** そちらは Hyper-V 独自のパーサが読み、
+// 名前付き実体参照を受け付けない (#173)。cimValueEscape を使うこと。
+//
 // バックスラッシュやコロン等のファイルパス文字はエスケープ不要。
 func xmlEscape(s string) string {
 	var sb strings.Builder
@@ -340,3 +347,43 @@ func xmlEscape(s string) string {
 	}
 	return sb.String()
 }
+
+// cimValueEscape は **embedded instance (CIM-XML) の <VALUE> に入る**テキストを
+// エスケープする。
+//
+// 🔴 **名前付き実体参照を出してはいけない。** Hyper-V の embedded instance パーサは
+// `&amp;` / `&lt;` を受け付けず、書き込みが失敗する。数値文字参照なら通る
+// (2026-09-27 実機確認、#173):
+//
+//	値        送り方   ReturnValue  読み戻し
+//	"a & b"   &amp;    32768        (変化なし)
+//	"a & b"   &#38;    0            "a & b"
+//	"a < b"   &lt;     32773        (変化なし)
+//	"a < b"   &#60;    0            "a < b"
+//
+// `&gt;` は実機でも**受理される**が、`&` を数値参照にする以上揃える
+// (片方だけ名前付きにする理由が無く、間違いの余地を残さないため)。
+// `&quot;` / `&apos;` は encoding/xml が元から数値参照 (`&#34;` / `&#39;`) で出すので
+// 実機に送られたことがなく、**受理されるかは未観測**。
+//
+// 観測したのは Notes (配列) と ElementName (スカラー) の 2 プロパティ。
+// 同じパーサを通る以上ほかのプロパティでも同じはずだが、**そこは外挿**。
+//
+// 実装は encoding/xml に投げてから名前付き参照だけを数値参照へ置き換える。
+// 自前ループにしないのは、stdlib が持つ **XML 不正文字 (C0 制御文字・U+FFFE/FFFF・
+// 不正 UTF-8) の U+FFFD 置換**を落とさないため。これを落とすと値に NUL が混じった
+// ときに SOAP エンベロープ全体が well-formed でなくなる。
+//
+// 置換が二重に当たることはない: EscapeText の出力に現れる `&` は自身が書いた
+// 参照の開始文字だけで、strings.Replacer は単一パス・最長一致・非重複で動く。
+func cimValueEscape(s string) string {
+	return namedToNumericRefs.Replace(xmlEscape(s))
+}
+
+// namedToNumericRefs は encoding/xml が出す名前付き実体参照を数値文字参照へ写す。
+// EscapeText が出しうる名前付きはこの 3 つだけ (" と ' は元から数値参照)。
+var namedToNumericRefs = strings.NewReplacer(
+	"&amp;", "&#38;",
+	"&lt;", "&#60;",
+	"&gt;", "&#62;",
+)
