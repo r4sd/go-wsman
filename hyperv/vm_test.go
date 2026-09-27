@@ -386,8 +386,10 @@ func TestClient_GetSystemSettingData_FullFields(t *testing.T) {
 	}; !stringSlicesEqual(got.BootSourceOrder, want) {
 		t.Errorf("BootSourceOrder: got %v, want %v", got.BootSourceOrder, want)
 	}
-	if want := []string{"line1", "line2 with & symbol"}; !stringSlicesEqual(got.Notes, want) {
-		t.Errorf("Notes: got %v, want %v", got.Notes, want)
+	// Notes は実機では単一要素。複数行は改行を含む 1 要素で表現される。
+	// 2 要素を送ると実機は ReturnValue=32768 で拒否する (2026-09-27 確認、#155)。
+	if want := []string{"line1\nline2 with & symbol"}; !stringSlicesEqual(got.Notes, want) {
+		t.Errorf("Notes: got %q, want %q", got.Notes, want)
 	}
 
 	// 数値フィールド
