@@ -320,3 +320,31 @@ func TestCIMCompliance_VirtualEthernetSwitchSettingData(t *testing.T) {
 		},
 	)
 }
+
+// TestCIMCompliance_ConcreteJob_AgainstStorageJobMOF は getJob が Msvm_StorageJob の
+// Get 応答を Msvm_ConcreteJob struct で受けている流用 (#94) を機械で裏取りする。
+// 検証対象の struct は Msvm_ConcreteJob、突合先の fixture が Msvm_StorageJob。
+//
+// 両クラスとも `class Msvm_* : CIM_ConcreteJob` で同じ親を継承し、この struct が読む
+// 5 プロパティは名前・型とも一致する。JobState の enum も同一。
+//
+// このテストが守れる範囲 (過大評価しないこと):
+//   - assertCIMCompliance は MOF を取りに行かない。fixture は手で写したスナップショットなので、
+//     Microsoft 側が MOF を変えても CI は落ちない。落ちるのは**人が fixture を更新した時**だけ。
+//   - MOF 上 Msvm_ConcreteJob のプロパティ集合は Msvm_StorageJob の部分集合 (41 対 44) なので、
+//     「ConcreteJob にあって StorageJob に無い」プロパティは現時点で存在しない。
+//     よって単独で捕まえるのは「struct にフィールドを足して concretejob.txt だけ更新した」場合。
+//   - 一致は**名前と型のレベルまで**。enum の意味までは見ない。実際 JobType は両クラスとも
+//     uint16 だが列挙の中身は別物 (StorageJob=VHD 操作 0-9 / ConcreteJob=VM 操作 0-260) なので、
+//     仮に共有 struct へ足すと両テスト green のまま経路ごとに定数集合が食い違う。
+//
+// それでも 2 つ目の fixture を置くのは、流用の前提 (StorageJob 側にも全部ある) を
+// コメントではなくファイルとして残し、struct を触る人に「2 経路で使われている」ことを
+// テスト名と失敗メッセージで気付かせるため。
+func TestCIMCompliance_ConcreteJob_AgainstStorageJobMOF(t *testing.T) {
+	assertCIMCompliance(t,
+		&Msvm_ConcreteJob{}, // getJob は Msvm_StorageJob 応答もこの struct で受ける
+		"msvm_storagejob.txt",
+		nil, // 許容逸脱なし
+	)
+}
