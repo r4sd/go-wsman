@@ -331,12 +331,53 @@ func stringify(fv reflect.Value) (string, error) {
 	}
 }
 
-// xmlEscape は要素テキスト内の特殊文字を XML エスケープする。
+// xmlEscape は embedded instance の要素テキストをエスケープする。
+//
+// 🔴 **名前付き実体参照 (&amp; / &lt;) を使ってはいけない。** Hyper-V の embedded
+// instance パーサはこれを受け付けず、書き込みが失敗する。数値文字参照なら通る
+// (2026-09-27 実機確認、#173):
+//
+//	値        送り方   ReturnValue  読み戻し
+//	"a & b"   &amp;    32768        (変化なし)
+//	"a & b"   &#38;    0            "a & b"
+//	"a < b"   &lt;     32773        (変化なし)
+//	"a < b"   &#60;    0            "a < b"
+//
+// Notes 固有ではない。ElementName (スカラー) でも同じで、この関数を通る
+// **全ての文字列プロパティ**が対象。`notes = "Foo & Bar"` のようなありふれた
+// 入力で踏む。
+//
+// `>` `"` `'` は名前付きでも実機は受理するが、`&` を数値参照にする以上
+// 揃えておく (片方だけ名前付きにする理由が無く、間違いの余地を残さないため)。
+//
+// 改行・タブ・CR は encoding/xml と同じ数値文字参照にする。これらは従来から
+// &#xA; 等で送っており実機が受理している (改行入り Notes の round-trip を確認済み)。
+//
 // バックスラッシュやコロン等のファイルパス文字はエスケープ不要。
 func xmlEscape(s string) string {
 	var sb strings.Builder
-	if err := xml.EscapeText(&sb, []byte(s)); err != nil {
-		return s
+	sb.Grow(len(s))
+	for _, r := range s {
+		switch r {
+		case '&':
+			sb.WriteString("&#38;")
+		case '<':
+			sb.WriteString("&#60;")
+		case '>':
+			sb.WriteString("&#62;")
+		case '"':
+			sb.WriteString("&#34;")
+		case '\'':
+			sb.WriteString("&#39;")
+		case '\n':
+			sb.WriteString("&#xA;")
+		case '\r':
+			sb.WriteString("&#xD;")
+		case '\t':
+			sb.WriteString("&#x9;")
+		default:
+			sb.WriteRune(r)
+		}
 	}
 	return sb.String()
 }

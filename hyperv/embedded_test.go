@@ -318,9 +318,15 @@ func TestMarshalEmbeddedInstance_EscapesValues(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshalEmbeddedInstance: %v", err)
 	}
-	// '<' '>' '&' は実体参照に変換される (CDATA 化は invoke 層の責務)。
-	if !contains(got, `<VALUE>a&lt;b&gt;&amp;`) {
-		t.Errorf("special chars should be XML-escaped, got: %s", got)
+	// '<' '>' '&' は**数値文字参照**に変換される (CDATA 化は invoke 層の責務)。
+	// 名前付き実体参照 (&lt; 等) では実機が書き込みを拒否する (#173)。
+	if !contains(got, `<VALUE>a&#60;b&#62;&#38;&#34;c</VALUE>`) {
+		t.Errorf("special chars should be escaped as numeric char refs, got: %s", got)
+	}
+	for _, bad := range []string{"&lt;", "&gt;", "&amp;", "&quot;", "&apos;"} {
+		if contains(got, bad) {
+			t.Errorf("名前付き実体参照 %q が出ている。実機が受け付けない (#173): %s", bad, got)
+		}
 	}
 }
 

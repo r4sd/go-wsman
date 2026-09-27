@@ -297,7 +297,11 @@ func selectorSetAfter(t *testing.T, body, marker string) string {
 // unescapeForAssert は EPR が SOAP パラメータ内で XML エスケープされている場合に
 // 元の文字列へ戻す (アサーションを実際に送られた Selector に対して行うため)。
 func unescapeForAssert(s string) string {
-	// xml.EscapeText は " を数値参照 &#34; で出す (&quot; ではない)。
-	r := strings.NewReplacer("&lt;", "<", "&gt;", ">", "&#34;", `"`, "&quot;", `"`, "&amp;", "&")
+	// xmlEscape は全て数値文字参照で出す (#173: 実機が名前付き実体参照を受け付けない)。
+	// 名前付きも残してあるのは、過去の応答や手書き fixture を食わせても壊れないようにするため。
+	r := strings.NewReplacer(
+		"&#60;", "<", "&#62;", ">", "&#38;", "&", "&#34;", `"`, "&#39;", "'",
+		"&lt;", "<", "&gt;", ">", "&amp;", "&", "&quot;", `"`, "&apos;", "'",
+	)
 	return r.Replace(s)
 }
