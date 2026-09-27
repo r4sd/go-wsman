@@ -1,12 +1,17 @@
 package hyperv
 
-// EnabledState 定数（CIM 仕様）
+// EnabledState 定数 (Msvm_ComputerSystem)
+//
+// 🔴 CIM 標準の値ではなく **Hyper-V が実際に返す値**。Msvm_ComputerSystem は
+// PowerShell の VMState 列挙値をそのまま返すので、標準ドキュメントにある
+// Paused=32768 / Saved=32769 は**返らない** (2026-07-09 / 2026-09-27 実機確認)。
+// 標準値を思い込みで入れていたのが #102。
 const (
 	EnabledStateUnknown  uint16 = 0
-	EnabledStateEnabled  uint16 = 2     // Running
-	EnabledStateDisabled uint16 = 3     // Off
-	EnabledStatePaused   uint16 = 32768 // Paused
-	EnabledStateSaved    uint16 = 32769 // Saved
+	EnabledStateEnabled  uint16 = 2 // Running
+	EnabledStateDisabled uint16 = 3 // Off
+	EnabledStatePaused   uint16 = 9 // Paused (Suspend-VM)
+	EnabledStateSaved    uint16 = 6 // Saved (Save-VM)
 )
 
 // Msvm_ComputerSystem は Hyper-V VM を表す CIM クラス。

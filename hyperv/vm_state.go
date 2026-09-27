@@ -8,19 +8,26 @@ import (
 	"github.com/r4sd/go-wsman/wsman"
 )
 
-// RequestedState 定数（CIM 仕様: Msvm_ComputerSystem.RequestStateChange の RequestedState）
+// RequestedState 定数 (Msvm_ComputerSystem.RequestStateChange の RequestedState)
 //
-// Hyper-V は CIM 標準の状態遷移値に加えて拡張値 (32768/32769) も受け付ける。
-// 値の意味は Msvm_ComputerSystem.EnabledState と一部対応するが、
-// 「遷移先」を指す入力値であり EnabledState の現在値定数とは分けて管理する。
+// 🔴 以前ここには「Hyper-V は CIM 標準値に加えて拡張値 (32768/32769) も受け付ける」と
+// 書いてあったが**誤り**。root/virtualization/v2 の Msvm_ComputerSystem に 32768/32769 を
+// 渡すと ReturnValue=32775 (invalid state for this operation) で拒否され、状態は変わらない
+// (2026-09-27 実機確認。Running 安定後に 6 回リトライしても全て 32775)。
+// 32768/32769 は v1 名前空間の値。
+//
+// Paused/Saved は CIM 標準の Quiesce(9) / Offline(6) で要求する。結果として
+// EnabledState も同じ 9 / 6 になるので、入力値と現在値の数値が一致する (#102)。
+//
+// ShutDown(4) / Reboot(10) / Reset(11) は**未検証**。上記の実機確認では扱っていない。
 const (
-	RequestedStateEnabled  uint16 = 2     // Start: VM を起動
-	RequestedStateDisabled uint16 = 3     // TurnOff: 強制電源断 (Hyper-V のシャットダウンではない)
-	RequestedStateShutDown uint16 = 4     // Shutdown: ゲスト OS のシャットダウンを要求 (Integration Services 必須)
-	RequestedStateReboot   uint16 = 10    // Reboot: 強制再起動
-	RequestedStateReset    uint16 = 11    // Reset
-	RequestedStatePaused   uint16 = 32768 // Pause: 一時停止
-	RequestedStateSaved    uint16 = 32769 // Save: 状態を保存して停止
+	RequestedStateEnabled  uint16 = 2  // Start: VM を起動
+	RequestedStateDisabled uint16 = 3  // TurnOff: 強制電源断 (Hyper-V のシャットダウンではない)
+	RequestedStateShutDown uint16 = 4  // Shutdown: ゲスト OS のシャットダウンを要求 (Integration Services 必須、未検証)
+	RequestedStateSaved    uint16 = 6  // Offline: 状態を保存して停止 (Save-VM)
+	RequestedStatePaused   uint16 = 9  // Quiesce: 一時停止 (Suspend-VM)
+	RequestedStateReboot   uint16 = 10 // Reboot: 強制再起動 (未検証)
+	RequestedStateReset    uint16 = 11 // Reset (未検証)
 )
 
 // RequestStateChange は Msvm_ComputerSystem.RequestStateChange を呼び出し、

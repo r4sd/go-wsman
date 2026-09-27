@@ -87,9 +87,9 @@ func TestClient_StateShortcuts(t *testing.T) {
 		{"StartVM", (*Client).StartVM, "<p:RequestedState>2</p:RequestedState>"},
 		{"TurnOffVM", (*Client).TurnOffVM, "<p:RequestedState>3</p:RequestedState>"},
 		{"ShutdownVM", (*Client).ShutdownVM, "<p:RequestedState>4</p:RequestedState>"},
-		{"PauseVM", (*Client).PauseVM, "<p:RequestedState>32768</p:RequestedState>"},
+		{"PauseVM", (*Client).PauseVM, "<p:RequestedState>9</p:RequestedState>"},
 		{"ResumeVM", (*Client).ResumeVM, "<p:RequestedState>2</p:RequestedState>"},
-		{"SaveVM", (*Client).SaveVM, "<p:RequestedState>32769</p:RequestedState>"},
+		{"SaveVM", (*Client).SaveVM, "<p:RequestedState>6</p:RequestedState>"},
 	}
 
 	for _, tt := range tests {
