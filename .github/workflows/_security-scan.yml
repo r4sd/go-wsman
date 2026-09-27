@@ -52,6 +52,25 @@ jobs:
           fi
           echo "OK: プライベート IP アドレスなし"
 
+      # 実環境の識別子を名指しで弾く (denylist)。
+      #
+      # GUID を形で一律に弾く方式は採らない。testdata の合成 fixture が大量の
+      # GUID を持っており誤検知だらけになるため。代わりに「実環境に存在すると
+      # 分かっている値」だけを列挙する。新しい実環境を触ったらここに足す。
+      #
+      # ⚠️ **この仕組みは漏洩を防がない。** 既知の値の再混入を止めるだけで、
+      # 未登録の実環境から採った値は素通りする。一次の防御は記録器の伏せ字
+      # (internal/guard + wsman/record.go) 側にある。
+      - name: Scan tracked files for known real-environment identifiers
+        run: |
+          # ホスト名・VM 表示名・VM GUID (2026-09 時点の homelab)
+          if git grep -nIiE 'DESKTOP-KAKEF4K|k8s-cp-0[0-9]|k8s-worker-0[0-9]|27BBD2D0-EA18|2C709429-A8C3|92617271-7416' \
+               -- . ':(exclude).github/workflows/_security-scan.yml'; then
+            echo "::error::実環境の識別子 (ホスト名 / VM 名 / VM GUID) が含まれています。プレースホルダに置き換えてください。"
+            exit 1
+          fi
+          echo "OK: 既知の実環境識別子なし"
+
   gosec:
     name: gosec
     runs-on: ubuntu-latest
