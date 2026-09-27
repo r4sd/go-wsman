@@ -1,4 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+  合成データ (手組み)。実機の記録ではない。
+
+  Notes の形は 2026-09-27 に実機で 2x2 を確かめてある (#155):
+    - 複数要素を送ると ReturnValue=0 のまま先頭要素だけが残る (黙って切り捨て)。
+      DefineSystem / ModifySystemSettings のどちらでも同じ
+    - 改行を含む 1 要素は ReturnValue=0 で通り "line1\nline2" として読み戻せる
+    - 値に & を含むと 32768、< を含むと 32773 で拒否される (要素数とは無関係)
+  したがって「Notes 要素が 2 つ並ぶ」応答も「& を含む Notes」も実機では作れない。
+  この golden は改行入り 1 要素・特殊文字なしに直してある (以前は & 入りの 2 要素だった)。
+-->
 <s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd" xmlns:e="http://schemas.xmlsoap.org/ws/2004/09/enumeration" xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_VirtualSystemSettingData">
   <s:Header>
     <a:Action>http://schemas.xmlsoap.org/ws/2004/09/enumeration/PullResponse</a:Action>
@@ -28,8 +39,8 @@
           <p:BootSourceOrder>Microsoft:99999999-aaaa-bbbb-cccc-000000000099\BootSource\0</p:BootSourceOrder>
           <p:BootSourceOrder>Microsoft:99999999-aaaa-bbbb-cccc-000000000099\BootSource\1</p:BootSourceOrder>
           <p:BootSourceOrder>Microsoft:99999999-aaaa-bbbb-cccc-000000000099\BootSource\2</p:BootSourceOrder>
-          <p:Notes>line1</p:Notes>
-          <p:Notes>line2 with &amp; symbol</p:Notes>
+          <p:Notes>line1
+line2</p:Notes>
           <p:LockOnDisconnect>TRUE</p:LockOnDisconnect>
           <p:GuestControlledCacheTypes>FALSE</p:GuestControlledCacheTypes>
           <p:HighMmioGapSize>536870912</p:HighMmioGapSize>

@@ -127,8 +127,19 @@ func (c *Client) WaitForJobEPR(ctx context.Context, epr *wsman.EndpointReference
 	}
 }
 
-// getJob は指定 ResourceURI + InstanceID の Job を取得する。Msvm_StorageJob は JobState 等を
-// Msvm_ConcreteJob(CIM_ConcreteJob)から継承しているため、同じ struct/Unmarshal で扱える。
+// getJob は指定 ResourceURI + InstanceID の Job を取得する。
+//
+// resourceURI が Msvm_StorageJob(ImageManagementService 経路)でも戻り値を
+// Msvm_ConcreteJob struct で受けられるのは、両者が継承関係ではなく、どちらも
+// CIM_ConcreteJob を親に持つ兄弟クラスで、この struct が読むプロパティと JobState の
+// enum が名前・型レベルで一致するため。
+//
+// MOF 一次資料(2026-09-27 時点、いずれも `class Msvm_* : CIM_ConcreteJob`):
+//   - https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/msvm-storagejob
+//   - https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/msvm-concretejob
+//
+// 一致の中身は testdata/mof/msvm_storagejob.txt に写してあり、
+// TestCIMCompliance_ConcreteJob_AgainstStorageJobMOF が struct と突合する。
 func (c *Client) getJob(ctx context.Context, resourceURI, instanceID string) (*Msvm_ConcreteJob, error) {
 	resp, err := c.wsman.Get(ctx, resourceURI,
 		wsman.Selector{Name: "InstanceID", Value: instanceID},

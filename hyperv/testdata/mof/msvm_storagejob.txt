@@ -1,0 +1,17 @@
+# Msvm_StorageJob CIM プロパティ
+#
+# Source: https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/msvm-storagejob
+# Fetched: 2026-09-27
+# 形式: <CIM プロパティ名> <CIM 型>
+#
+# fixture ポリシー: struct が cim タグで参照するプロパティのみ列挙する。
+#
+# 用途 (#94): getJob は Msvm_StorageJob の Get 応答を Msvm_ConcreteJob struct で
+# Unmarshal する。この fixture はその流用の前提 (StorageJob 側にも同名・同型で全部ある) を
+# ファイルとして残すためのもの。
+
+InstanceID string
+JobState uint16
+PercentComplete uint16
+ErrorCode uint16
+ErrorDescription string

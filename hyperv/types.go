@@ -1,12 +1,23 @@
 package hyperv
 
-// EnabledState 定数（CIM 仕様）
+// EnabledState 定数
+//
+// 主な利用先は Msvm_ComputerSystem だが、Msvm_VirtualEthernetSwitch や
+// Msvm_*ComponentSettingData でも同じ値域を使う。
+//
+// 🔴 Msvm_ComputerSystem の Paused/Saved は **9 / 6**。32768 / 32769 ではない
+// (2026-07-09 / 2026-09-27 実機で確認。観測できたのは 2/3/6/9 の 4 値)。
+//
+// 32768/32769 は Hyper-V v1 の値で DMTF の CIM 標準には無いが、**MS の v2
+// Msvm_ComputerSystem ページにも v1 由来の記述が残っている** (HealthState 節・
+// OperationalStatus 節)。同ページの EnabledState 表は 0〜10 しか載せていない。
+// これを拾って定数にしてしまったのが #102。
 const (
 	EnabledStateUnknown  uint16 = 0
-	EnabledStateEnabled  uint16 = 2     // Running
-	EnabledStateDisabled uint16 = 3     // Off
-	EnabledStatePaused   uint16 = 32768 // Paused
-	EnabledStateSaved    uint16 = 32769 // Saved
+	EnabledStateEnabled  uint16 = 2 // Running
+	EnabledStateDisabled uint16 = 3 // Off
+	EnabledStatePaused   uint16 = 9 // Paused (Suspend-VM)
+	EnabledStateSaved    uint16 = 6 // Saved (Save-VM)
 )
 
 // Msvm_ComputerSystem は Hyper-V VM を表す CIM クラス。
@@ -454,6 +465,10 @@ const (
 //
 // 非同期 (ReturnValue=4096) を返す CIM メソッドの完了待ちに使う。InstanceID で
 // Get し、JobState の終端到達を待つ (WaitForJob)。
+//
+// この struct は VSMS 経路の Msvm_ConcreteJob だけでなく、ImageManagementService 経路の
+// **Msvm_StorageJob 応答も**受ける (getJob)。フィールドを足すときは両クラスの MOF に
+// あることを確かめること (testdata/mof/ に両方の fixture がある)。
 type Msvm_ConcreteJob struct {
 	InstanceID       string `cim:"InstanceID"`
 	JobState         uint16 `cim:"JobState"`
