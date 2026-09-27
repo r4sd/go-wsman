@@ -44,6 +44,12 @@ func TestIsHostComputerSystem(t *testing.T) {
 			want: true,
 		},
 		{
+			// 「長さ 36」で判定する実装を落とすためのケース。
+			name: "GUID もどき: 長さは 36 だが hex ではない",
+			cs:   Msvm_ComputerSystem{Name: "ZZZZZZZZ-1111-2222-3333-444455556666"},
+			want: true,
+		},
+		{
 			name: "GUID もどき: 桁数が足りない",
 			cs:   Msvm_ComputerSystem{Name: "A1B2C3D4-1111-2222-3333-44445555666"},
 			want: true,
@@ -83,5 +89,31 @@ func TestIsHostComputerSystem_LocaleIndependent(t *testing.T) {
 		if vm.IsHostComputerSystem() {
 			t.Errorf("Caption=%q Description=%q で VM をホストと誤判定した", loc.caption, loc.description)
 		}
+	}
+}
+
+// TestFilterOutHostComputerSystems は列挙結果からホストが落ちることを固定する。
+//
+// ⚠️ これは「落とす条件」のテストで、**ListComputerSystems に実際に配線されているか**は
+// 固定できていない。配線を消しても本テストは通る。実機応答を記録した golden が
+// 入るまでの暫定 (別 Issue で追跡)。
+func TestFilterOutHostComputerSystems(t *testing.T) {
+	in := []*Msvm_ComputerSystem{
+		{Name: "WIN-HYPERVHOST", ElementName: "WIN-HYPERVHOST"},
+		{Name: "A1B2C3D4-1111-2222-3333-444455556666", ElementName: "vm-worker-01"},
+		{Name: "B2C3D4E5-1111-2222-3333-444455556667", ElementName: "vm-worker-02"},
+	}
+	got := filterOutHostComputerSystems(in)
+	if len(got) != 2 {
+		t.Fatalf("len = %d, want 2 (ホストだけ落ちる)", len(got))
+	}
+	for _, cs := range got {
+		if cs.IsHostComputerSystem() {
+			t.Errorf("ホストが残っている: %q", cs.Name)
+		}
+	}
+	// 順序を保つ (呼び出し側が index で参照する経路があるため)。
+	if got[0].ElementName != "vm-worker-01" || got[1].ElementName != "vm-worker-02" {
+		t.Errorf("順序が変わった: %q, %q", got[0].ElementName, got[1].ElementName)
 	}
 }

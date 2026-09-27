@@ -26,3 +26,19 @@ func (cs *Msvm_ComputerSystem) IsHostComputerSystem() bool {
 	_, err := uuid.Parse(cs.Name)
 	return err != nil
 }
+
+// filterOutHostComputerSystems は列挙結果から Hyper-V ホスト自身を取り除く。
+//
+// ListComputerSystems から切り出してあるのは、この絞り込みを struct だけで
+// テストできるようにするため。実機の Enumerate 応答を golden にできない間
+// (記録器が実機に到達できない)、配線そのものは固定できないが、落とす条件は固定できる。
+func filterOutHostComputerSystems(all []*Msvm_ComputerSystem) []*Msvm_ComputerSystem {
+	out := make([]*Msvm_ComputerSystem, 0, len(all))
+	for _, cs := range all {
+		if cs.IsHostComputerSystem() {
+			continue
+		}
+		out = append(out, cs)
+	}
+	return out
+}
