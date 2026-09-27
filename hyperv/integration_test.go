@@ -1149,9 +1149,11 @@ func discoverScrubNames(t *testing.T, endpoint string, baseOpts []wsman.ClientOp
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	systems, err := probe.ListComputerSystems(ctx)
+	// ここだけはホストを含む素の列挙を使う。ホストのコンピューター名も伏せる対象で、
+	// ListComputerSystems (ホスト除外済み) を使うと実機の記録に素のホスト名が残る (#139)。
+	systems, err := probe.listComputerSystemsIncludingHost(ctx)
 	if err != nil {
-		t.Logf("⚠️ 伏せる名前の収集に失敗 (ListComputerSystems): %v", err)
+		t.Logf("⚠️ 伏せる名前の収集に失敗 (listComputerSystemsIncludingHost): %v", err)
 		return nil
 	}
 	names := make([]string, 0, len(systems))

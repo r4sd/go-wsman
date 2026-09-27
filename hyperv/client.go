@@ -141,12 +141,28 @@ func matchSettingDataVM(instanceID, vmGUID string) bool {
 	return strings.HasPrefix(instanceID, settingDataInstanceIDPrefix+vmGUID)
 }
 
-// ListComputerSystems は Msvm_ComputerSystem を素のまま Enumerate する。
+// ListComputerSystems は VM の Msvm_ComputerSystem を列挙する。
 //
-// ⚠️ 戻り値には **Hyper-V ホスト自身**のインスタンスが含まれる (Name = ホスト名)。
-// VM だけが欲しい場合は呼び出し側で除く必要がある (#151)。
-// Caption / Description は [AMENDMENT] でローカライズされるため判別に使えない。
+// Msvm_ComputerSystem は Hyper-V ホスト自身 (管理 OS) も表すが、**ホストは除外して返す**
+// (#139)。判定は IsHostComputerSystem を参照。Caption / Description は [AMENDMENT] で
+// ローカライズされるため判別に使えない。
+//
+// ホストを含む素の列挙が要る場合 (記録器の伏せ字収集など) は
+// listComputerSystemsIncludingHost を使うこと。
 func (c *Client) ListComputerSystems(ctx context.Context) ([]*Msvm_ComputerSystem, error) {
+	all, err := c.listComputerSystemsIncludingHost(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return filterOutHostComputerSystems(all), nil
+}
+
+// listComputerSystemsIncludingHost は Msvm_ComputerSystem を素のまま Enumerate する。
+//
+// ホストのインスタンスも含む。これが要るのは記録器の伏せ字収集 (#157) で、
+// **ホストのコンピューター名も伏せる対象**だから。ここでホストを落とすと、
+// 実機の記録に素のホスト名が残る経路が開く (公開リポジトリなので事故になる)。
+func (c *Client) listComputerSystemsIncludingHost(ctx context.Context) ([]*Msvm_ComputerSystem, error) {
 	instances, err := c.wsman.Enumerate(ctx, msvmComputerSystemURI)
 	if err != nil {
 		return nil, err
