@@ -154,7 +154,7 @@ func TestMarshalEmbeddedInstance_CDATAWrap(t *testing.T) {
 	type settings struct {
 		ElementName string `cim:"ElementName"`
 	}
-	// "]]>" を含む値 ('>' は xmlEscape で &gt; になるため、ここでは無害化経路の
+	// "]]>" を含む値 ('>' は cimValueEscape で &#62; になるため、ここでは無害化経路の
 	// 確認のため cdataWrap を直接検証する)。
 	got := cdataWrap(`a]]>b`)
 	want := `<![CDATA[a]]]]><![CDATA[>b]]>`
@@ -307,22 +307,38 @@ func TestMarshalEmbeddedInstance_OmitsZeroValues(t *testing.T) {
 	}
 }
 
-// TestMarshalEmbeddedInstance_EscapesValues は VALUE 内の特殊文字が XML エスケープされることを検証する。
+// TestMarshalEmbeddedInstance_EscapesValues は VALUE 内の特殊文字が
+// 数値文字参照へエスケープされることを検証する (#173)。
+//
+// **スカラー (PROPERTY) と配列 (PROPERTY.ARRAY) は別の分岐**を通るので両方見る。
+// #173 の実際の再現経路は Notes = []string なので、配列側を落とすと Issue の窓が
+// 塞がっていないことになる。
 func TestMarshalEmbeddedInstance_EscapesValues(t *testing.T) {
 	type settings struct {
-		ElementName string `cim:"ElementName"`
+		ElementName string   `cim:"ElementName"`
+		Notes       []string `cim:"Notes"`
 	}
-	s := settings{ElementName: `a<b>&"c`}
+	s := settings{
+		ElementName: `a<b>&"c`,
+		Notes:       []string{`n1 & n2`, `n3 < n4`},
+	}
 
 	got, err := marshalEmbeddedInstance(&s, "Msvm_Test", "ns")
 	if err != nil {
 		t.Fatalf("marshalEmbeddedInstance: %v", err)
 	}
-	// '<' '>' '&' は**数値文字参照**に変換される (CDATA 化は invoke 層の責務)。
-	// 名前付き実体参照 (&lt; 等) では実機が書き込みを拒否する (#173)。
+	// スカラー経路 (marshalField)
 	if !contains(got, `<VALUE>a&#60;b&#62;&#38;&#34;c</VALUE>`) {
-		t.Errorf("special chars should be escaped as numeric char refs, got: %s", got)
+		t.Errorf("スカラーの特殊文字が数値文字参照になっていない: %s", got)
 	}
+	// 配列経路 (marshalSliceField) — #173 の再現経路
+	if !contains(got, `<VALUE>n1 &#38; n2</VALUE>`) {
+		t.Errorf("配列要素の & が数値文字参照になっていない: %s", got)
+	}
+	if !contains(got, `<VALUE>n3 &#60; n4</VALUE>`) {
+		t.Errorf("配列要素の < が数値文字参照になっていない: %s", got)
+	}
+	// 名前付き実体参照が 1 つでも出たら実機の書き込みが落ちる。
 	for _, bad := range []string{"&lt;", "&gt;", "&amp;", "&quot;", "&apos;"} {
 		if contains(got, bad) {
 			t.Errorf("名前付き実体参照 %q が出ている。実機が受け付けない (#173): %s", bad, got)
