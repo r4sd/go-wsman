@@ -1,11 +1,17 @@
 package hyperv
 
-// EnabledState 定数 (Msvm_ComputerSystem)
+// EnabledState 定数
 //
-// 🔴 CIM 標準の値ではなく **Hyper-V が実際に返す値**。Msvm_ComputerSystem は
-// PowerShell の VMState 列挙値をそのまま返すので、標準ドキュメントにある
-// Paused=32768 / Saved=32769 は**返らない** (2026-07-09 / 2026-09-27 実機確認)。
-// 標準値を思い込みで入れていたのが #102。
+// 主な利用先は Msvm_ComputerSystem だが、Msvm_VirtualEthernetSwitch や
+// Msvm_*ComponentSettingData でも同じ値域を使う。
+//
+// 🔴 Msvm_ComputerSystem の Paused/Saved は **9 / 6**。32768 / 32769 ではない
+// (2026-07-09 / 2026-09-27 実機で確認。観測できたのは 2/3/6/9 の 4 値)。
+//
+// 32768/32769 は Hyper-V v1 の値で DMTF の CIM 標準には無いが、**MS の v2
+// Msvm_ComputerSystem ページにも v1 由来の記述が残っている** (HealthState 節・
+// OperationalStatus 節)。同ページの EnabledState 表は 0〜10 しか載せていない。
+// これを拾って定数にしてしまったのが #102。
 const (
 	EnabledStateUnknown  uint16 = 0
 	EnabledStateEnabled  uint16 = 2 // Running

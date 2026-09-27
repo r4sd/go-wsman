@@ -87,6 +87,8 @@ func TestClient_StateShortcuts(t *testing.T) {
 		{"StartVM", (*Client).StartVM, "<p:RequestedState>2</p:RequestedState>"},
 		{"TurnOffVM", (*Client).TurnOffVM, "<p:RequestedState>3</p:RequestedState>"},
 		{"ShutdownVM", (*Client).ShutdownVM, "<p:RequestedState>4</p:RequestedState>"},
+		// 期待値の出どころは enabled_state_test.go の RequestedState 定数テストと同じ
+		// (2026-09-27 実機確認)。値を変えるときは両方直すこと。
 		{"PauseVM", (*Client).PauseVM, "<p:RequestedState>9</p:RequestedState>"},
 		{"ResumeVM", (*Client).ResumeVM, "<p:RequestedState>2</p:RequestedState>"},
 		{"SaveVM", (*Client).SaveVM, "<p:RequestedState>6</p:RequestedState>"},
