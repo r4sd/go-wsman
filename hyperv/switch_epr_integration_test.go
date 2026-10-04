@@ -18,8 +18,10 @@ import (
 // 「この Selector 集合が実インスタンスに解決でき、値も一致する」ところまで。
 //
 // 非破壊 (Get のみ)。既存スイッチを 1 つ拾って読むだけで、作成も削除もしない。
-// 本来は使い捨てスイッチで create → destroy したかったが、CreateSwitch 自体が
-// 実機で InternalError になる (#145) ため代替している。
+//
+// 以前は「CreateSwitch 自体が実機で InternalError になる (#145) ため代替」と
+// していたが、#145 は解消した。使い捨てスイッチで create → destroy する形に
+// 書き換えられる (#177 で追跡)。
 func TestRealSwitchEPRSelectors(t *testing.T) {
 	c := getIntegrationClient(t)
 	ctx := context.Background()
