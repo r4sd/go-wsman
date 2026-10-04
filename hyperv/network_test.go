@@ -280,18 +280,87 @@ func TestClient_AddNetworkAdapter_WithSwitch(t *testing.T) {
 	if !strings.Contains(allocBody, ResourceSubTypeEthernetConnection) {
 		t.Errorf("allocation body should contain Ethernet Connection ResourceSubType")
 	}
-	// HostResource のスイッチ EPR は MOF に存在するキーだけで構成する (#134)。
-	// Msvm_VirtualEthernetSwitch は CIM_ComputerSystem 派生で
-	// SystemCreationClassName / SystemName を持たない。
-	// SelectorSet を厳密比較する (Contains で GUID だけ見ると余計な Selector を見逃す)。
-	// SelectorSet 要素を丸ごと比較する。連結部分文字列の Contains だと、
-	// 名前昇順で "Name" より後ろに並ぶ Selector (SystemName 等) を足されても通る。
-	const wantSelectors = `<w:Selector Name="CreationClassName">Msvm_VirtualEthernetSwitch</w:Selector>` +
-		`<w:Selector Name="Name">AAAAAAAA-1111-1111-1111-AAAAAAAAAAAA</w:Selector>`
-	gotSelectors := selectorSetAfter(t, unescapeForAssert(allocBody), msvmVirtualEthernetSwitchURI)
-	if gotSelectors != wantSelectors {
-		t.Errorf("スイッチ EPR の SelectorSet が一致しない\n got:  %s\n want: %s", gotSelectors, wantSelectors)
+	// HostResource / Parent は WMI オブジェクトパスで、HostResource は PROPERTY.ARRAY。
+	// 実機検証 (2026-10-05) では、この 2 つのどちらが欠けても ErrorCode=32773 になる (#114)。
+	//
+	// 要素を丸ごと厳密比較する。Contains で GUID だけ見ると、キーの過不足や
+	// エスケープの欠落を見逃す。
+	//
+	// キーは MOF に存在するものだけ (#134)。Msvm_VirtualEthernetSwitch は
+	// CIM_ComputerSystem 派生で SystemCreationClassName / SystemName を持たない。
+	inst := embeddedInstanceOf(t, unescapeForAssert(allocBody),
+		"Msvm_EthernetPortAllocationSettingData")
+
+	const wantHostResource = `<PROPERTY.ARRAY NAME="HostResource" TYPE="string"><VALUE.ARRAY>` +
+		`<VALUE>root/virtualization/v2:Msvm_VirtualEthernetSwitch.` +
+		`CreationClassName="Msvm_VirtualEthernetSwitch",` +
+		`Name="AAAAAAAA-1111-1111-1111-AAAAAAAAAAAA"</VALUE>` +
+		`</VALUE.ARRAY></PROPERTY.ARRAY>`
+	if !strings.Contains(inst, wantHostResource) {
+		t.Errorf("HostResource が一致しない。スカラーで送ると実機は ErrorCode=32773 を返す (#114)\n"+
+			" got:  %s\n want (部分): %s", inst, wantHostResource)
 	}
+
+	// InstanceID の \ が \\ にエスケープされていること。これを欠くと実機は 32773。
+	const wantParent = `<PROPERTY NAME="Parent" TYPE="string"><VALUE>` +
+		`root/virtualization/v2:Msvm_SyntheticEthernetPortSettingData.` +
+		`InstanceID="Microsoft:11111111-aaaa-bbbb-cccc-000000000001\\NEW-NIC-001"` +
+		`</VALUE></PROPERTY>`
+	if !strings.Contains(inst, wantParent) {
+		t.Errorf("Parent が一致しない。WMI パス内の \\ を未エスケープだと実機は ErrorCode=32773 (#114)\n"+
+			" got:  %s\n want (部分): %s", inst, wantParent)
+	}
+
+	// WMI パスのキー値を囲む `"` のエンコード。unescapeForAssert を通した inst では
+	// 区別できないので、**生の body** で見る。
+	//
+	// 実機は数値文字参照 `&#34;` (cimValueEscape が出す形) と生の `"` の **どちらも受理する**
+	// (2026-10-05、引用符だけを変えた対照実験で両方成功)。よってどちらかに固定はしない。
+	//
+	// 固定するのは **名前付き参照を使わないこと**。#173 で `&amp;` / `&lt;` を名前付きで
+	// 送ると実機が拒否した前例があり、`&quot;` の受理は未観測。
+	if strings.Contains(allocBody, "&quot;") {
+		t.Errorf("名前付き参照 &quot; が混ざっている。名前付き参照は #173 で実機拒否の前例があり、"+
+			"&quot; 自体の受理は未観測 (#114)\n%s", allocBody)
+	}
+
+	// 旧実装は HostResource / Parent に WS-Addressing EPR を入れていた。
+	// EPR の痕跡 (ResourceURI) が embedded instance に残っていないことを確認する。
+	if strings.Contains(inst, "ResourceURI") {
+		t.Errorf("embedded instance に EPR の痕跡がある。HostResource/Parent は WMI パスで送る (#114)\n%s", inst)
+	}
+	// HostResource がスカラー PROPERTY に戻されていないこと。
+	if strings.Contains(inst, `<PROPERTY NAME="HostResource"`) {
+		t.Errorf("HostResource がスカラー PROPERTY になっている。実機は ErrorCode=32773 を返す (#114)\n%s", inst)
+	}
+}
+
+// embeddedInstanceOf は body から指定クラスの CIM-XML embedded instance の中身を切り出す。
+//
+// SOAP body 全体で Contains すると、同じ文字列が別の場所 (REF パラメータ等) にあっても
+// 通ってしまう。埋め込みインスタンスの範囲に限定して検証するために使う。
+//
+// 戻り値は CLASSNAME 属性の位置から最初の終了タグまで。開始タグ全体ではなく CLASSNAME 属性を
+// マーカーにしているのは、それで足りるため (検証対象の PROPERTY 群はこの範囲に収まる)。
+// 副作用として生 XML の関所 (internal/guard の TestNoRawXMLInSources) の正規表現にも
+// 当たらないが、関所が禁じているのは**記録すべき応答 XML** をソースに書くことで、
+// 期待リクエストの断片 (旧テストの <w:Selector …> も同様) はこのリポジトリの既存の書き方。
+//
+// ⚠️ **最初の 1 件しか返さない。** DefineSystem のように embedded instance を複数持つ
+// body (Internal/External スイッチ: Internal Port + External binding) に流用すると
+// 2 件目を黙って見落とす。複数件を検証するときは拡張すること。
+func embeddedInstanceOf(t *testing.T, body, class string) string {
+	t.Helper()
+	start := strings.Index(body, `CLASSNAME="`+class+`"`)
+	if start < 0 {
+		t.Fatalf("embedded instance %s が body に無い", class)
+	}
+	rest := body[start:]
+	end := strings.Index(rest, "</INSTANCE>")
+	if end < 0 {
+		t.Fatalf("embedded instance %s の終了タグが無い", class)
+	}
+	return rest[:end+len("</INSTANCE>")]
 }
 
 // TestClient_AddNetworkAdapter_Validation はバリデーション。
