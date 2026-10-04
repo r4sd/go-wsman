@@ -84,6 +84,26 @@ func (c *Client) ListExternalEthernetPorts(ctx context.Context) ([]*Msvm_Externa
 //   - Internal: ResourceSettings に Internal Port (HostResource なし) を 1 つ
 //   - External: ResourceSettings に External NIC binding を 1 つ
 //     (AllowManagementOS=true なら + Internal Port 1 つ)
+//
+// vesmsSelectors は Msvm_VirtualEthernetSwitchManagementService (シングルトン) の
+// メソッド呼び出しに付与する SelectorSet を返す。
+//
+// 🔴 **これが無いと実機は InternalError を返す。** Hyper-V WMI プロバイダ
+// (WsmWmiPl.dll) はメソッド実行時にインスタンスを特定する selector を要求する。
+// VSMS (vsmsSelectors) と同じ事情だが、スイッチ側は見落とされていた (#145)。
+//
+// 2026-10-05 実機確認:
+//
+//	selector 無し          → WS-Man Fault [s:Receiver/w:InternalError]
+//	CreationClassName 付き → DefineSystem は ReturnValue=0、DestroySystem は 4096
+//
+// VESMS のメソッド (DefineSystem / DestroySystem 等) すべてに付与すること。
+func vesmsSelectors() []wsman.Selector {
+	return []wsman.Selector{
+		{Name: "CreationClassName", Value: "Msvm_VirtualEthernetSwitchManagementService"},
+	}
+}
+
 func (c *Client) CreateSwitch(ctx context.Context, opts CreateSwitchOptions) (*CreateSwitchResult, error) {
 	if opts.Name == "" {
 		return nil, fmt.Errorf("CreateSwitch: Name must not be empty")
@@ -119,7 +139,7 @@ func (c *Client) CreateSwitch(ctx context.Context, opts CreateSwitchOptions) (*C
 		params = append(params, wsman.Param{Name: "ResourceSettings", Value: rs})
 	}
 
-	resp, err := c.wsman.InvokeMulti(ctx, msvmVirtualEthernetSwitchManagementServiceURI, "DefineSystem", params)
+	resp, err := c.wsman.InvokeMulti(ctx, msvmVirtualEthernetSwitchManagementServiceURI, "DefineSystem", params, vesmsSelectors()...)
 	if err != nil {
 		return nil, err
 	}
@@ -246,7 +266,7 @@ func (c *Client) DestroySwitch(ctx context.Context, switchName string) (string, 
 	})
 
 	resp, err := c.wsman.Invoke(ctx, msvmVirtualEthernetSwitchManagementServiceURI, "DestroySystem",
-		map[string]string{"AffectedSystem": switchEPR})
+		map[string]string{"AffectedSystem": switchEPR}, vesmsSelectors()...)
 	if err != nil {
 		return "", err
 	}

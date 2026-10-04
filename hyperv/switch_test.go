@@ -250,9 +250,16 @@ func TestClient_DestroySwitch_SelectorSet(t *testing.T) {
 
 	// SelectorSet 要素を丸ごと比較する。連結部分文字列の Contains だと、
 	// 名前昇順で "Name" より後ろに並ぶ Selector (SystemName 等) を足されても通ってしまう。
+	//
+	// ⚠️ 見たいのは **AffectedSystem の EPR 内**の SelectorSet。body の先頭には
+	// ヘッダの SelectorSet (VESMS の CreationClassName、#145) があるので marker で絞る。
+	//
+	// marker に msvmVirtualEthernetSwitchURI は使えない。これは
+	// msvmVirtualEthernetSwitchManagementServiceURI の**接頭辞**なので、
+	// ヘッダの ResourceURI に先にマッチしてしまう。EPR の開始要素を marker にする。
 	const want = `<w:Selector Name="CreationClassName">Msvm_VirtualEthernetSwitch</w:Selector>` +
 		`<w:Selector Name="Name">BBBBBBBB-2222-2222-2222-BBBBBBBBBBBB</w:Selector>`
-	got := selectorSetInner(t, unescapeForAssert(bodies[2]))
+	got := selectorSetAfter(t, unescapeForAssert(bodies[2]), "<p:AffectedSystem>")
 	if got != want {
 		t.Errorf("SelectorSet が一致しない\n got:  %s\n want: %s", got, want)
 	}
