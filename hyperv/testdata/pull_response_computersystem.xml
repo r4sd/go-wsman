@@ -7,6 +7,23 @@
   <s:Body>
     <e:PullResponse>
       <e:Items>
+        <!--
+          ホスト自身の Msvm_ComputerSystem。実機の列挙には**必ず 1 件含まれる**
+          (このクラスは VM とホストの両方を表す)。Name が GUID ではなくコンピューター名に
+          なるのが見分け方で、IsHostComputerSystem がそれで判定する。
+
+          以前この golden は VM だけを持っていたため、filterOutHostComputerSystems の
+          配線 (ListComputerSystems が実際に除外するか) が一度も通っていなかった。
+          ホスト側 Msvm_ComputerSystem を引く hostComputerSystem (#178) の検証にも要る。
+          値は匿名化した例示値 (本リポジトリは公開)。
+        -->
+        <p:Msvm_ComputerSystem>
+          <p:Name>HOST-EXAMPLE</p:Name>
+          <p:ElementName>HOST-EXAMPLE</p:ElementName>
+          <p:Caption>Hosting Computer System</p:Caption>
+          <p:EnabledState>2</p:EnabledState>
+          <p:HealthState>5</p:HealthState>
+        </p:Msvm_ComputerSystem>
         <p:Msvm_ComputerSystem>
           <p:Name>11111111-aaaa-bbbb-cccc-000000000001</p:Name>
           <p:ElementName>vm-1</p:ElementName>

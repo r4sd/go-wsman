@@ -351,16 +351,39 @@ func TestClient_AddNetworkAdapter_WithSwitch(t *testing.T) {
 // 2 件目を黙って見落とす。複数件を検証するときは拡張すること。
 func embeddedInstanceOf(t *testing.T, body, class string) string {
 	t.Helper()
-	start := strings.Index(body, `CLASSNAME="`+class+`"`)
-	if start < 0 {
+	all := embeddedInstancesOf(t, body, class)
+	return all[0]
+}
+
+// embeddedInstancesOf は body 中の指定クラスの embedded instance を**出現順にすべて**返す。
+//
+// DefineSystem は ResourceSettings を複数取るため、スイッチ系の body には同じクラスの
+// instance が 2 件入る (External binding + Internal Port)。1 件しか見ないと 2 件目を
+// 黙って見落とす。
+//
+// 1 件も無ければ Fatal。
+func embeddedInstancesOf(t *testing.T, body, class string) []string {
+	t.Helper()
+	marker := `CLASSNAME="` + class + `"`
+	var out []string
+	for rest := body; ; {
+		start := strings.Index(rest, marker)
+		if start < 0 {
+			break
+		}
+		rest = rest[start:]
+		end := strings.Index(rest, "</INSTANCE>")
+		if end < 0 {
+			t.Fatalf("embedded instance %s の終了タグが無い", class)
+		}
+		end += len("</INSTANCE>")
+		out = append(out, rest[:end])
+		rest = rest[end:]
+	}
+	if len(out) == 0 {
 		t.Fatalf("embedded instance %s が body に無い", class)
 	}
-	rest := body[start:]
-	end := strings.Index(rest, "</INSTANCE>")
-	if end < 0 {
-		t.Fatalf("embedded instance %s の終了タグが無い", class)
-	}
-	return rest[:end+len("</INSTANCE>")]
+	return out
 }
 
 // TestClient_AddNetworkAdapter_Validation はバリデーション。

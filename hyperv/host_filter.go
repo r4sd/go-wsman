@@ -27,6 +27,17 @@ func (cs *Msvm_ComputerSystem) IsHostComputerSystem() bool {
 	return err != nil
 }
 
+// filterHostComputerSystems は列挙結果から Hyper-V ホスト自身だけを残す。
+func filterHostComputerSystems(all []*Msvm_ComputerSystem) []*Msvm_ComputerSystem {
+	out := make([]*Msvm_ComputerSystem, 0, 1)
+	for _, cs := range all {
+		if cs.IsHostComputerSystem() {
+			out = append(out, cs)
+		}
+	}
+	return out
+}
+
 // filterOutHostComputerSystems は列挙結果から Hyper-V ホスト自身を取り除く。
 //
 // ListComputerSystems から切り出してあるのは、この絞り込みを struct だけで

@@ -178,6 +178,30 @@ func (c *Client) listComputerSystemsIncludingHost(ctx context.Context) ([]*Msvm_
 	return result, nil
 }
 
+// hostComputerSystem は Hyper-V ホスト自身の Msvm_ComputerSystem を返す。
+//
+// Internal スイッチのホスト vNIC は HostResource にホスト側 Msvm_ComputerSystem の
+// WMI オブジェクトパスを要求する (#178)。そのキー値に入れるコンピューター名を得るために使う。
+//
+// 複数一致・不在はエラーにする。実機のホストエントリは 1 件だが、
+// IsHostComputerSystem の判定 (Name が GUID として解釈できないか) が将来崩れたときに
+// 黙って別のインスタンスを掴むより落ちて気付く方を選ぶ。
+func (c *Client) hostComputerSystem(ctx context.Context) (*Msvm_ComputerSystem, error) {
+	all, err := c.listComputerSystemsIncludingHost(ctx)
+	if err != nil {
+		return nil, err
+	}
+	hosts := filterHostComputerSystems(all)
+	switch len(hosts) {
+	case 1:
+		return hosts[0], nil
+	case 0:
+		return nil, fmt.Errorf("hostComputerSystem: ホストの Msvm_ComputerSystem が見つからない")
+	default:
+		return nil, fmt.Errorf("hostComputerSystem: ホスト候補が %d 件あり一意に決まらない", len(hosts))
+	}
+}
+
 // StopRecording は wsman.WithRecorder で開始した記録を確定し、ファイルを書き出す。
 // 記録していない場合は何もしない (#157)。
 func (c *Client) StopRecording() error {
