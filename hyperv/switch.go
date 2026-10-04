@@ -76,23 +76,16 @@ func (c *Client) ListExternalEthernetPorts(ctx context.Context) ([]*Msvm_Externa
 	return result, nil
 }
 
-// CreateSwitch は仮想スイッチを作成する。
-//
-// 内部で Msvm_VirtualEthernetSwitchManagementService.DefineSystem を呼び出す。
-// SwitchType によって ResourceSettings の構成が変わる:
-//   - Private: ResourceSettings なし
-//   - Internal: ResourceSettings に Internal Port (HostResource なし) を 1 つ
-//   - External: ResourceSettings に External NIC binding を 1 つ
-//     (AllowManagementOS=true なら + Internal Port 1 つ)
-//
 // vesmsSelectors は Msvm_VirtualEthernetSwitchManagementService (シングルトン) の
 // メソッド呼び出しに付与する SelectorSet を返す。
 //
 // 🔴 **これが無いと実機は InternalError を返す。** Hyper-V WMI プロバイダ
 // (WsmWmiPl.dll) はメソッド実行時にインスタンスを特定する selector を要求する。
-// VSMS (vsmsSelectors) と同じ事情だが、スイッチ側は見落とされていた (#145)。
+// VSMS (vsmsSelectors) と同じく selector で直るが、**症状は違う**
+// (VSMS は WBEM_E_INVALID_METHOD_PARAMETERS、VESMS は InternalError)。
+// スイッチ側は見落とされていた (#145)。
 //
-// 2026-10-05 実機確認:
+// 2026-10-05 実機確認 (Private スイッチ):
 //
 //	selector 無し          → WS-Man Fault [s:Receiver/w:InternalError]
 //	CreationClassName 付き → DefineSystem は ReturnValue=0、DestroySystem は 4096
@@ -104,6 +97,14 @@ func vesmsSelectors() []wsman.Selector {
 	}
 }
 
+// CreateSwitch は仮想スイッチを作成する。
+//
+// 内部で Msvm_VirtualEthernetSwitchManagementService.DefineSystem を呼び出す。
+// SwitchType によって ResourceSettings の構成が変わる:
+//   - Private: ResourceSettings なし
+//   - Internal: ResourceSettings に Internal Port (HostResource なし) を 1 つ
+//   - External: ResourceSettings に External NIC binding を 1 つ
+//     (AllowManagementOS=true なら + Internal Port 1 つ)
 func (c *Client) CreateSwitch(ctx context.Context, opts CreateSwitchOptions) (*CreateSwitchResult, error) {
 	if opts.Name == "" {
 		return nil, fmt.Errorf("CreateSwitch: Name must not be empty")

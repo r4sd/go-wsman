@@ -2,7 +2,6 @@ package hyperv
 
 import (
 	"context"
-	"strings"
 	"testing"
 )
 
@@ -22,6 +21,10 @@ import (
 //
 // ヘッダの SelectorSet を見る。EPR 内の SelectorSet
 // (TestClient_DestroySwitch_SelectorSet が見ているもの) とは別物。
+//
+// Contains ではなく **SelectorSet 全体を厳密比較**する。Contains だと余計な
+// Selector (SystemName 等) を足されても通ってしまう。ヘッダ側は整形されて改行が
+// 入るので collapseTagWhitespace を通す。
 func TestSwitchManagementServiceSelectors(t *testing.T) {
 	const want = `<w:Selector Name="CreationClassName">Msvm_VirtualEthernetSwitchManagementService</w:Selector>`
 
@@ -37,9 +40,10 @@ func TestSwitchManagementServiceSelectors(t *testing.T) {
 		}); err != nil {
 			t.Fatalf("CreateSwitch: %v", err)
 		}
-		if !strings.Contains(unescapeForAssert(bodies[0]), want) {
-			t.Errorf("DefineSystem に VESMS の CreationClassName selector が無い。"+
-				"実機は InternalError を返す (#145):\n%s", bodies[0])
+		got := collapseTagWhitespace(selectorSetInner(t, unescapeForAssert(bodies[0])))
+		if got != want {
+			t.Errorf("DefineSystem のヘッダ SelectorSet が一致しない。"+
+				"実機は selector 不足で InternalError を返す (#145)\n got:  %s\n want: %s", got, want)
 		}
 	})
 
@@ -55,9 +59,10 @@ func TestSwitchManagementServiceSelectors(t *testing.T) {
 		if _, err := client.DestroySwitch(context.Background(), "Internal"); err != nil {
 			t.Fatalf("DestroySwitch: %v", err)
 		}
-		if !strings.Contains(unescapeForAssert(bodies[2]), want) {
-			t.Errorf("DestroySystem に VESMS の CreationClassName selector が無い。"+
-				"実機は InternalError を返す (#145):\n%s", bodies[2])
+		got := collapseTagWhitespace(selectorSetInner(t, unescapeForAssert(bodies[2])))
+		if got != want {
+			t.Errorf("DestroySystem のヘッダ SelectorSet が一致しない。"+
+				"実機は selector 不足で InternalError を返す (#145)\n got:  %s\n want: %s", got, want)
 		}
 	})
 }
