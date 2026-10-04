@@ -288,20 +288,52 @@ type Msvm_SyntheticEthernetPortSettingData struct {
 }
 
 // Msvm_EthernetPortAllocationSettingData は NIC と仮想スイッチの接続を表す CIM クラス。
+// **読み取り用**の表現。書き込み (AddResourceSettings / DefineSystem) には
+// ethernetAllocationInput を使う。
 //
-// Parent: 親 NIC (Msvm_SyntheticEthernetPortSettingData) の EPR
-// HostResource: 接続先スイッチ (Msvm_VirtualEthernetSwitch) の EPR
+// Parent / HostResource は WS-Addressing EPR ではなく **WMI オブジェクトパス文字列**
+// (wmiObjectPath のコメント参照):
 //
-// HostResource は CIM 仕様では string[] だが、Phase 4 では 1 要素のみのケースで
-// 単一文字列として扱う (実機の Hyper-V も 1 要素送信を受理する)。
+//	Parent       親 NIC (Msvm_SyntheticEthernetPortSettingData) の WMI パス
+//	HostResource 接続先スイッチ (Msvm_VirtualEthernetSwitch) の WMI パス。
+//	             Internal スイッチのホスト vNIC ではホスト側 Msvm_ComputerSystem を指す
+//
+// HostResource は CIM 上 string[] だが、実機が返す値は 1 要素なので読み取りは単一文字列で
+// 受ける。**書き込みは配列でなければ実機が ErrorCode=32776 (Incorrect data type) を返す**
+// ため、ここを書き込みに流用してはいけない (#114)。
 type Msvm_EthernetPortAllocationSettingData struct {
 	InstanceID      string `cim:"InstanceID"`
 	ElementName     string `cim:"ElementName"`
 	ResourceType    uint16 `cim:"ResourceType"`    // 33
 	ResourceSubType string `cim:"ResourceSubType"` // ResourceSubTypeEthernetConnection
-	HostResource    string `cim:"HostResource"`    // 接続先スイッチ EPR
-	Parent          string `cim:"Parent"`          // 親 NIC の EPR
+	HostResource    string `cim:"HostResource"`    // 接続先スイッチの WMI オブジェクトパス
+	Parent          string `cim:"Parent"`          // 親 NIC の WMI オブジェクトパス
 	EnabledState    uint16 `cim:"EnabledState"`    // 2=Enabled, 3=Disabled
+}
+
+// ethernetAllocationInput は Msvm_EthernetPortAllocationSettingData を
+// AddResourceSettings / DefineSystem で **送る** ための入力表現。
+//
+// 読み取り用 struct と分けているのは HostResource の CIM 型が string[] だからで、
+// 配列で送らないと実機が ErrorCode=32776 (Incorrect data type) を返す。
+// ストレージ側の storageAllocationInput と同じパターン。
+//
+// 2026-10-05 実機検証 (使い捨て VM + 使い捨て Private スイッチ、2x2):
+//
+//	Parent のエスケープ  HostResource  結果
+//	素                   スカラー       ErrorCode=32773
+//	素                   配列           ErrorCode=32773
+//	\ エスケープ        スカラー       ErrorCode=32773
+//	\ エスケープ        配列           成功
+//
+// 片方だけでは通らない。Parent のエスケープは wmiObjectPath が行う。
+type ethernetAllocationInput struct {
+	ElementName     string   `cim:"ElementName"`
+	ResourceType    uint16   `cim:"ResourceType"`
+	ResourceSubType string   `cim:"ResourceSubType"`
+	HostResource    []string `cim:"HostResource"`
+	Parent          string   `cim:"Parent"`
+	EnabledState    uint16   `cim:"EnabledState"`
 }
 
 // Msvm_ResourceAllocationSettingData は VM に割り当てられた汎用リソースを表す。

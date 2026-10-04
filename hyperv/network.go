@@ -108,9 +108,10 @@ func (c *Client) ListNetworkAdapters(ctx context.Context, vmName string) ([]*Msv
 // ListEthernetPortAllocations は VM の NIC-スイッチ接続
 // (Msvm_EthernetPortAllocationSettingData) 一覧を返す。
 //
-// allocation は Parent に親 NIC の EPR、HostResource に接続先スイッチの EPR を持つ。
+// allocation は Parent に親 NIC、HostResource に接続先スイッチの **WMI オブジェクトパス**を持つ
+// (WS-Addressing EPR ではない。wmiObjectPath のコメント参照)。
 // NIC がどのスイッチに繋がっているかの逆引きは、ListNetworkAdapters(NIC 本体) の InstanceID を
-// 本メソッドの Parent と突き合わせ、HostResource のスイッチ EPR を GetVirtualEthernetSwitch 等で
+// 本メソッドの Parent と突き合わせ、HostResource のスイッチ名を GetVirtualEthernetSwitch 等で
 // 名前解決して行う。
 func (c *Client) ListEthernetPortAllocations(ctx context.Context, vmName string) ([]*Msvm_EthernetPortAllocationSettingData, error) {
 	if vmName == "" {
@@ -186,28 +187,31 @@ func (c *Client) AddNetworkAdapter(ctx context.Context, vmName string, opts Netw
 		return result, fmt.Errorf("AddNetworkAdapter: lookup switch: %w", err)
 	}
 
-	// Selector は MOF に存在するキーだけにする。Msvm_VirtualEthernetSwitch は
-	// CIM_ComputerSystem 派生で、SystemCreationClassName / SystemName を持たない
-	// (それらは CIM_LogicalDevice 系のキー)。実機のアロケーションが参照するスイッチも
-	// CreationClassName と Name の 2 つで一意に定まる。
+	// HostResource / Parent は CIM 上 string / string[] 型で、値は **WMI オブジェクトパス**
+	// を要求する。WS-Addressing EPR (buildEndpointReference) を入れると実機が
+	// ErrorCode=32773 で失敗する (#114)。ストレージ側の AttachVHD と同じ扱い。
 	//
-	// ⚠️ ここで作っているのは WS-Addressing の EPR だが、HostResource / Parent は CIM 上
-	// string 型で **WMI オブジェクトパス**を要求する (wmiObjectPath のコメント参照)。
-	// 形式自体の妥当性は #114 で追跡中で、本 Selector の修正とは別問題。
-	switchEPR := buildEndpointReference(msvmVirtualEthernetSwitchURI, map[string]string{
+	// キーは MOF に存在するものだけにする。Msvm_VirtualEthernetSwitch は CIM_ComputerSystem
+	// 派生で SystemCreationClassName / SystemName を持たない (それらは CIM_LogicalDevice 系の
+	// キー)。実機のアロケーションが参照するスイッチも CreationClassName と Name の 2 つで
+	// 一意に定まる。
+	//
+	// InstanceID は "Microsoft:<GUID>\\<GUID>" のように \ を含む。WMI パスの引用符内では
+	// \ → \\ のエスケープが必要で、これを欠くと同じ 32773 になる (wmiPathValueEscape が行う)。
+	switchPath := wmiObjectPath(c.hostName, msvmVirtualEthernetSwitchURI, map[string]string{
 		"Name":              sw.Name,
 		"CreationClassName": "Msvm_VirtualEthernetSwitch",
 	})
-	portEPR := buildEndpointReference(msvmSyntheticEthernetPortSettingDataURI, map[string]string{
+	portPath := wmiObjectPath(c.hostName, msvmSyntheticEthernetPortSettingDataURI, map[string]string{
 		"InstanceID": result.PortRef,
 	})
 
-	allocation := &Msvm_EthernetPortAllocationSettingData{
+	allocation := &ethernetAllocationInput{
 		ElementName:     opts.ElementName,
 		ResourceType:    ResourceTypeEthernetConnection,
 		ResourceSubType: ResourceSubTypeEthernetConnection,
-		HostResource:    switchEPR,
-		Parent:          portEPR,
+		HostResource:    []string{switchPath},
+		Parent:          portPath,
 		EnabledState:    EnabledStateEnabled,
 	}
 	allocXML, err := marshalEmbeddedInstance(allocation, "Msvm_EthernetPortAllocationSettingData", msvmEthernetPortAllocationSettingDataURI)

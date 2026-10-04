@@ -210,9 +210,42 @@ DefineSystem 経路と ModifySystemSettings 経路で**挙動は同じ**(どち�
 |---|---|---|
 | `AutomaticStartupActionDelay` / `AutomaticCriticalErrorActionTimeout` | ISO 8601 duration `P0DT0H30M0S` | CIM ネイティブ `00000000003000.000000:000` + `TYPE="datetime"` |
 | `BootSourceOrder` | 参照文字列(read 形式) | 別の参照文字列形式 |
+| `HostResource` (`*AllocationSettingData`) | 単一文字列 | `string[]` = CIM-XML `<PROPERTY.ARRAY>` |
 
 datetime 型は `cim:"<name>,datetime"` タグで指定する。marshal 側が型と値の
 両方を変換する。**片方だけでは実機が `ErrorCode=32768` を返す**(2×2 を全数試行して確認)。
+
+read 用 struct を write に流用すると静かに壊れる。書き込み用の入力 struct を別に作る
+(`storageAllocationInput` / `ethernetAllocationInput` がその形)。
+
+### 参照プロパティは EPR と WMI パスの 2 種類がある
+
+同じ「別オブジェクトを指す」でも、**パラメータなら EPR、embedded instance の
+string プロパティなら WMI オブジェクトパス**。混同すると実機が `ErrorCode=32773` を返す。
+
+| 置かれる場所 | 形式 | ヘルパー |
+|---|---|---|
+| Invoke の REF パラメータ (`AffectedSystem` 等) | WS-Addressing EPR | `buildEndpointReference` |
+| embedded instance の `Parent` / `HostResource` | WMI オブジェクトパス | `wmiObjectPath` |
+
+WMI パスのキー値は引用符の中なので `\` → `\\`、`"` → `\"` にエスケープする
+(`wmiPathValueEscape`)。`InstanceID` は `Microsoft:<GUID>\<GUID>` の形で `\` を含むため、
+**ここを忘れるとほぼ必ず踏む**。
+
+`\\HOST\` プレフィクスと namespace の区切り (`/` か `\`) は実機がどちらでも受理する
+(2026-10-05 実機で全組み合わせ確認)。`hostName` は未設定でよい。
+
+2026-10-05 実機 2×2 (#114、使い捨て VM + 使い捨てスイッチ):
+
+| Parent のエスケープ | HostResource | 結果 |
+|---|---|---|
+| 素 | スカラー | `32773` |
+| 素 | 配列 | `32773` |
+| `\\` | スカラー | `32773` |
+| `\\` | 配列 | 成功 |
+
+**片方だけでは通らない。** 成功形を 1 回目・NIC 追加直後に実行しても成功するので、
+順序とタイミングでは説明できない。
 
 ### 主張は観測範囲から書く(順序が大事)
 
