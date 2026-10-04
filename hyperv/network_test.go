@@ -297,7 +297,7 @@ func TestClient_AddNetworkAdapter_WithSwitch(t *testing.T) {
 		`Name="AAAAAAAA-1111-1111-1111-AAAAAAAAAAAA"</VALUE>` +
 		`</VALUE.ARRAY></PROPERTY.ARRAY>`
 	if !strings.Contains(inst, wantHostResource) {
-		t.Errorf("HostResource が一致しない。スカラーで送ると実機は ErrorCode=32776 を返す (#114)\n"+
+		t.Errorf("HostResource が一致しない。スカラーで送ると実機は ErrorCode=32773 を返す (#114)\n"+
 			" got:  %s\n want (部分): %s", inst, wantHostResource)
 	}
 
@@ -311,6 +311,19 @@ func TestClient_AddNetworkAdapter_WithSwitch(t *testing.T) {
 			" got:  %s\n want (部分): %s", inst, wantParent)
 	}
 
+	// WMI パスのキー値を囲む `"` のエンコード。unescapeForAssert を通した inst では
+	// 区別できないので、**生の body** で見る。
+	//
+	// 実機は数値文字参照 `&#34;` (cimValueEscape が出す形) と生の `"` の **どちらも受理する**
+	// (2026-10-05、引用符だけを変えた対照実験で両方成功)。よってどちらかに固定はしない。
+	//
+	// 固定するのは **名前付き参照を使わないこと**。#173 で `&amp;` / `&lt;` を名前付きで
+	// 送ると実機が拒否した前例があり、`&quot;` の受理は未観測。
+	if strings.Contains(allocBody, "&quot;") {
+		t.Errorf("名前付き参照 &quot; が混ざっている。名前付き参照は #173 で実機拒否の前例があり、"+
+			"&quot; 自体の受理は未観測 (#114)\n%s", allocBody)
+	}
+
 	// 旧実装は HostResource / Parent に WS-Addressing EPR を入れていた。
 	// EPR の痕跡 (ResourceURI) が embedded instance に残っていないことを確認する。
 	if strings.Contains(inst, "ResourceURI") {
@@ -318,7 +331,7 @@ func TestClient_AddNetworkAdapter_WithSwitch(t *testing.T) {
 	}
 	// HostResource がスカラー PROPERTY に戻されていないこと。
 	if strings.Contains(inst, `<PROPERTY NAME="HostResource"`) {
-		t.Errorf("HostResource がスカラー PROPERTY になっている。実機は ErrorCode=32776 を返す (#114)\n%s", inst)
+		t.Errorf("HostResource がスカラー PROPERTY になっている。実機は ErrorCode=32773 を返す (#114)\n%s", inst)
 	}
 }
 
@@ -327,9 +340,15 @@ func TestClient_AddNetworkAdapter_WithSwitch(t *testing.T) {
 // SOAP body 全体で Contains すると、同じ文字列が別の場所 (REF パラメータ等) にあっても
 // 通ってしまう。埋め込みインスタンスの範囲に限定して検証するために使う。
 //
-// 戻り値は CLASSNAME 属性の位置から終了タグまで。開始タグ全体ではなく CLASSNAME 属性を
-// マーカーにしているのは、生 XML をソースに書かない関所 (internal/guard の
-// TestNoRawXMLInSources) に引っかけないため。検証対象の PROPERTY 群はこの範囲に収まる。
+// 戻り値は CLASSNAME 属性の位置から最初の終了タグまで。開始タグ全体ではなく CLASSNAME 属性を
+// マーカーにしているのは、それで足りるため (検証対象の PROPERTY 群はこの範囲に収まる)。
+// 副作用として生 XML の関所 (internal/guard の TestNoRawXMLInSources) の正規表現にも
+// 当たらないが、関所が禁じているのは**記録すべき応答 XML** をソースに書くことで、
+// 期待リクエストの断片 (旧テストの <w:Selector …> も同様) はこのリポジトリの既存の書き方。
+//
+// ⚠️ **最初の 1 件しか返さない。** DefineSystem のように embedded instance を複数持つ
+// body (Internal/External スイッチ: Internal Port + External binding) に流用すると
+// 2 件目を黙って見落とす。複数件を検証するときは拡張すること。
 func embeddedInstanceOf(t *testing.T, body, class string) string {
 	t.Helper()
 	start := strings.Index(body, `CLASSNAME="`+class+`"`)

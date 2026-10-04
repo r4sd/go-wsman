@@ -111,8 +111,11 @@ func (c *Client) ListNetworkAdapters(ctx context.Context, vmName string) ([]*Msv
 // allocation は Parent に親 NIC、HostResource に接続先スイッチの **WMI オブジェクトパス**を持つ
 // (WS-Addressing EPR ではない。wmiObjectPath のコメント参照)。
 // NIC がどのスイッチに繋がっているかの逆引きは、ListNetworkAdapters(NIC 本体) の InstanceID を
-// 本メソッドの Parent と突き合わせ、HostResource のスイッチ名を GetVirtualEthernetSwitch 等で
-// 名前解決して行う。
+// 本メソッドの Parent と突き合わせて行う。
+//
+// HostResource のパスに入るスイッチのキーは Name (GUID) なので、表示名が要る場合は
+// GUID を取り出して ListVirtualEthernetSwitches と突合する。GetVirtualEthernetSwitch は
+// ElementName で引くため、この GUID をそのまま渡しても解決できない。
 func (c *Client) ListEthernetPortAllocations(ctx context.Context, vmName string) ([]*Msvm_EthernetPortAllocationSettingData, error) {
 	if vmName == "" {
 		return nil, fmt.Errorf("ListEthernetPortAllocations: vmName must not be empty")
@@ -190,6 +193,9 @@ func (c *Client) AddNetworkAdapter(ctx context.Context, vmName string, opts Netw
 	// HostResource / Parent は CIM 上 string / string[] 型で、値は **WMI オブジェクトパス**
 	// を要求する。WS-Addressing EPR (buildEndpointReference) を入れると実機が
 	// ErrorCode=32773 で失敗する (#114)。ストレージ側の AttachVHD と同じ扱い。
+	//
+	// キー値を囲む `"` は cimValueEscape が数値文字参照 `&#34;` にする。実機はこれを受理する
+	// (2026-10-05 確認)。生の `"` でも通るが、名前付き参照 `&quot;` は未観測。
 	//
 	// キーは MOF に存在するものだけにする。Msvm_VirtualEthernetSwitch は CIM_ComputerSystem
 	// 派生で SystemCreationClassName / SystemName を持たない (それらは CIM_LogicalDevice 系の

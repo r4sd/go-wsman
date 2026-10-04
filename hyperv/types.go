@@ -299,8 +299,12 @@ type Msvm_SyntheticEthernetPortSettingData struct {
 //	             Internal スイッチのホスト vNIC ではホスト側 Msvm_ComputerSystem を指す
 //
 // HostResource は CIM 上 string[] だが、実機が返す値は 1 要素なので読み取りは単一文字列で
-// 受ける。**書き込みは配列でなければ実機が ErrorCode=32776 (Incorrect data type) を返す**
-// ため、ここを書き込みに流用してはいけない (#114)。
+// 受ける。**書き込みは配列でなければ実機が失敗する**ため、ここを書き込みに流用してはいけない。
+// 返るコードは経路で違う: AddResourceSettings (VSMS) は ErrorCode=32773 (#114)、
+// DefineSystem (VESMS) は ErrorCode=32776 Incorrect data type (#178)。
+//
+// なお switch.go の buildInternalPortAllocation / buildExternalAdapterBinding は
+// 現時点でまだこの struct を書き込みに使っている (#146 / #178 で移行予定)。
 type Msvm_EthernetPortAllocationSettingData struct {
 	InstanceID      string `cim:"InstanceID"`
 	ElementName     string `cim:"ElementName"`
@@ -315,8 +319,11 @@ type Msvm_EthernetPortAllocationSettingData struct {
 // AddResourceSettings / DefineSystem で **送る** ための入力表現。
 //
 // 読み取り用 struct と分けているのは HostResource の CIM 型が string[] だからで、
-// 配列で送らないと実機が ErrorCode=32776 (Incorrect data type) を返す。
-// ストレージ側の storageAllocationInput と同じパターン。
+// 配列で送らないと実機が失敗する。ストレージ側の storageAllocationInput と同じパターン。
+//
+// この struct が通る AddResourceSettings (VSMS) 経路では、配列化を外しても
+// エスケープを外したときと同じ ErrorCode=32773 になる (下表)。
+// 32776 (Incorrect data type) が返るのは DefineSystem (VESMS) 経路 (#178)。
 //
 // 2026-10-05 実機検証 (使い捨て VM + 使い捨て Private スイッチ、2x2):
 //

@@ -210,7 +210,7 @@ DefineSystem 経路と ModifySystemSettings 経路で**挙動は同じ**(どち�
 |---|---|---|
 | `AutomaticStartupActionDelay` / `AutomaticCriticalErrorActionTimeout` | ISO 8601 duration `P0DT0H30M0S` | CIM ネイティブ `00000000003000.000000:000` + `TYPE="datetime"` |
 | `BootSourceOrder` | 参照文字列(read 形式) | 別の参照文字列形式 |
-| `HostResource` (`*AllocationSettingData`) | 単一文字列 | `string[]` = CIM-XML `<PROPERTY.ARRAY>` |
+| `HostResource` (`*AllocationSettingData`) | 1 要素で返るので単一 `<p:HostResource>` | `string[]` = CIM-XML `<PROPERTY.ARRAY>` |
 
 datetime 型は `cim:"<name>,datetime"` タグで指定する。marshal 側が型と値の
 両方を変換する。**片方だけでは実機が `ErrorCode=32768` を返す**(2×2 を全数試行して確認)。
@@ -232,6 +232,10 @@ WMI パスのキー値は引用符の中なので `\` → `\\`、`"` → `\"` �
 (`wmiPathValueEscape`)。`InstanceID` は `Microsoft:<GUID>\<GUID>` の形で `\` を含むため、
 **ここを忘れるとほぼ必ず踏む**。
 
+キー値を囲む `"` 自体は、さらに `cimValueEscape` が数値文字参照 `&#34;` にして CDATA に入れる。
+実機は `&#34;` と生の `"` のどちらも受理する(2026-10-05、引用符だけを変えた対照実験)。
+**名前付き参照 `&quot;` は未観測**で、#173 では `&amp;` / `&lt;` が実機に拒否されている。
+
 `\\HOST\` プレフィクスと namespace の区切り (`/` か `\`) は実機がどちらでも受理する
 (2026-10-05 実機で全組み合わせ確認)。`hostName` は未設定でよい。
 
@@ -246,6 +250,14 @@ WMI パスのキー値は引用符の中なので `\` → `\\`、`"` → `\"` �
 
 **片方だけでは通らない。** 成功形を 1 回目・NIC 追加直後に実行しても成功するので、
 順序とタイミングでは説明できない。
+
+この表の `32773` は **AddResourceSettings (VSMS) 経路**の値。
+`DefineSystem` (VESMS) 経路では、配列化を外すと `32776` Incorrect data type になる(#178)。
+**同じ誤りでも経路で返るコードが違う**ので、コードだけ見て原因を決めない。
+
+以前 #114 で「WMI オブジェクトパスにしても直らない」「配列にしても直らない」と
+個別に反証されていたのは、**どのプローブも片方しか満たしていなかった**ため。
+2 要因が同時に必要なときは、片方ずつ試すと両方が「効かない」に見える。
 
 ### 主張は観測範囲から書く(順序が大事)
 
