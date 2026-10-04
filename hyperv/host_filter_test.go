@@ -117,3 +117,54 @@ func TestFilterOutHostComputerSystems(t *testing.T) {
 		t.Errorf("順序が変わった: %q, %q", got[0].ElementName, got[1].ElementName)
 	}
 }
+
+// TestPickHostComputerSystem はホスト 1 件の取り出しと、不在・複数一致のエラーを検証する。
+//
+// Internal スイッチの HostResource にはホスト側 Msvm_ComputerSystem のキーが要る (#178)。
+// 誤ったインスタンスを掴むと、作られたスイッチが別の宛先に繋がる (静かな誤接続) ので、
+// 一意に決まらない場合は落とす。
+//
+// **ホストを先頭以外に置く。** 先頭に置くと「先頭 1 件を返す」だけの実装でも通ってしまう。
+func TestPickHostComputerSystem(t *testing.T) {
+	t.Run("ホスト 1 件", func(t *testing.T) {
+		got, err := pickHostComputerSystem([]*Msvm_ComputerSystem{
+			{Name: "A1B2C3D4-1111-2222-3333-444455556666", ElementName: "vm-worker-01"},
+			{Name: "B2C3D4E5-1111-2222-3333-444455556667", ElementName: "vm-worker-02"},
+			{Name: "WIN-HYPERVHOST", ElementName: "WIN-HYPERVHOST"},
+		})
+		if err != nil {
+			t.Fatalf("pickHostComputerSystem: %v", err)
+		}
+		if got.Name != "WIN-HYPERVHOST" {
+			t.Errorf("ホストではないインスタンスを掴んだ: %q", got.Name)
+		}
+	})
+
+	t.Run("ホスト不在はエラー", func(t *testing.T) {
+		_, err := pickHostComputerSystem([]*Msvm_ComputerSystem{
+			{Name: "A1B2C3D4-1111-2222-3333-444455556666", ElementName: "vm-worker-01"},
+		})
+		if err == nil {
+			t.Error("ホストが無いのにエラーにならない")
+		}
+	})
+
+	t.Run("ホスト複数はエラー", func(t *testing.T) {
+		// IsHostComputerSystem の判定 (Name が GUID でない) が将来崩れたときに、
+		// 黙って 1 件目を使うのではなく落ちること。
+		_, err := pickHostComputerSystem([]*Msvm_ComputerSystem{
+			{Name: "A1B2C3D4-1111-2222-3333-444455556666", ElementName: "vm-worker-01"},
+			{Name: "WIN-HYPERVHOST", ElementName: "WIN-HYPERVHOST"},
+			{Name: "WIN-OTHERHOST", ElementName: "WIN-OTHERHOST"},
+		})
+		if err == nil {
+			t.Error("ホスト候補が 2 件あるのにエラーにならない")
+		}
+	})
+
+	t.Run("空はエラー", func(t *testing.T) {
+		if _, err := pickHostComputerSystem(nil); err == nil {
+			t.Error("空の列挙でエラーにならない")
+		}
+	})
+}

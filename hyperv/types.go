@@ -308,7 +308,6 @@ type Msvm_SyntheticEthernetPortSettingData struct {
 // 受ける。**書き込みは配列でなければ実機が失敗する**ため、ここを書き込みに流用してはいけない。
 // 返るコードは経路で違う: AddResourceSettings (VSMS) は ErrorCode=32773 (#114)、
 // DefineSystem (VESMS) は ErrorCode=32776 Incorrect data type (#178)。
-
 type Msvm_EthernetPortAllocationSettingData struct {
 	InstanceID      string `cim:"InstanceID"`
 	ElementName     string `cim:"ElementName"`

@@ -191,15 +191,7 @@ func (c *Client) hostComputerSystem(ctx context.Context) (*Msvm_ComputerSystem, 
 	if err != nil {
 		return nil, err
 	}
-	hosts := filterHostComputerSystems(all)
-	switch len(hosts) {
-	case 1:
-		return hosts[0], nil
-	case 0:
-		return nil, fmt.Errorf("hostComputerSystem: ホストの Msvm_ComputerSystem が見つからない")
-	default:
-		return nil, fmt.Errorf("hostComputerSystem: ホスト候補が %d 件あり一意に決まらない", len(hosts))
-	}
+	return pickHostComputerSystem(all)
 }
 
 // StopRecording は wsman.WithRecorder で開始した記録を確定し、ファイルを書き出す。

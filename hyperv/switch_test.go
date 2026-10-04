@@ -136,35 +136,49 @@ func TestClient_CreateSwitch_Internal(t *testing.T) {
 // ⚠️ **External スイッチ作成は実機で end-to-end 検証できていない** (#146)。
 // 検証環境の物理 NIC は 1 枚で既存スイッチに束ねられており (IsBound=true)、
 // 束ねられた NIC への再バインドはキーが正しくても ErrorCode=32773 になるため、
-// 作成の成否で実装の正しさを判定できない。期待値は**実機が保存している HostResource の
-// 値**に合わせてある (派生元: wsman/testdata/recorded_pull_externalethernetport.xml)。
+// 作成の成否で実装の正しさを判定できない。
+//
+// **このテストが固定しているのはキーの選び方と形式だけ。**
+//   - キーが MOF の 4 つであることの根拠: CIM_LogicalDevice の Key 修飾子と、
+//     記録 (recorded_pull_externalethernetport.xml) にその 4 つが実在すること。
+//     同記録の Name は ElementName と同値で、Name がキーでないことの裏にもなる
+//   - WMI パス化と配列化の根拠: #114 / #178 の実機検証 (別クラスだが同じプロパティ)
+//
+// 実機が External binding の HostResource にこの形を保存していること自体は、
+// プローブで 1 度観測して Issue #146 に貼ってあるだけで、**リポジトリ内に記録は無い**。
+// 記録器が実機に到達できない環境問題 (CLAUDE.md「環境固有の注意点」) のため、
+// 同じ接続で記録を取れていない。
 func TestClient_CreateSwitch_External(t *testing.T) {
 	enum := loadGolden(t, "enumerate_response_externalethernetport.xml")
-	pull := loadGolden(t, "synthetic/pull_response_externalethernetport.xml")
+	// 実機記録。MOF のキー 4 つを持つ。EndOfSequence を持たないので、
+	// 列挙を終わらせる 2 枚目として legacy golden を続ける (その中身は
+	// ElementName が違うので選択されない)。
+	recorded := loadGolden(t, "recorded_pull_externalethernetport.xml")
+	tail := loadGolden(t, "pull_response_externalethernetport.xml")
 	csEnum := loadGolden(t, "enumerate_response_computersystem.xml")
 	csPull := loadGolden(t, "pull_response_computersystem.xml")
 	resp := loadGolden(t, "invoke_response_define_switch.xml")
 
 	var bodies []string
-	server := newSequenceServer(t, []string{enum, pull, csEnum, csPull, resp}, &bodies)
+	server := newSequenceServer(t, []string{enum, recorded, tail, csEnum, csPull, resp}, &bodies)
 	defer server.Close()
 
 	client, _ := NewClient(server.URL)
 	_, err := client.CreateSwitch(context.Background(), CreateSwitchOptions{
 		Name:              "ExternalSwitch",
 		Type:              SwitchTypeExternal,
-		ExternalAdapter:   "Realtek Gaming 2.5GbE",
+		ExternalAdapter:   "Intel(R) Ethernet Connection (2) I218-LM",
 		AllowManagementOS: true,
 	})
 	if err != nil {
 		t.Fatalf("CreateSwitch: %v", err)
 	}
 
-	if len(bodies) != 5 {
-		t.Fatalf("expected 5 requests, got %d", len(bodies))
+	if len(bodies) != 6 {
+		t.Fatalf("expected 6 requests, got %d", len(bodies))
 	}
 
-	invokeBody := bodies[4]
+	invokeBody := bodies[5]
 	// AllowManagementOS=true → External binding + Internal Port = 2 個
 	if strings.Count(invokeBody, "<p:ResourceSettings>") != 2 {
 		t.Errorf("External switch with AllowManagementOS should have 2 ResourceSettings")
@@ -182,9 +196,9 @@ func TestClient_CreateSwitch_External(t *testing.T) {
 	const wantExternal = `<PROPERTY.ARRAY NAME="HostResource" TYPE="string"><VALUE.ARRAY>` +
 		`<VALUE>root/virtualization/v2:Msvm_ExternalEthernetPort.` +
 		`CreationClassName="Msvm_ExternalEthernetPort",` +
-		`DeviceID="Microsoft:{CCCCCCCC-3333-3333-3333-CCCCCCCCCCCC}",` +
+		`DeviceID="Microsoft:{00000000-0000-4000-8000-000000000007}",` +
 		`SystemCreationClassName="Msvm_ComputerSystem",` +
-		`SystemName="HOST-EXAMPLE"</VALUE>` +
+		`SystemName="scrubbed-1"</VALUE>` +
 		`</VALUE.ARRAY></PROPERTY.ARRAY>`
 	if !strings.Contains(insts[0], wantExternal) {
 		t.Errorf("External binding の HostResource が一致しない (#146)\n got:  %s\n want (部分): %s",
@@ -200,6 +214,39 @@ func TestClient_CreateSwitch_External(t *testing.T) {
 		if strings.Contains(inst, "ResourceURI") {
 			t.Errorf("instance[%d] に EPR の痕跡がある。HostResource は WMI パスで送る (#146)\n%s", i, inst)
 		}
+	}
+}
+
+// TestClient_CreateSwitch_External_MissingKeys は、応答に MOF のキーが欠けている場合に
+// 明示的なエラーになることを検証する。
+//
+// legacy golden (pull_response_externalethernetport.xml) は SystemName /
+// SystemCreationClassName / CreationClassName を持たない。キー欠落に気付かず
+// 空文字で WMI パスを組むと、実機は原因の分からない ErrorCode=32773 を返す。
+// 手元で落とす方が切り分けが早い (#146)。
+func TestClient_CreateSwitch_External_MissingKeys(t *testing.T) {
+	enum := loadGolden(t, "enumerate_response_externalethernetport.xml")
+	pull := loadGolden(t, "pull_response_externalethernetport.xml")
+
+	var bodies []string
+	server := newSequenceServer(t, []string{enum, pull}, &bodies)
+	defer server.Close()
+
+	client, _ := NewClient(server.URL)
+	_, err := client.CreateSwitch(context.Background(), CreateSwitchOptions{
+		Name:            "ExternalSwitch",
+		Type:            SwitchTypeExternal,
+		ExternalAdapter: "Realtek Gaming 2.5GbE",
+	})
+	if err == nil {
+		t.Fatal("SystemName が無い応答なのにエラーにならない")
+	}
+	if !strings.Contains(err.Error(), "missing MOF keys") {
+		t.Errorf("キー欠落だと分かるエラーでない: %v", err)
+	}
+	// DefineSystem まで到達していないこと (列挙 2 件で止まる)。
+	if len(bodies) != 2 {
+		t.Errorf("DefineSystem を呼んでしまっている: %d 件", len(bodies))
 	}
 }
 
