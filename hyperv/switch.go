@@ -102,7 +102,7 @@ func vesmsSelectors() []wsman.Selector {
 // 内部で Msvm_VirtualEthernetSwitchManagementService.DefineSystem を呼び出す。
 // SwitchType によって ResourceSettings の構成が変わる:
 //   - Private: ResourceSettings なし
-//   - Internal: ResourceSettings に Internal Port (HostResource なし) を 1 つ
+//   - Internal: ResourceSettings に Internal Port (HostResource = ホスト CS) を 1 つ
 //   - External: ResourceSettings に External NIC binding を 1 つ
 //     (AllowManagementOS=true なら + Internal Port 1 つ)
 func (c *Client) CreateSwitch(ctx context.Context, opts CreateSwitchOptions) (*CreateSwitchResult, error) {
@@ -162,7 +162,7 @@ func (c *Client) CreateSwitch(ctx context.Context, opts CreateSwitchOptions) (*C
 // buildSwitchResourceSettings は SwitchType に応じた ResourceSettings を返す。
 //
 // Private: 空配列
-// Internal: Internal Port (HostResource なし) 1 個
+// Internal: Internal Port (HostResource = ホスト側 Msvm_ComputerSystem) 1 個
 // External: External NIC binding 1 個 + (AllowManagementOS なら Internal Port 1 個)
 func (c *Client) buildSwitchResourceSettings(ctx context.Context, opts CreateSwitchOptions) ([]string, error) {
 	switch opts.Type {
@@ -170,7 +170,7 @@ func (c *Client) buildSwitchResourceSettings(ctx context.Context, opts CreateSwi
 		return nil, nil
 
 	case SwitchTypeInternal:
-		internalPort, err := c.buildInternalPortAllocation(opts.Name)
+		internalPort, err := c.buildInternalPortAllocation(ctx, opts.Name)
 		if err != nil {
 			return nil, fmt.Errorf("CreateSwitch: build internal port: %w", err)
 		}
@@ -183,7 +183,7 @@ func (c *Client) buildSwitchResourceSettings(ctx context.Context, opts CreateSwi
 		}
 		settings := []string{externalBinding}
 		if opts.AllowManagementOS {
-			internalPort, err := c.buildInternalPortAllocation(opts.Name)
+			internalPort, err := c.buildInternalPortAllocation(ctx, opts.Name)
 			if err != nil {
 				return nil, fmt.Errorf("CreateSwitch: build internal port: %w", err)
 			}
@@ -199,12 +199,29 @@ func (c *Client) buildSwitchResourceSettings(ctx context.Context, opts CreateSwi
 // buildInternalPortAllocation は Internal Port (ホスト OS との接続) を表す
 // Msvm_EthernetPortAllocationSettingData の Embedded XML を返す。
 //
-// Internal Port は HostResource を持たない (物理 NIC に紐付かない)。
-func (c *Client) buildInternalPortAllocation(switchName string) (string, error) {
-	port := &Msvm_EthernetPortAllocationSettingData{
+// 🔴 **HostResource にホスト側 Msvm_ComputerSystem の WMI オブジェクトパスが必要** (#178)。
+// 以前は「物理 NIC に紐付かないから HostResource 不要」としていたが誤りで、実機は
+// ErrorCode=32773 を返していた。実機の Internal スイッチも同じパスを保存している。
+//
+// 2026-10-05 実機確認 (使い捨て Internal スイッチ):
+//
+//	HostResource 無し                → ErrorCode=32773 (Invalid parameter)
+//	ホスト CS のパスを PROPERTY      → ErrorCode=32776 (Incorrect data type)
+//	ホスト CS のパスを PROPERTY.ARRAY → 成功
+func (c *Client) buildInternalPortAllocation(ctx context.Context, switchName string) (string, error) {
+	host, err := c.hostComputerSystem(ctx)
+	if err != nil {
+		return "", fmt.Errorf("lookup host computer system: %w", err)
+	}
+	hostPath := wmiObjectPath(c.hostName, msvmComputerSystemURI, map[string]string{
+		"CreationClassName": "Msvm_ComputerSystem",
+		"Name":              host.Name,
+	})
+	port := &ethernetAllocationInput{
 		ElementName:     switchName, // 慣習的にスイッチ名と同じ
 		ResourceType:    ResourceTypeEthernetConnection,
 		ResourceSubType: ResourceSubTypeEthernetConnection,
+		HostResource:    []string{hostPath},
 		EnabledState:    EnabledStateEnabled,
 	}
 	return marshalEmbeddedInstance(port, "Msvm_EthernetPortAllocationSettingData", msvmEthernetPortAllocationSettingDataURI)
@@ -213,7 +230,16 @@ func (c *Client) buildInternalPortAllocation(switchName string) (string, error) 
 // buildExternalAdapterBinding は External NIC へのバインディングを表す
 // Msvm_EthernetPortAllocationSettingData の Embedded XML を返す。
 //
-// 内部で物理 NIC を表示名で検索し、その EPR を HostResource に埋め込む。
+// 内部で物理 NIC を表示名で検索し、その **WMI オブジェクトパス**を HostResource に埋め込む。
+//
+// キーは MOF の 4 つ (CreationClassName / DeviceID / SystemCreationClassName / SystemName)。
+// 以前は CreationClassName + Name を EPR で入れていたが、Name はキーではない (#146)。
+//
+// ⚠️ **End-to-end では実機検証できていない。** 検証環境の物理 NIC は 1 枚で、既存スイッチに
+// 束ねられている (IsBound=true)。束ねられた NIC への再バインドはキーが正しくても
+// ErrorCode=32773 になるため、作成の成否で実装の正しさを判定できない。
+// 根拠は**実機が保存している HostResource の値との一致**であって、作成の成功ではない。
+// 配列化と WMI パス化そのものは #114 / #178 で実機検証済み。
 func (c *Client) buildExternalAdapterBinding(ctx context.Context, opts CreateSwitchOptions) (string, error) {
 	ports, err := c.ListExternalEthernetPorts(ctx)
 	if err != nil {
@@ -230,15 +256,21 @@ func (c *Client) buildExternalAdapterBinding(ctx context.Context, opts CreateSwi
 		return "", fmt.Errorf("external adapter %q not found", opts.ExternalAdapter)
 	}
 
-	nicEPR := buildEndpointReference(msvmExternalEthernetPortURI, map[string]string{
-		"CreationClassName": "Msvm_ExternalEthernetPort",
-		"Name":              match.Name,
+	if match.DeviceID == "" || match.SystemName == "" {
+		return "", fmt.Errorf("external adapter %q is missing MOF keys (DeviceID=%q SystemName=%q)",
+			opts.ExternalAdapter, match.DeviceID, match.SystemName)
+	}
+	nicPath := wmiObjectPath(c.hostName, msvmExternalEthernetPortURI, map[string]string{
+		"CreationClassName":       "Msvm_ExternalEthernetPort",
+		"DeviceID":                match.DeviceID,
+		"SystemCreationClassName": "Msvm_ComputerSystem",
+		"SystemName":              match.SystemName,
 	})
-	binding := &Msvm_EthernetPortAllocationSettingData{
+	binding := &ethernetAllocationInput{
 		ElementName:     opts.Name,
 		ResourceType:    ResourceTypeEthernetConnection,
 		ResourceSubType: ResourceSubTypeEthernetConnection,
-		HostResource:    nicEPR,
+		HostResource:    []string{nicPath},
 		EnabledState:    EnabledStateEnabled,
 	}
 	return marshalEmbeddedInstance(binding, "Msvm_EthernetPortAllocationSettingData", msvmEthernetPortAllocationSettingDataURI)

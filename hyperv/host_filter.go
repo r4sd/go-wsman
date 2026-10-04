@@ -1,6 +1,10 @@
 package hyperv
 
-import "github.com/google/uuid"
+import (
+	"fmt"
+
+	"github.com/google/uuid"
+)
 
 // IsHostComputerSystem は この Msvm_ComputerSystem が Hyper-V ホスト自身 (管理 OS) かを返す。
 //
@@ -25,6 +29,36 @@ import "github.com/google/uuid"
 func (cs *Msvm_ComputerSystem) IsHostComputerSystem() bool {
 	_, err := uuid.Parse(cs.Name)
 	return err != nil
+}
+
+// pickHostComputerSystem は列挙結果からホスト自身を 1 件だけ取り出す。
+//
+// 不在・複数一致はエラーにする。IsHostComputerSystem の判定 (Name が GUID として
+// 解釈できないか) が将来崩れたときに、黙って別のインスタンスを掴むより落ちて気付く方を選ぶ。
+//
+// Client から切り出してあるのは、この分岐を struct だけでテストできるようにするため
+// (記録器が実機に到達できない間、配線は固定できないが選ぶ条件は固定できる)。
+func pickHostComputerSystem(all []*Msvm_ComputerSystem) (*Msvm_ComputerSystem, error) {
+	hosts := filterHostComputerSystems(all)
+	switch len(hosts) {
+	case 1:
+		return hosts[0], nil
+	case 0:
+		return nil, fmt.Errorf("pickHostComputerSystem: ホストの Msvm_ComputerSystem が見つからない")
+	default:
+		return nil, fmt.Errorf("pickHostComputerSystem: ホスト候補が %d 件あり一意に決まらない", len(hosts))
+	}
+}
+
+// filterHostComputerSystems は列挙結果から Hyper-V ホスト自身だけを残す。
+func filterHostComputerSystems(all []*Msvm_ComputerSystem) []*Msvm_ComputerSystem {
+	out := make([]*Msvm_ComputerSystem, 0, 1)
+	for _, cs := range all {
+		if cs.IsHostComputerSystem() {
+			out = append(out, cs)
+		}
+	}
+	return out
 }
 
 // filterOutHostComputerSystems は列挙結果から Hyper-V ホスト自身を取り除く。

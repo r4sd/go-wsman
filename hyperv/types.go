@@ -263,12 +263,18 @@ type Msvm_VirtualEthernetSwitchSettingData struct {
 //
 // External Switch を作成するときに、接続先となる物理 NIC を識別するために使う。
 // read-only。
+// MOF のキーは CreationClassName / DeviceID / SystemCreationClassName / SystemName の 4 つ。
+// **Name はキーではない** (実機では ElementName と同じ表示名が入る。2026-10-05 実測)。
+// HostResource に埋める WMI オブジェクトパスはこの 4 キーで組む (#146)。
 type Msvm_ExternalEthernetPort struct {
-	Name             string `cim:"Name"`             // GUID
-	ElementName      string `cim:"ElementName"`      // 表示名 (例: "Realtek Gaming 2.5GbE")
-	DeviceID         string `cim:"DeviceID"`         // 物理デバイス ID
-	PermanentAddress string `cim:"PermanentAddress"` // 永続 MAC アドレス
-	IsBound          bool   `cim:"IsBound"`          // 既にスイッチに紐付け済みか
+	Name                    string `cim:"Name"`                    // 表示名 (キーではない)
+	ElementName             string `cim:"ElementName"`             // 表示名 (例: "Realtek Gaming 2.5GbE")
+	DeviceID                string `cim:"DeviceID"`                // 物理デバイス ID ("Microsoft:{GUID}")
+	CreationClassName       string `cim:"CreationClassName"`       // 常に "Msvm_ExternalEthernetPort"
+	SystemCreationClassName string `cim:"SystemCreationClassName"` // 常に "Msvm_ComputerSystem"
+	SystemName              string `cim:"SystemName"`              // ホストのコンピューター名
+	PermanentAddress        string `cim:"PermanentAddress"`        // 永続 MAC アドレス
+	IsBound                 bool   `cim:"IsBound"`                 // 既にスイッチに紐付け済みか
 }
 
 // Msvm_SyntheticEthernetPortSettingData は VM の合成 NIC 設定を表す CIM クラス。
@@ -302,9 +308,6 @@ type Msvm_SyntheticEthernetPortSettingData struct {
 // 受ける。**書き込みは配列でなければ実機が失敗する**ため、ここを書き込みに流用してはいけない。
 // 返るコードは経路で違う: AddResourceSettings (VSMS) は ErrorCode=32773 (#114)、
 // DefineSystem (VESMS) は ErrorCode=32776 Incorrect data type (#178)。
-//
-// なお switch.go の buildInternalPortAllocation / buildExternalAdapterBinding は
-// 現時点でまだこの struct を書き込みに使っている (#146 / #178 で移行予定)。
 type Msvm_EthernetPortAllocationSettingData struct {
 	InstanceID      string `cim:"InstanceID"`
 	ElementName     string `cim:"ElementName"`

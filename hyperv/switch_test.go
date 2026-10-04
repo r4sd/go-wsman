@@ -71,12 +71,20 @@ func TestClient_CreateSwitch_Private(t *testing.T) {
 
 // TestClient_CreateSwitch_Internal は Internal Switch 作成を検証する。
 //
-// Internal は ResourceSettings に Internal Port 1 個。HostResource は持たない。
+// Internal は ResourceSettings に Internal Port 1 個。その HostResource は
+// **ホスト側 Msvm_ComputerSystem の WMI オブジェクトパス**で、配列で送る (#178)。
+//
+// 想定リクエスト順 (3 件):
+//
+//	1-2: listComputerSystemsIncludingHost (enum + pull) — hostComputerSystem 内
+//	3: DefineSystem invoke
 func TestClient_CreateSwitch_Internal(t *testing.T) {
+	csEnum := loadGolden(t, "enumerate_response_computersystem.xml")
+	csPull := loadGolden(t, "pull_response_computersystem.xml")
 	resp := loadGolden(t, "invoke_response_define_switch.xml")
 
 	var bodies []string
-	server := newSequenceServer(t, []string{resp}, &bodies)
+	server := newSequenceServer(t, []string{csEnum, csPull, resp}, &bodies)
 	defer server.Close()
 
 	client, _ := NewClient(server.URL)
@@ -88,59 +96,157 @@ func TestClient_CreateSwitch_Internal(t *testing.T) {
 		t.Fatalf("CreateSwitch: %v", err)
 	}
 
-	body := bodies[0]
+	if len(bodies) != 3 {
+		t.Fatalf("expected 3 requests, got %d", len(bodies))
+	}
+
+	body := bodies[2]
 	if strings.Count(body, "<p:ResourceSettings>") != 1 {
 		t.Errorf("Internal switch body should contain exactly 1 ResourceSettings, body=%s", body)
 	}
-	if !strings.Contains(body, "Msvm_EthernetPortAllocationSettingData") {
-		t.Errorf("body should contain Msvm_EthernetPortAllocationSettingData")
+
+	// HostResource はホスト側 Msvm_ComputerSystem の WMI パスを PROPERTY.ARRAY で。
+	// 2026-10-05 実機: 無ければ ErrorCode=32773、スカラーなら 32776 (#178)。
+	inst := embeddedInstanceOf(t, unescapeForAssert(body), "Msvm_EthernetPortAllocationSettingData")
+	const wantHostResource = `<PROPERTY.ARRAY NAME="HostResource" TYPE="string"><VALUE.ARRAY>` +
+		`<VALUE>root/virtualization/v2:Msvm_ComputerSystem.` +
+		`CreationClassName="Msvm_ComputerSystem",Name="HOST-EXAMPLE"</VALUE>` +
+		`</VALUE.ARRAY></PROPERTY.ARRAY>`
+	if !strings.Contains(inst, wantHostResource) {
+		t.Errorf("Internal Port の HostResource が一致しない。"+
+			"欠けると実機は ErrorCode=32773、スカラーなら 32776 (#178)\n got:  %s\n want (部分): %s",
+			inst, wantHostResource)
 	}
-	// Internal Port は HostResource を持たない (embedded instance は CIM-XML <PROPERTY> 形式, #81)
-	if strings.Contains(body, `NAME="HostResource"`) {
-		t.Errorf("Internal switch should not have HostResource (no physical NIC)")
+	// 旧実装は HostResource を一切入れていなかった。
+	if strings.Contains(inst, `<PROPERTY NAME="HostResource"`) {
+		t.Errorf("HostResource がスカラー PROPERTY になっている。実機は ErrorCode=32776 (#178)\n%s", inst)
 	}
 }
 
 // TestClient_CreateSwitch_External は External Switch 作成を検証する。
 //
-// 想定リクエスト順 (3 件):
+// 想定リクエスト順 (5 件):
 //
 //	1-2: ListExternalEthernetPorts (enum + pull) — buildExternalAdapterBinding 内
-//	3: DefineSystem invoke
+//	3-4: listComputerSystemsIncludingHost (enum + pull) — Internal Port 用 (#178)
+//	5: DefineSystem invoke
 //
 // AllowManagementOS=true なら ResourceSettings は 2 個 (External binding + Internal port)。
+//
+// ⚠️ **External スイッチ作成は実機で end-to-end 検証できていない** (#146)。
+// 検証環境の物理 NIC は 1 枚で既存スイッチに束ねられており (IsBound=true)、
+// 束ねられた NIC への再バインドはキーが正しくても ErrorCode=32773 になるため、
+// 作成の成否で実装の正しさを判定できない。
+//
+// **このテストが固定しているのはキーの選び方と形式だけ。**
+//   - キーが MOF の 4 つであることの根拠: CIM_LogicalDevice の Key 修飾子と、
+//     記録 (recorded_pull_externalethernetport.xml) にその 4 つが実在すること。
+//     同記録の Name は ElementName と同値で、Name がキーでないことの裏にもなる
+//   - WMI パス化と配列化の根拠: #114 / #178 の実機検証 (別クラスだが同じプロパティ)
+//
+// 実機が External binding の HostResource にこの形を保存していること自体は、
+// プローブで 1 度観測して Issue #146 に貼ってあるだけで、**リポジトリ内に記録は無い**。
+// 記録器が実機に到達できない環境問題 (CLAUDE.md「環境固有の注意点」) のため、
+// 同じ接続で記録を取れていない。
 func TestClient_CreateSwitch_External(t *testing.T) {
 	enum := loadGolden(t, "enumerate_response_externalethernetport.xml")
-	pull := loadGolden(t, "pull_response_externalethernetport.xml")
+	// 実機記録。MOF のキー 4 つを持つ。EndOfSequence を持たないので、
+	// 列挙を終わらせる 2 枚目として legacy golden を続ける (その中身は
+	// ElementName が違うので選択されない)。
+	recorded := loadGolden(t, "recorded_pull_externalethernetport.xml")
+	tail := loadGolden(t, "pull_response_externalethernetport.xml")
+	csEnum := loadGolden(t, "enumerate_response_computersystem.xml")
+	csPull := loadGolden(t, "pull_response_computersystem.xml")
 	resp := loadGolden(t, "invoke_response_define_switch.xml")
 
 	var bodies []string
-	server := newSequenceServer(t, []string{enum, pull, resp}, &bodies)
+	server := newSequenceServer(t, []string{enum, recorded, tail, csEnum, csPull, resp}, &bodies)
 	defer server.Close()
 
 	client, _ := NewClient(server.URL)
 	_, err := client.CreateSwitch(context.Background(), CreateSwitchOptions{
 		Name:              "ExternalSwitch",
 		Type:              SwitchTypeExternal,
-		ExternalAdapter:   "Realtek Gaming 2.5GbE",
+		ExternalAdapter:   "Intel(R) Ethernet Connection (2) I218-LM",
 		AllowManagementOS: true,
 	})
 	if err != nil {
 		t.Fatalf("CreateSwitch: %v", err)
 	}
 
-	if len(bodies) != 3 {
-		t.Fatalf("expected 3 requests, got %d", len(bodies))
+	if len(bodies) != 6 {
+		t.Fatalf("expected 6 requests, got %d", len(bodies))
 	}
 
-	invokeBody := bodies[2]
+	invokeBody := bodies[5]
 	// AllowManagementOS=true → External binding + Internal Port = 2 個
 	if strings.Count(invokeBody, "<p:ResourceSettings>") != 2 {
 		t.Errorf("External switch with AllowManagementOS should have 2 ResourceSettings")
 	}
-	// External NIC の Name (Realtek の GUID) が HostResource に含まれる
-	if !strings.Contains(invokeBody, "CCCCCCCC-3333-3333-3333-CCCCCCCCCCCC") {
-		t.Errorf("invoke body should reference selected External NIC GUID")
+
+	// 2 件とも見る。1 件目が External binding、2 件目が Internal Port。
+	insts := embeddedInstancesOf(t, unescapeForAssert(invokeBody),
+		"Msvm_EthernetPortAllocationSettingData")
+	if len(insts) != 2 {
+		t.Fatalf("embedded instance が 2 件でない: %d 件", len(insts))
+	}
+
+	// External binding: HostResource は MOF のキー 4 つで組んだ WMI パス。
+	// Name は**キーではない**ので入らない (#146)。キー名は昇順。
+	const wantExternal = `<PROPERTY.ARRAY NAME="HostResource" TYPE="string"><VALUE.ARRAY>` +
+		`<VALUE>root/virtualization/v2:Msvm_ExternalEthernetPort.` +
+		`CreationClassName="Msvm_ExternalEthernetPort",` +
+		`DeviceID="Microsoft:{00000000-0000-4000-8000-000000000007}",` +
+		`SystemCreationClassName="Msvm_ComputerSystem",` +
+		`SystemName="scrubbed-1"</VALUE>` +
+		`</VALUE.ARRAY></PROPERTY.ARRAY>`
+	if !strings.Contains(insts[0], wantExternal) {
+		t.Errorf("External binding の HostResource が一致しない (#146)\n got:  %s\n want (部分): %s",
+			insts[0], wantExternal)
+	}
+	// Internal Port 側はホスト CS を指す (#178)。
+	if !strings.Contains(insts[1], `Name="HOST-EXAMPLE"`) ||
+		!strings.Contains(insts[1], "Msvm_ComputerSystem") {
+		t.Errorf("Internal Port の HostResource がホスト CS を指していない (#178)\n%s", insts[1])
+	}
+	// EPR の痕跡が残っていないこと。
+	for i, inst := range insts {
+		if strings.Contains(inst, "ResourceURI") {
+			t.Errorf("instance[%d] に EPR の痕跡がある。HostResource は WMI パスで送る (#146)\n%s", i, inst)
+		}
+	}
+}
+
+// TestClient_CreateSwitch_External_MissingKeys は、応答に MOF のキーが欠けている場合に
+// 明示的なエラーになることを検証する。
+//
+// legacy golden (pull_response_externalethernetport.xml) は SystemName /
+// SystemCreationClassName / CreationClassName を持たない。キー欠落に気付かず
+// 空文字で WMI パスを組むと、実機は原因の分からない ErrorCode=32773 を返す。
+// 手元で落とす方が切り分けが早い (#146)。
+func TestClient_CreateSwitch_External_MissingKeys(t *testing.T) {
+	enum := loadGolden(t, "enumerate_response_externalethernetport.xml")
+	pull := loadGolden(t, "pull_response_externalethernetport.xml")
+
+	var bodies []string
+	server := newSequenceServer(t, []string{enum, pull}, &bodies)
+	defer server.Close()
+
+	client, _ := NewClient(server.URL)
+	_, err := client.CreateSwitch(context.Background(), CreateSwitchOptions{
+		Name:            "ExternalSwitch",
+		Type:            SwitchTypeExternal,
+		ExternalAdapter: "Realtek Gaming 2.5GbE",
+	})
+	if err == nil {
+		t.Fatal("SystemName が無い応答なのにエラーにならない")
+	}
+	if !strings.Contains(err.Error(), "missing MOF keys") {
+		t.Errorf("キー欠落だと分かるエラーでない: %v", err)
+	}
+	// DefineSystem まで到達していないこと (列挙 2 件で止まる)。
+	if len(bodies) != 2 {
+		t.Errorf("DefineSystem を呼んでしまっている: %d 件", len(bodies))
 	}
 }
 
