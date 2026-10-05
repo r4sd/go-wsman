@@ -540,12 +540,14 @@ func TestClient_AddDVDDrive(t *testing.T) {
 	defer server.Close()
 
 	client, _ := NewClient(server.URL)
+	// ControllerNumber / ControllerLocation は**どちらも 0 以外**にする。
+	// 0 を渡すと「無視して 0 固定」にする変異が検出できない (実際に生き残った)。
 	got, err := client.AddDVDDrive(context.Background(),
 		"11111111-aaaa-bbbb-cccc-000000000001",
 		AddDVDDriveOptions{
 			ControllerType:     ControllerTypeIDE,
 			ControllerNumber:   1,
-			ControllerLocation: 0,
+			ControllerLocation: 1,
 		})
 	if err != nil {
 		t.Fatalf("AddDVDDrive: %v", err)
@@ -561,10 +563,30 @@ func TestClient_AddDVDDrive(t *testing.T) {
 	if got.StorageRef != "" {
 		t.Errorf("StorageRef should be empty for an empty drive, got %q", got.StorageRef)
 	}
-	// Drive subtype は DVD
-	if !strings.Contains(bodies[4], ResourceSubTypeSyntheticDVDDrive) {
-		t.Errorf("drive body should contain Synthetic DVD Drive subtype")
+
+	// 送った Drive instance を丸ごと見る。**5 つのフィールドすべてを固定する。**
+	// SubType だけ見ていると ResourceType / Controller 選択 / Location の配線を
+	// 落としても通ってしまう。
+	drive := unescapeForAssert(bodies[4])
+	for _, want := range []string{
+		// ResourceType=16 (DVD Drive)。17 (Disk Drive) に変えても SubType 比較では気付けない。
+		`<PROPERTY NAME="ResourceType" TYPE="uint16"><VALUE>16</VALUE></PROPERTY>`,
+		`<VALUE>` + ResourceSubTypeSyntheticDVDDrive + `</VALUE>`,
+		// ControllerLocation=1 が AddressOnParent に渡っていること。
+		`<PROPERTY NAME="AddressOnParent" TYPE="string"><VALUE>1</VALUE></PROPERTY>`,
+		// ControllerNumber=1 で 2 番目の IDE コントローラ (fixture は CTRL-0/1 を持つ) を
+		// 選んでいること。Parent に入る InstanceID で見る。
+		`IDE-CTRL-1`,
+	} {
+		if !strings.Contains(drive, want) {
+			t.Errorf("drive body に %q が無い\n body: %s", want, drive)
+		}
 	}
+	// 1 番目のコントローラを掴んでいないこと (ControllerNumber を無視した場合の退行)。
+	if strings.Contains(drive, "IDE-CTRL-0") {
+		t.Errorf("ControllerNumber=1 なのに 1 番目のコントローラを参照している\n body: %s", drive)
+	}
+
 	// Storage 側のクラスが 1 件も出ていないこと。
 	for i, b := range bodies {
 		if strings.Contains(b, "Msvm_StorageAllocationSettingData") {
