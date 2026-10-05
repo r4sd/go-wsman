@@ -421,3 +421,59 @@ func unescapeForAssert(s string) string {
 	)
 	return r.Replace(s)
 }
+
+// TestSwitchDefineDestroyJobAsymmetry は DefineSystem と DestroySystem で
+// 同期 / 非同期が違うことを固定する (#177 項目 2)。
+//
+// 🔴 **手書き golden は両方 ReturnValue=4096 (非同期) を固定していた。** 実機は違う。
+//
+// 2026-10-05 実機確認 (使い捨て Private スイッチの create → destroy):
+//
+//	DefineSystem   ReturnValue=0     Job xsi:nil        同期完了
+//	DestroySystem  ReturnValue=4096  Job に EPR         非同期
+//
+// 呼び出し側は「Job が返るかどうか」で待機の有無を決めるので、ここを取り違えると
+// 「待つべきところで待たない」または「来ない Job を待つ」ことになる。
+// golden を実機記録に差し替えたので、この非対称がそのまま固定される。
+func TestSwitchDefineDestroyJobAsymmetry(t *testing.T) {
+	t.Run("DefineSystem は同期 (Job が返らない)", func(t *testing.T) {
+		resp := loadGolden(t, "invoke_response_define_switch.xml")
+		var bodies []string
+		server := newSequenceServer(t, []string{resp}, &bodies)
+		defer server.Close()
+
+		client, _ := NewClient(server.URL)
+		got, err := client.CreateSwitch(context.Background(), CreateSwitchOptions{
+			Name: "sw1", Type: SwitchTypePrivate,
+		})
+		if err != nil {
+			t.Fatalf("CreateSwitch: %v", err)
+		}
+		if got.JobRef != "" {
+			t.Errorf("JobRef が %q (want 空)。実機の DefineSystem は ReturnValue=0 で同期完了する",
+				got.JobRef)
+		}
+		if got.SwitchRef == "" {
+			t.Error("SwitchRef が空。ResultingSystem から取れるべき")
+		}
+	})
+
+	t.Run("DestroySystem は非同期 (Job が返る)", func(t *testing.T) {
+		enum := loadGolden(t, "enumerate_response_virtualethernetswitch.xml")
+		pull := loadGolden(t, "pull_response_virtualethernetswitch.xml")
+		resp := loadGolden(t, "invoke_response_destroy_switch.xml")
+		var bodies []string
+		server := newSequenceServer(t, []string{enum, pull, resp}, &bodies)
+		defer server.Close()
+
+		client, _ := NewClient(server.URL)
+		jobRef, err := client.DestroySwitch(context.Background(), "Internal")
+		if err != nil {
+			t.Fatalf("DestroySwitch: %v", err)
+		}
+		if jobRef == "" {
+			t.Error("JobRef が空。実機の DestroySystem は ReturnValue=4096 で Job を返すので、" +
+				"呼び出し側は完了を待つ必要がある")
+		}
+	})
+}
