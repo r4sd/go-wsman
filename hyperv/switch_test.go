@@ -74,17 +74,20 @@ func TestClient_CreateSwitch_Private(t *testing.T) {
 // Internal は ResourceSettings に Internal Port 1 個。その HostResource は
 // **ホスト側 Msvm_ComputerSystem の WMI オブジェクトパス**で、配列で送る (#178)。
 //
-// 想定リクエスト順 (3 件):
+// ホスト側 Msvm_ComputerSystem の取得には**ホストを含む列挙応答**が要るので、
+// 実機記録 (recorded_computersystem_*) を使う (#167)。
+// 手書き golden でホスト行を足すのは関所が意図的に禁じている形。
 //
-//	1-2: listComputerSystemsIncludingHost (enum + pull) — hostComputerSystem 内
-//	3: DefineSystem invoke
+// 想定リクエスト順 (6 件):
+//
+//	1-5: listComputerSystemsIncludingHost (enum + pull ×4) — hostComputerSystem 内
+//	6: DefineSystem invoke
 func TestClient_CreateSwitch_Internal(t *testing.T) {
-	csEnum := loadGolden(t, "enumerate_response_computersystem.xml")
-	csPull := loadGolden(t, "pull_response_computersystem.xml")
 	resp := loadGolden(t, "invoke_response_define_switch.xml")
 
+	responses := append(recordedComputerSystemSequence(t), resp)
 	var bodies []string
-	server := newSequenceServer(t, []string{csEnum, csPull, resp}, &bodies)
+	server := newSequenceServer(t, responses, &bodies)
 	defer server.Close()
 
 	client, _ := NewClient(server.URL)
@@ -96,11 +99,11 @@ func TestClient_CreateSwitch_Internal(t *testing.T) {
 		t.Fatalf("CreateSwitch: %v", err)
 	}
 
-	if len(bodies) != 3 {
-		t.Fatalf("expected 3 requests, got %d", len(bodies))
+	if len(bodies) != 6 {
+		t.Fatalf("expected 6 requests, got %d", len(bodies))
 	}
 
-	body := bodies[2]
+	body := bodies[5]
 	if strings.Count(body, "<p:ResourceSettings>") != 1 {
 		t.Errorf("Internal switch body should contain exactly 1 ResourceSettings, body=%s", body)
 	}
@@ -110,7 +113,7 @@ func TestClient_CreateSwitch_Internal(t *testing.T) {
 	inst := embeddedInstanceOf(t, unescapeForAssert(body), "Msvm_EthernetPortAllocationSettingData")
 	const wantHostResource = `<PROPERTY.ARRAY NAME="HostResource" TYPE="string"><VALUE.ARRAY>` +
 		`<VALUE>root/virtualization/v2:Msvm_ComputerSystem.` +
-		`CreationClassName="Msvm_ComputerSystem",Name="HOST-EXAMPLE"</VALUE>` +
+		`CreationClassName="Msvm_ComputerSystem",Name="` + recordedHostName + `"</VALUE>` +
 		`</VALUE.ARRAY></PROPERTY.ARRAY>`
 	if !strings.Contains(inst, wantHostResource) {
 		t.Errorf("Internal Port の HostResource が一致しない。"+
@@ -125,11 +128,11 @@ func TestClient_CreateSwitch_Internal(t *testing.T) {
 
 // TestClient_CreateSwitch_External は External Switch 作成を検証する。
 //
-// 想定リクエスト順 (5 件):
+// 想定リクエスト順 (9 件):
 //
-//	1-2: ListExternalEthernetPorts (enum + pull) — buildExternalAdapterBinding 内
-//	3-4: listComputerSystemsIncludingHost (enum + pull) — Internal Port 用 (#178)
-//	5: DefineSystem invoke
+//	1-3: ListExternalEthernetPorts (enum + 実機記録 + 終端の legacy pull)
+//	4-8: listComputerSystemsIncludingHost (enum + pull ×4) — Internal Port 用 (#178)
+//	9: DefineSystem invoke
 //
 // AllowManagementOS=true なら ResourceSettings は 2 個 (External binding + Internal port)。
 //
@@ -155,12 +158,12 @@ func TestClient_CreateSwitch_External(t *testing.T) {
 	// ElementName が違うので選択されない)。
 	recorded := loadGolden(t, "recorded_pull_externalethernetport.xml")
 	tail := loadGolden(t, "pull_response_externalethernetport.xml")
-	csEnum := loadGolden(t, "enumerate_response_computersystem.xml")
-	csPull := loadGolden(t, "pull_response_computersystem.xml")
 	resp := loadGolden(t, "invoke_response_define_switch.xml")
 
+	responses := append([]string{enum, recorded, tail}, recordedComputerSystemSequence(t)...)
+	responses = append(responses, resp)
 	var bodies []string
-	server := newSequenceServer(t, []string{enum, recorded, tail, csEnum, csPull, resp}, &bodies)
+	server := newSequenceServer(t, responses, &bodies)
 	defer server.Close()
 
 	client, _ := NewClient(server.URL)
@@ -174,11 +177,11 @@ func TestClient_CreateSwitch_External(t *testing.T) {
 		t.Fatalf("CreateSwitch: %v", err)
 	}
 
-	if len(bodies) != 6 {
-		t.Fatalf("expected 6 requests, got %d", len(bodies))
+	if len(bodies) != 9 {
+		t.Fatalf("expected 9 requests, got %d", len(bodies))
 	}
 
-	invokeBody := bodies[5]
+	invokeBody := bodies[8]
 	// AllowManagementOS=true → External binding + Internal Port = 2 個
 	if strings.Count(invokeBody, "<p:ResourceSettings>") != 2 {
 		t.Errorf("External switch with AllowManagementOS should have 2 ResourceSettings")
@@ -205,7 +208,7 @@ func TestClient_CreateSwitch_External(t *testing.T) {
 			insts[0], wantExternal)
 	}
 	// Internal Port 側はホスト CS を指す (#178)。
-	if !strings.Contains(insts[1], `Name="HOST-EXAMPLE"`) ||
+	if !strings.Contains(insts[1], `Name="`+recordedHostName+`"`) ||
 		!strings.Contains(insts[1], "Msvm_ComputerSystem") {
 		t.Errorf("Internal Port の HostResource がホスト CS を指していない (#178)\n%s", insts[1])
 	}
