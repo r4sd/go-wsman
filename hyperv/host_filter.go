@@ -23,9 +23,13 @@ import (
 // 非対称があり、VM だけ見て検証すると「英語だから安全」と誤判断する。#98 と同型の罠。
 //
 // もう 1 つのロケール非依存な材料として InstallDate がある (MOF: VM は構成の作成日時、
-// 管理 OS は Null。実機でもホストだけ xsi:nil)。こちらを併用しないのは、既存の合成 golden が
-// InstallDate を持たず、追加するには fixture の手書きが要るため (本リポジトリは記録器由来の
-// fixture のみを許す)。実機の記録が入ったら AND 条件に締めてよい。
+// 管理 OS は Null。実機でもホストだけ xsi:nil)。
+//
+// **実機の記録が入ったので AND 条件に締められる状態になった** (#185 で追跡)。
+// recorded_computersystem_pull_2.xml (ホスト) は InstallDate が xsi:nil、
+// pull_3/4/5 (VM) は値を持つ。まだ Name 単独で判定しているのは、締めると
+// 「InstallDate を返さない実機」で全 VM がホスト扱いになる破壊的な失敗をしうるため
+// (実機 1 台の観測で AND に締めるのは早い)。
 func (cs *Msvm_ComputerSystem) IsHostComputerSystem() bool {
 	_, err := uuid.Parse(cs.Name)
 	return err != nil
@@ -36,8 +40,8 @@ func (cs *Msvm_ComputerSystem) IsHostComputerSystem() bool {
 // 不在・複数一致はエラーにする。IsHostComputerSystem の判定 (Name が GUID として
 // 解釈できないか) が将来崩れたときに、黙って別のインスタンスを掴むより落ちて気付く方を選ぶ。
 //
-// Client から切り出してあるのは、この分岐を struct だけでテストできるようにするため
-// (記録器が実機に到達できない間、配線は固定できないが選ぶ条件は固定できる)。
+// Client から切り出してあるのは、この分岐を struct だけでテストできるようにするため。
+// 配線は実機記録で固定済 (#167、host_exclusion_wiring_test.go)。
 func pickHostComputerSystem(all []*Msvm_ComputerSystem) (*Msvm_ComputerSystem, error) {
 	hosts := filterHostComputerSystems(all)
 	switch len(hosts) {
@@ -64,8 +68,10 @@ func filterHostComputerSystems(all []*Msvm_ComputerSystem) []*Msvm_ComputerSyste
 // filterOutHostComputerSystems は列挙結果から Hyper-V ホスト自身を取り除く。
 //
 // ListComputerSystems から切り出してあるのは、この絞り込みを struct だけで
-// テストできるようにするため。実機の Enumerate 応答を golden にできない間
-// (記録器が実機に到達できない)、配線そのものは固定できないが、落とす条件は固定できる。
+// テストできるようにするため。
+//
+// **配線 (ListComputerSystems が実際に呼んでいるか) は実機記録で固定済** (#167)。
+// host_exclusion_wiring_test.go を参照。
 func filterOutHostComputerSystems(all []*Msvm_ComputerSystem) []*Msvm_ComputerSystem {
 	out := make([]*Msvm_ComputerSystem, 0, len(all))
 	for _, cs := range all {

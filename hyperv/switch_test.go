@@ -128,7 +128,7 @@ func TestClient_CreateSwitch_Internal(t *testing.T) {
 
 // TestClient_CreateSwitch_External は External Switch 作成を検証する。
 //
-// 想定リクエスト順 (7 件):
+// 想定リクエスト順 (9 件):
 //
 //	1-3: ListExternalEthernetPorts (enum + 実機記録 + 終端の legacy pull)
 //	4-8: listComputerSystemsIncludingHost (enum + pull ×4) — Internal Port 用 (#178)
