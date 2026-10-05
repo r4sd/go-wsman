@@ -63,9 +63,19 @@ type AttachDVDOptions struct {
 //
 // DriveRef は作成された Drive (Msvm_ResourceAllocationSettingData) の参照、
 // StorageRef は作成された Storage (Msvm_StorageAllocationSettingData) の参照。
-// Detach は「Storage (SASD) を先に削除 → Drive (RASD) を削除」の2段が必須
-// (子→親の逆順)。Drive 単独削除では子 SASD が残っているため VMMS が拒否する
-// (0x80041001)。連鎖削除は起きない。DetachStorage を参照。
+//
+// **StorageRef が非空のとき**、Detach は「Storage (SASD) を先に削除 → Drive (RASD) を削除」
+// の2段が必須 (子→親の逆順)。Drive 単独削除では子 SASD が残っているため VMMS が拒否する
+// (0x80041001)。連鎖削除は起きない。
+//
+// **StorageRef が空のとき** (AddDVDDrive のメディア無しドライブ) は Drive 単独削除でよい。
+// 2026-10-05 実機確認: 子 SASD を持たない RASD を RemoveResourceSettings で単独削除し
+// ReturnValue=0、残存 0 件。
+//
+// ⚠️ **StorageRef の空を「メディア無し」の判別に使えるのは err == nil のときだけ。**
+// AttachDVD / AttachVHD が手順 2 成功・手順 3 失敗で返る場合も StorageRef は空になる。
+//
+// DetachStorage を参照。
 type AttachResult struct {
 	DriveRef   string
 	StorageRef string
@@ -293,6 +303,54 @@ func (c *Client) AttachDVD(ctx context.Context, vmName string, opts AttachDVDOpt
 	})
 }
 
+// AddDVDDriveOptions は AddDVDDrive のオプション。
+//
+// Path を持たない (メディアを指定しない) 点が AttachDVDOptions との違い。
+type AddDVDDriveOptions struct {
+	// ControllerType は接続先コントローラの種別 (IDE / SCSI)。
+	ControllerType ControllerType
+
+	// ControllerNumber は同種コントローラの何番目か (InstanceID 昇順で 0 起点)。
+	ControllerNumber int
+
+	// ControllerLocation はコントローラ内の位置。
+	ControllerLocation int
+}
+
+// AddDVDDrive はメディア無しの DVD ドライブを VM に追加する。
+//
+// AttachDVD が「Drive (RASD) 追加 → Storage (SASD) で ISO 紐付け」の 2 段で動くのに対し、
+// 本メソッドは 1 段目で止める。子 SASD を持たない Synthetic DVD Drive RASD が残る。
+//
+// **戻り値の StorageRef は空になる** (err == nil のときに限り「メディア無し」の判別に使える。
+// AttachResult の doc を参照)。
+//
+// 削除は DetachStorage(driveInstanceID, "") で Drive 単独削除でよい。
+//
+// 2026-10-05 実機確認 (Gen1 VM / IDE controller 1 / location 1):
+//
+//	追加後                   DVD Drive RASD 1 件、子 SASD 0 件
+//	PS の Get-VMDvdDrive     ControllerNumber=1 ControllerLocation=1 Path=null
+//	単独削除                 RemoveResourceSettings で ReturnValue=0、残存 0 件
+//	PS の Add-VMDvdDrive と  ResourceType / ResourceSubType / AddressOnParent /
+//	  比較                   Parent / Address / PoolID / ConsumerVisibility / Caption
+//	                         がすべて同一 (= PS が作る空ドライブと同じ CIM 表現)
+//
+// ISO をマウントするには AttachDVD を使う。空 Path の AttachDVD は従来どおりエラー
+// (VHD 側と同じ防御を残すため、空メディアを許すのはこの入口だけ)。
+func (c *Client) AddDVDDrive(ctx context.Context, vmName string, opts AddDVDDriveOptions) (*AttachResult, error) {
+	return c.attachStorage(ctx, vmName, attachOpts{
+		ControllerType:     opts.ControllerType,
+		ControllerNumber:   opts.ControllerNumber,
+		ControllerLocation: opts.ControllerLocation,
+		Path:               "",
+		DriveSubType:       ResourceSubTypeSyntheticDVDDrive,
+		DriveResType:       ResourceTypeDVDDrive,
+		opName:             "AddDVDDrive",
+		allowEmptyMedia:    true,
+	})
+}
+
 // storageAllocationInput は AddResourceSettings で Msvm_StorageAllocationSettingData を送る際の
 // 入力表現。HostResource は CIM 上 string[] なので配列で送る (読み取り用の
 // Msvm_StorageAllocationSettingData は単一値でよいため別 struct にする)。
@@ -314,6 +372,13 @@ type attachOpts struct {
 	DriveResType       uint16
 	StorageResType     uint16
 	opName             string // エラーメッセージ用
+
+	// allowEmptyMedia が true なら Path が空でもエラーにせず、Storage の紐付け (手順 3) を
+	// 省いて Drive だけを追加する。メディア無し DVD ドライブ用 (#181)。
+	//
+	// 既定 (false) では空 Path を拒否する。VHD に「メディア無し」という概念は無いので、
+	// ここを無条件に緩めると AttachVHD の防御が消える。
+	allowEmptyMedia bool
 }
 
 // attachStorage は VHD/DVD アタッチの共通実装。
@@ -321,7 +386,7 @@ func (c *Client) attachStorage(ctx context.Context, vmName string, opts attachOp
 	if vmName == "" {
 		return nil, fmt.Errorf("%s: vmName must not be empty", opts.opName)
 	}
-	if opts.Path == "" {
+	if opts.Path == "" && !opts.allowEmptyMedia {
 		return nil, fmt.Errorf("%s: Path must not be empty", opts.opName)
 	}
 
@@ -385,6 +450,12 @@ func (c *Client) attachStorage(ctx context.Context, vmName string, opts attachOp
 	// 「リソースを追加できませんでした」(Exception, ErrorCode=32773) で失敗する。
 	if err := c.WaitForJob(ctx, driveResult.JobRef); err != nil {
 		return result, fmt.Errorf("%s: wait add drive: %w", opts.opName, err)
+	}
+
+	// メディア無し (空 Path) ならここで終わり。Storage (SASD) を作らないので
+	// 子を持たない Drive RASD だけが残る。
+	if opts.Path == "" {
+		return result, nil
 	}
 
 	// 3. ファイル (VHD/ISO) を Drive に紐付け
