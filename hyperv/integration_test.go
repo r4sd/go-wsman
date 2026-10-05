@@ -1172,8 +1172,37 @@ func discoverScrubNames(t *testing.T, endpoint string, baseOpts []wsman.ClientOp
 			}
 		}
 	}
+	// 🔴 **接続ユーザー名も伏せる (#188)。** Job 系のクラス (Msvm_StorageJob /
+	// Msvm_ConcreteJob) は Owner に "<ホスト名>\<ユーザー名>" を載せる。
+	// ホスト名は上で集めた名前で置換されるが、ユーザー名はこちらが渡している値なので
+	// 「実機から集める」方針から漏れていた。
+	//
+	// DOMAIN\user 形式で渡される場合もあるので、全体と分割した各要素を対象にする。
+	names = append(names, scrubNamesForUser(os.Getenv("WSMAN_USERNAME"))...)
 	t.Logf("記録時に伏せる名前を %d 件収集した", len(names))
 	return names
+}
+
+// scrubNamesForUser は接続ユーザー名から伏せるべき文字列を列挙する。
+//
+// "DOMAIN\user" なら全体と "DOMAIN" / "user" を返す。Owner には
+// "<ホスト名>\<ユーザー名>" の形で載るので、ユーザー名単体が要る。
+//
+// 1 文字など極端に短い値は**対象にしない**。wsman/record.go の scrub は
+// 部分一致で置換するため、短すぎる文字列は無関係な箇所まで壊す。
+func scrubNamesForUser(user string) []string {
+	if user == "" {
+		return nil
+	}
+	out := []string{}
+	for _, cand := range append([]string{user}, strings.Split(user, `\`)...) {
+		cand = strings.TrimSpace(cand)
+		if len(cand) < 3 {
+			continue
+		}
+		out = append(out, cand)
+	}
+	return out
 }
 
 // TestIntegration_ListGuestNetworkAdapterConfigurations はゲスト OS 内 NIC 設定の
