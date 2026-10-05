@@ -514,3 +514,105 @@ func TestClient_DetachStorage_Empty(t *testing.T) {
 		t.Error("expected error for empty driveInstanceID")
 	}
 }
+
+// TestClient_AddDVDDrive はメディア無し DVD ドライブの追加を検証する (#181)。
+//
+// AttachDVD は「Drive 追加 → Storage で ISO 紐付け」の 2 段だが、空メディアは
+// 1 段目で止める。**Storage の AddResourceSettings が呼ばれないこと**を
+// リクエスト数で固定する (呼ばれていても DriveRef は返るので、戻り値だけでは見えない)。
+func TestClient_AddDVDDrive(t *testing.T) {
+	ideEnum := loadGolden(t, "enumerate_response_idecontroller.xml")
+	idePull := loadGolden(t, "pull_response_idecontroller.xml")
+	sysEnum := loadGolden(t, "enumerate_response_systemsettingdata.xml")
+	sysPull := loadGolden(t, "pull_response_systemsettingdata.xml")
+	addResp := loadGolden(t, "invoke_response_add_resource_settings.xml")
+	jobResp := loadGolden(t, "get_response_concretejob_completed.xml")
+
+	// Drive 追加までの 6 件のみ。Storage 側の応答は**与えない**ので、
+	// もし呼ばれたら sequence server が溢れて失敗する。
+	responses := []string{
+		ideEnum, idePull,
+		sysEnum, sysPull, addResp, jobResp,
+	}
+
+	var bodies []string
+	server := newSequenceServer(t, responses, &bodies)
+	defer server.Close()
+
+	client, _ := NewClient(server.URL)
+	got, err := client.AddDVDDrive(context.Background(),
+		"11111111-aaaa-bbbb-cccc-000000000001",
+		AddDVDDriveOptions{
+			ControllerType:     ControllerTypeIDE,
+			ControllerNumber:   1,
+			ControllerLocation: 0,
+		})
+	if err != nil {
+		t.Fatalf("AddDVDDrive: %v", err)
+	}
+
+	if len(bodies) != 6 {
+		t.Fatalf("expected 6 requests (Storage 紐付けをしない), got %d", len(bodies))
+	}
+	if got.DriveRef == "" {
+		t.Error("DriveRef should not be empty")
+	}
+	// メディア無しなので StorageRef は空。
+	if got.StorageRef != "" {
+		t.Errorf("StorageRef should be empty for an empty drive, got %q", got.StorageRef)
+	}
+	// Drive subtype は DVD
+	if !strings.Contains(bodies[4], ResourceSubTypeSyntheticDVDDrive) {
+		t.Errorf("drive body should contain Synthetic DVD Drive subtype")
+	}
+	// Storage 側のクラスが 1 件も出ていないこと。
+	for i, b := range bodies {
+		if strings.Contains(b, "Msvm_StorageAllocationSettingData") {
+			t.Errorf("bodies[%d] に Storage の紐付けが含まれている (メディア無しでは送らない)", i)
+		}
+	}
+}
+
+// TestClient_AddDVDDrive_Validation は AddDVDDrive のバリデーションと、
+// 既存の AttachDVD / AttachVHD が**空 Path を拒否し続ける**ことを検証する。
+//
+// 空メディアを許すのは AddDVDDrive だけ。attachStorage を無条件に緩めると
+// VHD 側 (空メディアという概念が無い) の防御が消える。
+func TestClient_AddDVDDrive_Validation(t *testing.T) {
+	client, _ := NewClient("http://localhost")
+	ctx := context.Background()
+
+	if _, err := client.AddDVDDrive(ctx, "", AddDVDDriveOptions{
+		ControllerType: ControllerTypeIDE,
+	}); err == nil {
+		t.Error("vmName が空ならエラーになるべき")
+	}
+	if _, err := client.AddDVDDrive(ctx, "vm", AddDVDDriveOptions{
+		ControllerType: "Floppy",
+	}); err == nil {
+		t.Error("未対応の ControllerType はエラーになるべき")
+	}
+	if _, err := client.AddDVDDrive(ctx, "vm", AddDVDDriveOptions{
+		ControllerType:     ControllerTypeIDE,
+		ControllerLocation: 99,
+	}); err == nil {
+		t.Error("ControllerLocation が範囲外ならエラーになるべき")
+	}
+
+	// 空メディアを許すのは AddDVDDrive だけ。
+	//
+	// ⚠️ **err != nil だけでは足りない。** バリデーションを外しても、その後の接続失敗で
+	// エラーになるため常に通ってしまう (実際にこの変異が生き残った)。
+	// **バリデーションのメッセージ**を見て、通信前に弾いていることを確かめる。
+	const wantMsg = "Path must not be empty"
+	if _, err := client.AttachDVD(ctx, "vm", AttachDVDOptions{
+		ControllerType: ControllerTypeIDE,
+	}); err == nil || !strings.Contains(err.Error(), wantMsg) {
+		t.Errorf("AttachDVD は空 Path を通信前に拒否し続けるべき: %v", err)
+	}
+	if _, err := client.AttachVHD(ctx, "vm", AttachVHDOptions{
+		ControllerType: ControllerTypeSCSI,
+	}); err == nil || !strings.Contains(err.Error(), wantMsg) {
+		t.Errorf("AttachVHD は空 Path を通信前に拒否し続けるべき: %v", err)
+	}
+}

@@ -293,6 +293,43 @@ func (c *Client) AttachDVD(ctx context.Context, vmName string, opts AttachDVDOpt
 	})
 }
 
+// AddDVDDriveOptions は AddDVDDrive のオプション。
+//
+// Path を持たない (メディアを指定しない) 点が AttachDVDOptions との違い。
+type AddDVDDriveOptions struct {
+	// ControllerType は接続先コントローラの種別 (IDE / SCSI)。
+	ControllerType ControllerType
+
+	// ControllerNumber は同種コントローラの何番目か (InstanceID 昇順で 0 起点)。
+	ControllerNumber int
+
+	// ControllerLocation はコントローラ内の位置。
+	ControllerLocation int
+}
+
+// AddDVDDrive はメディア無しの DVD ドライブを VM に追加する。
+//
+// AttachDVD が「Drive (RASD) 追加 → Storage (SASD) で ISO 紐付け」の 2 段で動くのに対し、
+// 本メソッドは 1 段目で止める。子 SASD を持たない Synthetic DVD Drive RASD が残り、
+// Hyper-V マネージャーでは「メディアなし」の DVD ドライブとして見える。
+//
+// **戻り値の StorageRef は空になる。** 呼び出し側はこれで「メディア無し」を判別できる。
+//
+// ISO をマウントするには AttachDVD を使う。空 Path の AttachDVD は従来どおりエラー
+// (VHD 側と同じ防御を残すため、空メディアを許すのはこの入口だけ)。
+func (c *Client) AddDVDDrive(ctx context.Context, vmName string, opts AddDVDDriveOptions) (*AttachResult, error) {
+	return c.attachStorage(ctx, vmName, attachOpts{
+		ControllerType:     opts.ControllerType,
+		ControllerNumber:   opts.ControllerNumber,
+		ControllerLocation: opts.ControllerLocation,
+		Path:               "",
+		DriveSubType:       ResourceSubTypeSyntheticDVDDrive,
+		DriveResType:       ResourceTypeDVDDrive,
+		opName:             "AddDVDDrive",
+		allowEmptyMedia:    true,
+	})
+}
+
 // storageAllocationInput は AddResourceSettings で Msvm_StorageAllocationSettingData を送る際の
 // 入力表現。HostResource は CIM 上 string[] なので配列で送る (読み取り用の
 // Msvm_StorageAllocationSettingData は単一値でよいため別 struct にする)。
@@ -314,6 +351,13 @@ type attachOpts struct {
 	DriveResType       uint16
 	StorageResType     uint16
 	opName             string // エラーメッセージ用
+
+	// allowEmptyMedia が true なら Path が空でもエラーにせず、Storage の紐付け (手順 3) を
+	// 省いて Drive だけを追加する。メディア無し DVD ドライブ用 (#181)。
+	//
+	// 既定 (false) では空 Path を拒否する。VHD に「メディア無し」という概念は無いので、
+	// ここを無条件に緩めると AttachVHD の防御が消える。
+	allowEmptyMedia bool
 }
 
 // attachStorage は VHD/DVD アタッチの共通実装。
@@ -321,7 +365,7 @@ func (c *Client) attachStorage(ctx context.Context, vmName string, opts attachOp
 	if vmName == "" {
 		return nil, fmt.Errorf("%s: vmName must not be empty", opts.opName)
 	}
-	if opts.Path == "" {
+	if opts.Path == "" && !opts.allowEmptyMedia {
 		return nil, fmt.Errorf("%s: Path must not be empty", opts.opName)
 	}
 
@@ -385,6 +429,12 @@ func (c *Client) attachStorage(ctx context.Context, vmName string, opts attachOp
 	// 「リソースを追加できませんでした」(Exception, ErrorCode=32773) で失敗する。
 	if err := c.WaitForJob(ctx, driveResult.JobRef); err != nil {
 		return result, fmt.Errorf("%s: wait add drive: %w", opts.opName, err)
+	}
+
+	// メディア無し (空 Path) ならここで終わり。Storage (SASD) を作らないので
+	// 子を持たない Drive RASD だけが残る = Hyper-V マネージャーで「メディアなし」と表示される。
+	if opts.Path == "" {
+		return result, nil
 	}
 
 	// 3. ファイル (VHD/ISO) を Drive に紐付け
