@@ -239,10 +239,18 @@ func (c *Client) buildInternalPortAllocation(ctx context.Context, switchName str
 //
 //	✅ ここで組むキーが実機でその NIC を一意に解決する
 //	   (TestIntegration_ExternalAdapterBindingKeysResolve。Get で読むだけなので
-//	    未束縛の NIC が要らない。旧キー CreationClassName + Name は InvalidSelectors で
-//	    失敗することも陰性対照で固定している)
+//	    未束縛の NIC が要らない。旧キー CreationClassName + Name が
+//	    InvalidSelectors で失敗することを fault の Subcode まで固定している)
 //	✅ 配列化と WMI パス化 (#114 / #178)
-//	✅ 実機が保存している HostResource の値と一致する
+//	△ 実機が保存している HostResource の値と一致する
+//	   — プローブで 1 度観測して #146 に貼っただけで、**リポジトリ内に記録は無い**。
+//	   上の ✅ と同じ強さの根拠ではない
+//
+// テストの役割分担:
+//
+//	パス文字列の構文 (区切り・引用・前置) → TestClient_CreateSwitch_External (完全一致)
+//	キーの選び方                          → TestExternalAdapterBindingKeys (タグ無し)
+//	キーが実機で解決すること              → TestIntegration_...KeysResolve (実機)
 //
 //	❌ **External スイッチが実際に作成できること・通信できること**
 //	   検証環境の物理 NIC は 1 枚で既存スイッチに束ねられており (IsBound=true)、

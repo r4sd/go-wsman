@@ -4,16 +4,12 @@ package hyperv
 
 import (
 	"context"
-	"regexp"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/r4sd/go-wsman/wsman"
 )
-
-// hostResourcePattern は embedded instance の HostResource に入っている WMI オブジェクトパスを取り出す。
-var hostResourcePattern = regexp.MustCompile(
-	`(?s)<PROPERTY\.ARRAY NAME="HostResource".*?<VALUE>([^<]*)</VALUE>`)
 
 // TestIntegration_ExternalAdapterBindingKeysResolve は #146 を実機で検証する。
 //
@@ -90,62 +86,24 @@ func TestIntegration_ExternalAdapterBindingKeysResolve(t *testing.T) {
 	//
 	// これが無いと「どんなキーでも解決する」のか「正しいキーだから解決した」のかが
 	// 区別できない。旧形式が通ってしまうなら、この検査には #146 を落とす力が無い。
-	if _, err := client.wsman.Get(ctx, msvmExternalEthernetPortURI,
+	_, oldErr := client.wsman.Get(ctx, msvmExternalEthernetPortURI,
 		wsman.Selector{Name: "CreationClassName", Value: "Msvm_ExternalEthernetPort"},
-		wsman.Selector{Name: "Name", Value: target.ElementName},
-	); err == nil {
-		t.Errorf("旧実装のキー (CreationClassName + Name) でも解決してしまった。" +
+		wsman.Selector{Name: "Name", Value: target.ElementName})
+	if oldErr == nil {
+		t.Fatalf("旧実装のキー (CreationClassName + Name) でも解決してしまった。" +
 			"この検査には #146 を検出する力が無い")
+	}
+	// 🔴 **失敗の理由まで見る。** `err != nil` だけだと、接続断・認証切れ・値の形など
+	// **キーと無関係な理由**でも陰性対照が「OK」になってしまう。
+	// InvalidSelectors = 「そのセレクタではリソースを特定できない」= Name が
+	// キーでないこと (#146 の本質) に対応する。
+	var fault *wsman.Fault
+	if !errors.As(oldErr, &fault) {
+		t.Errorf("旧キーの失敗が WS-Man Fault でない (キーと無関係な理由で落ちている可能性): %v", oldErr)
+	} else if !strings.HasSuffix(fault.Subcode, "InvalidSelectors") {
+		t.Errorf("旧キーの失敗理由が InvalidSelectors でない (Subcode=%q)。"+
+			"キー名が原因だという切り分けが崩れている", fault.Subcode)
 	} else {
-		t.Logf("陰性対照 OK: 旧キーは失敗する (%v)", err)
+		t.Logf("陰性対照 OK: 旧キーは %s で失敗する", fault.Subcode)
 	}
-}
-
-// parseWMIObjectPathKeys は WMI オブジェクトパスの `Key="value"` 群を Selector に変換する。
-//
-//	\\<HOST>\root\virtualization\v2:Msvm_ExternalEthernetPort.CreationClassName="...",DeviceID="..."
-func parseWMIObjectPathKeys(t *testing.T, path string) []wsman.Selector {
-	t.Helper()
-	i := strings.Index(path, ".")
-	if i < 0 {
-		t.Fatalf("WMI オブジェクトパスにキー部分が無い: %q", path)
-	}
-	// 🔴 **HostResource は XML テキストなので `"` が `&#34;` で乗っている。**
-	// 先に実体参照を戻さないとキーが 1 つも取れない (Go の marshal が必ずこうする)。
-	keys := xmlUnescapeForTest(path[i:])
-
-	var out []wsman.Selector
-	re := regexp.MustCompile(`([A-Za-z]+)="((?:[^"\\]|\\.)*)"`)
-	for _, m := range re.FindAllStringSubmatch(keys, -1) {
-		// WMI パスのエスケープを戻す (`\\` → `\`、`\"` → `"`)。
-		v := strings.ReplaceAll(m[2], `\"`, `"`)
-		v = strings.ReplaceAll(v, `\\`, `\`)
-		out = append(out, wsman.Selector{Name: m[1], Value: v})
-	}
-	if len(out) == 0 {
-		t.Fatalf("キーを 1 つも取り出せない: %q", path)
-	}
-	return out
-}
-
-func selectorNames(ss []wsman.Selector) []string {
-	out := make([]string, 0, len(ss))
-	for _, s := range ss {
-		out = append(out, s.Name)
-	}
-	return out
-}
-
-// xmlUnescapeForTest は XML の実体参照を戻す。
-// embedded instance は XML テキストなので `"` が `&#34;` 等になっている。
-func xmlUnescapeForTest(s string) string {
-	for _, p := range [][2]string{
-		{"&#34;", `"`}, {"&quot;", `"`},
-		{"&#39;", "'"}, {"&apos;", "'"},
-		{"&lt;", "<"}, {"&gt;", ">"},
-		{"&amp;", "&"}, // 最後 (他の実体参照を壊さないため)
-	} {
-		s = strings.ReplaceAll(s, p[0], p[1])
-	}
-	return s
 }
