@@ -214,6 +214,69 @@ func TestClient_FindComputerSystemByElementName(t *testing.T) {
 	}
 }
 
+// TestClient_FindComputerSystemByElementName_ExactMatchOnly は照合が
+// **完全一致であって部分一致でない**ことを固定する (#203)。
+//
+// 緩むと「`web` で検索して `web01` が返る」「`web01` で検索して `web` が返る」。
+// provider の Read は表示名で VM を引くので、**別の VM を同一視して state を
+// 上書きする**経路になる。
+//
+// # 3 通りのクエリを投げる
+//
+// 🔴 **片方向だけでは足りない。** 当初は `scrubbed-3` だけで検索していたので、
+// 引数順を入れ替えた変異 (`HasPrefix(クエリ, インスタンス)` 等) が素通りしていた。
+// 3 名それぞれで検索し、**返るのが自分自身**であることを見る。
+//
+//	scrubbed-3    記録。scrubbed-3x の接頭辞 / xscrubbed-3 の接尾辞
+//	scrubbed-3x   合成。scrubbed-3 を接頭辞に持つ
+//	xscrubbed-3   合成。scrubbed-3 を接尾辞に持つ
+//
+// # なぜ合成なのか
+//
+// 伏せ字の番号は **伏せる値の件数**での連番 (接続ユーザー名 + ホスト名 +
+// 全 VM 名 + 全スイッチ名)。今回の記録は 9 件なので `scrubbed-10` が出ていない。
+//
+//	前方一致ペア  伏せる値が 10 件以上あれば scrubbed-1 / scrubbed-10 で**記録でも作れる**
+//	後方一致ペア  伏せ字は常に scrubbed-<数字> で始まるので**原理的に作れない**
+//
+// 今の環境で前者を再現できなかったので両方とも合成にしてある。
+//
+// # 対象外
+//
+// 前後の空白を trim する変異は固定していない。Hyper-V が前後空白付きの表示名を
+// 許すか未確認で、本 Issue の範囲外。
+func TestClient_FindComputerSystemByElementName_ExactMatchOnly(t *testing.T) {
+	// newSequenceServer は応答列を 1 回しか流せないので、クエリごとに立て直す。
+	sequence := func(t *testing.T) []string {
+		return []string{
+			loadGolden(t, "recorded_computersystem_enumerate.xml"),
+			loadGolden(t, "recorded_computersystem_pull_vm_running_a.xml"),       // scrubbed-3
+			loadGolden(t, "synthetic/computersystem_pull_vm_prefix_sibling.xml"), // scrubbed-3x
+			loadGolden(t, "synthetic/computersystem_pull_vm_suffix_sibling.xml"), // xscrubbed-3 + EOS
+		}
+	}
+
+	for _, query := range []string{recordedVMNameRunning, "scrubbed-3x", "xscrubbed-3"} {
+		t.Run(query, func(t *testing.T) {
+			var bodies []string
+			server := newSequenceServer(t, sequence(t), &bodies)
+			defer server.Close()
+
+			client, err := NewClient(server.URL)
+			if err != nil {
+				t.Fatalf("NewClient: %v", err)
+			}
+			got, err := client.FindComputerSystemByElementName(context.Background(), query)
+			if err != nil {
+				t.Fatalf("完全一致なら 1 件に絞れるはず (部分一致に緩んでいる可能性): %v", err)
+			}
+			if got.ElementName != query {
+				t.Errorf("ElementName = %q, want %q (別の VM を拾っている)", got.ElementName, query)
+			}
+		})
+	}
+}
+
 // TestClient_FindComputerSystemByElementName_NotFound は該当 VM が無い場合にエラーを返す。
 //
 // テストサーバーは WQL を解さず記録をそのまま返すため、クライアント側の
