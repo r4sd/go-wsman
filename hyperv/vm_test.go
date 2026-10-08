@@ -588,6 +588,12 @@ func TestClearReadOnlyForModify(t *testing.T) {
 		InstanceID:  "Microsoft:11111111-1111-1111-1111-111111111111",
 		ElementName: "vm-1",
 		Notes:       []string{"keep"},
+		// 🔴 **この 2 つは書き込める** (#195)。実機で 1 プロパティずつ送って確認した
+		// (ModifySystemSettings 受理 + 読み戻しで値が変わる)。
+		// 消すと provider の snapshot_file_location / smart_paging_file_path の
+		// 変更が黙って捨てられる。
+		SnapshotDataRoot: `C:\vms\snap`,
+		SwapFileDataRoot: `C:\vms\swap`,
 		// 除去すべきもの
 		VirtualSystemIdentifier: "11111111-1111-1111-1111-111111111111",
 		VirtualSystemType:       VirtualSystemTypeRealized,
@@ -595,9 +601,7 @@ func TestClearReadOnlyForModify(t *testing.T) {
 		ConfigurationID:         "22222222-2222-2222-2222-222222222222",
 		ConfigurationDataRoot:   `C:\vms`,
 		ConfigurationFile:       `vm.vmcx`,
-		SnapshotDataRoot:        `C:\vms\snap`,
 		SuspendDataRoot:         `C:\vms\suspend`,
-		SwapFileDataRoot:        `C:\vms\swap`,
 		LogDataRoot:             `C:\vms\log`,
 		CreationTime:            "2026-09-09T16:20:31.444762Z",
 		// Parent はチェックポイントを持つ VM 本体にも入る (2026-09-10 実機確認)。
@@ -616,9 +620,7 @@ func TestClearReadOnlyForModify(t *testing.T) {
 		"ConfigurationID":         sd.ConfigurationID,
 		"ConfigurationDataRoot":   sd.ConfigurationDataRoot,
 		"ConfigurationFile":       sd.ConfigurationFile,
-		"SnapshotDataRoot":        sd.SnapshotDataRoot,
 		"SuspendDataRoot":         sd.SuspendDataRoot,
-		"SwapFileDataRoot":        sd.SwapFileDataRoot,
 		"LogDataRoot":             sd.LogDataRoot,
 		"CreationTime":            sd.CreationTime,
 		"Parent":                  sd.Parent,
@@ -635,6 +637,17 @@ func TestClearReadOnlyForModify(t *testing.T) {
 	// 送るべきものは残っていること。
 	if sd.InstanceID == "" {
 		t.Error("InstanceID が消えている (ModifySystemSettings のキー)")
+	}
+	// 🔴 書き込めるプロパティを消していないこと (#195)。
+	// 「全部消す」に戻す変異をここで落とす。
+	for name, got := range map[string]string{
+		"SnapshotDataRoot": sd.SnapshotDataRoot,
+		"SwapFileDataRoot": sd.SwapFileDataRoot,
+	} {
+		if got == "" {
+			t.Errorf("%s が消えている。これは ModifySystemSettings で書き込める "+
+				"(実機確認済み #195)。消すと呼び出し側の変更が黙って捨てられる", name)
+		}
 	}
 	if sd.ElementName != "vm-1" {
 		t.Errorf("ElementName = %q, want vm-1", sd.ElementName)

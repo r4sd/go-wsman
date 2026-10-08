@@ -228,6 +228,21 @@ func (c *Client) DestroySystem(ctx context.Context, vmName string) (string, erro
 // SecureBootTemplateId の説明で「read-only だが ModifyVirtualSystem で変更できる」と述べており、
 // Access type と書き込み可否が一致しないことを認めている。保持する側 (ElementName / Notes /
 // Automatic*Action / MMIO / BootSourceOrder 等) も同じく実機で書けることを確認した結果。
+//
+// 🔴 **SnapshotDataRoot / SwapFileDataRoot はクリアしない** (#195)。
+// 名前が他の *DataRoot と揃っているので一緒にクリアされていたが、**この 2 つは書ける**。
+// 使い捨て VM に `InstanceID + 1 プロパティ`だけを送って 1 つずつ確認した (2026-10-08):
+//
+//	SnapshotDataRoot  受理 (RV=0) → 読み戻しで値が変わる
+//	SwapFileDataRoot  受理 (RV=0) → 読み戻しで値が変わる
+//	上記以外の 12 件  受理 (RV=0) されるが値は変わらない (黙って無視される)
+//
+// クリアしていた間、provider の snapshot_file_location / smart_paging_file_path の
+// 変更は ModifySystemSettings に届かず黙って捨てられていた。
+//
+// ⚠️ **観測範囲**: 上記は「1 プロパティだけ送った」結果。この関数の doc が前提にしている
+// 「Get した SettingData をそのまま書き戻すと Exception になる」ケース (フルペイロード) は
+// 検証していないので、残り 12 件のクリアは据え置く。
 func clearReadOnlyForModify(sd *Msvm_VirtualSystemSettingData) {
 	sd.VirtualSystemIdentifier = ""
 	sd.VirtualSystemType = ""
@@ -235,9 +250,7 @@ func clearReadOnlyForModify(sd *Msvm_VirtualSystemSettingData) {
 	sd.ConfigurationID = ""
 	sd.ConfigurationDataRoot = ""
 	sd.ConfigurationFile = ""
-	sd.SnapshotDataRoot = ""
 	sd.SuspendDataRoot = ""
-	sd.SwapFileDataRoot = ""
 	sd.LogDataRoot = ""
 	sd.CreationTime = ""
 	// Parent はチェックポイントを持つ VM 本体にも入る (2026-09-10 実機確認)。
