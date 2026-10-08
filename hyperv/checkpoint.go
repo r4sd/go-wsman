@@ -265,7 +265,11 @@ func ParentSnapshotID(parent string) string {
 // 🔴 **Job の完了を待ってから呼ぶこと。** Job 実行中は Msvm_AffectedJobElement に
 // ElementEffects=Create の行がまだ現れない (実行中は AffectedSystem を指す
 // ElementEffects=0 の 1 行だけ。2026-10-08 実機確認)。待たずに呼ぶと
-// 「見つからない」で返る。
+// **「見つからない」で返ることがある**。
+//
+// 「必ずそうなる」とは書かない。この呼び出し自体が Enumerate + Pull の数往復なので、
+// その間に Job が完了すれば引けてしまう。**成功しても正しさの保証にはならない**
+// (タイミング依存)。呼び出し側は必ず WaitForJob を挟むこと。
 //
 //	res, err := c.CreateVmCheckpoint(ctx, vmName, hyperv.SnapshotTypeFull)
 //	...

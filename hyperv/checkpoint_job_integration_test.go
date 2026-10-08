@@ -15,9 +15,10 @@ import (
 //
 // 確かめること:
 //  1. CreateSnapshot の ResultingSnapshot が実際に空で返ること (#125 の前提)
-//  2. Job 完了前は ResolveCreatedCheckpoint が「見つからない」で返ること
-//     (association が Job 中にまだ出ないという観測を固定する。
-//     これを確かめないと「待たなくても動く」実装を書いてしまう)
+//  2. Job 完了前は ResolveCreatedCheckpoint が「見つからない」で返ること。
+//     ただし**この呼び出し自体が数往復する**ので、その間に Job が完了すると
+//     引けてしまう。前後の JobState を見て、**実行中のままだった時だけ**
+//     「見つからない」を要求する (そうしないとレースで偽の失敗になる)
 //  3. Job 完了後に引けること
 //  4. 引けた InstanceID が ListVmCheckpoints の差分と一致すること
 //     (既存の回避策との**独立な突合**。片方のバグでは両方同じ答えにならない)
@@ -77,12 +78,23 @@ func TestIntegration_ResolveCreatedCheckpoint(t *testing.T) {
 			res.ReturnValue)
 	}
 
-	// 2. Job 完了前は引けない。
-	if id, err := client.ResolveCreatedCheckpoint(ctx, res.JobRef); err == nil {
-		t.Errorf("Job 完了前に ResolveCreatedCheckpoint が成功した (%q)。"+
-			"doc の「完了後に呼ぶこと」が不要になったか、Job が既に終わっていた", id)
-	} else if !strings.Contains(err.Error(), "見つからない") {
-		t.Errorf("Job 完了前のエラーが想定と違う: %v", err)
+	// 2. Job 完了前は引けない。ただしレースがあるので JobState で場合分けする。
+	stateBefore := jobStateOrZero(client, ctx, res.JobRef)
+	earlyID, earlyErr := client.ResolveCreatedCheckpoint(ctx, res.JobRef)
+	stateAfter := jobStateOrZero(client, ctx, res.JobRef)
+	stillRunning := stateBefore != JobStateCompleted && stateAfter != JobStateCompleted
+	switch {
+	case earlyErr == nil && stillRunning:
+		t.Errorf("Job 実行中 (before=%d after=%d) なのに引けた (%q)。"+
+			"「実行中は Create 行が出ない」という観測が変わっている",
+			stateBefore, stateAfter, earlyID)
+	case earlyErr == nil:
+		t.Logf("早い呼び出しの最中に Job が完了したため引けた (before=%d after=%d)。"+
+			"このケースは失敗にしない", stateBefore, stateAfter)
+	case stateBefore == JobStateCompleted:
+		t.Errorf("Job が既に完了していた (before=%d) のに引けない: %v", stateBefore, earlyErr)
+	case !strings.Contains(earlyErr.Error(), "見つからない"):
+		t.Errorf("Job 完了前のエラーが想定と違う: %v", earlyErr)
 	}
 
 	if err := client.WaitForJob(ctx, res.JobRef); err != nil {
@@ -128,4 +140,14 @@ func TestIntegration_ResolveCreatedCheckpoint(t *testing.T) {
 	} else if err := client.WaitForJob(ctx, snapJob); err != nil {
 		t.Errorf("DestroyVmCheckpoint の Job 待ち: %v", err)
 	}
+}
+
+// jobStateOrZero は Job の JobState を返す。取れなければ 0 を返す
+// (判定を壊さないため。0 は JobStateCompleted ではないので「実行中扱い」に倒れる)。
+func jobStateOrZero(c *Client, ctx context.Context, jobRef string) uint16 {
+	job, err := c.getJob(ctx, msvmConcreteJobURI, jobRef)
+	if err != nil {
+		return 0
+	}
+	return job.JobState
 }
