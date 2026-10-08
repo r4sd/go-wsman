@@ -151,19 +151,13 @@ func xmlEscapeForScrub(s string) string {
 // 一方でパス (C:\VMs\External\cfg.xml) は区切りが非単語文字なので、境界を要求しても当たる。
 func scrubWordBounded(s, value, replacement string) string {
 	for _, v := range []string{value, xmlEscapeForScrub(value)} {
-		if v == "" {
-			continue
-		}
-		re, err := regexp.Compile("(?i)" + regexp.QuoteMeta(v))
-		if err != nil {
+		locs := findWordBounded(s, v)
+		if len(locs) == 0 {
 			continue
 		}
 		var sb strings.Builder
 		last := 0
-		for _, loc := range re.FindAllStringIndex(s, -1) {
-			if !boundedByNonAlnum(s, loc[0], loc[1]) {
-				continue
-			}
+		for _, loc := range locs {
 			sb.WriteString(s[last:loc[0]])
 			sb.WriteString(replacement)
 			last = loc[1]
@@ -172,6 +166,27 @@ func scrubWordBounded(s, value, replacement string) string {
 		s = sb.String()
 	}
 	return s
+}
+
+// findWordBounded は value が単語境界に囲まれて現れる位置を返す (大文字小文字は無視)。
+//
+// **スクラブ側だけが使う。** 検品側 (verifyRecorded) はこれより厳しい定義で探す。
+// 揃えてはいけない理由は verifyRecorded の doc を見ること (#191)。
+func findWordBounded(s, value string) [][]int {
+	if value == "" {
+		return nil
+	}
+	re, err := regexp.Compile("(?i)" + regexp.QuoteMeta(value))
+	if err != nil {
+		return nil
+	}
+	var out [][]int
+	for _, loc := range re.FindAllStringIndex(s, -1) {
+		if boundedByNonAlnum(s, loc[0], loc[1]) {
+			out = append(out, loc)
+		}
+	}
+	return out
 }
 
 // boundedByNonAlnum は s[start:end] の両隣が英数字でないかを返す。
@@ -438,6 +453,11 @@ func (c *Client) StopRecording() error {
 //
 // 匿名化の実装を信頼せず、出力を直接見る。漏れたまま公開リポジトリへ commit するより、
 // 記録し直す方が安いので fail-loud にする。
+//
+// 🔴 **スクラブ側より厳しい定義で探す。** スクラブは単語境界に囲まれた出現だけを
+// 置換するが、検品は部分一致で見て、CIM クラス名の中の出現だけを免除する。
+// 揃えると兄弟識別子 (vm01 に対する vm01os.vhdx 等) の漏れを見逃す。
+// 理由は literalLeaked の doc を見ること (#191)。
 func verifyRecorded(content []byte, scrub []string, endpoint string) error {
 	if err := VerifyRecordedHash(content); err != nil {
 		return err
@@ -452,12 +472,14 @@ func verifyRecorded(content []byte, scrub []string, endpoint string) error {
 			leaks = append(leaks, m[2])
 		}
 	}
+	// 検品は部分一致で見る。ただし **CIM クラス名の中の出現だけ**は免除する (#191)。
+	classSpans := cimClassPattern.FindAllStringIndex(body, -1)
 	for _, lit := range scrub {
 		if lit == "" {
 			continue
 		}
 		for _, v := range []string{lit, xmlEscapeForScrub(lit)} {
-			if strings.Contains(lower, strings.ToLower(v)) {
+			if literalLeaked(body, v, classSpans) {
 				leaks = append(leaks, lit)
 			}
 		}
@@ -474,6 +496,54 @@ func verifyRecorded(content []byte, scrub []string, endpoint string) error {
 		return nil
 	}
 	return fmt.Errorf("匿名化されていない値が残っている: %s", strings.Join(uniqueStrings(leaks), ", "))
+}
+
+// literalLeaked は v が body に残っているかを返す。CIM クラス名の中の出現だけ免除する。
+//
+// # なぜスクラブ側と定義を揃えないのか (#191)
+//
+// スクラブ側 (scrubWordBounded) は単語境界に囲まれた出現だけを置換する。
+// クラス名を壊さないための規則で、classTokensUnchanged が対になっている。
+//
+// 検品側を同じ定義にすると、**兄弟識別子の漏れを止める性質が消える**。
+//
+//	スクラブ対象 vm01、応答に vm01os.vhdx
+//	→ 単語境界を要求すると置換されない。検品も同じ定義なら見逃す
+//	→ 実環境の VM 名 vm01 が部分文字列として公開リポジトリに出る
+//
+// 部分一致で弾いておけば、操作者は vm01os.vhdx をスクラブ対象に足すことになる
+// (記録が通らないので気付く)。**漏らすより弾く**。
+//
+// 一方で、免除しないと記録そのものが成立しないケースが 1 つだけある。
+// スイッチ名 External のような一般語が CIM クラス名 (Msvm_ExternalEthernetPort) に
+// 含まれる場合で、スクラブは意図的に残すのに検品が漏れと判定していた。
+// クラス名は **応答の構造であって実環境の識別子ではない**ので、ここだけ免除する。
+func literalLeaked(body, v string, classSpans [][]int) bool {
+	if v == "" {
+		return false
+	}
+	re, err := regexp.Compile("(?i)" + regexp.QuoteMeta(v))
+	if err != nil {
+		// 正規表現を組めないときに「出現なし」とすると fail-open になる。
+		// 免除なしの部分一致で見る (弾く側に倒す)。
+		return strings.Contains(strings.ToLower(body), strings.ToLower(v))
+	}
+	for _, loc := range re.FindAllStringIndex(body, -1) {
+		if !withinAnySpan(classSpans, loc) {
+			return true
+		}
+	}
+	return false
+}
+
+// withinAnySpan は loc が spans のいずれかに完全に含まれるかを返す。
+func withinAnySpan(spans [][]int, loc []int) bool {
+	for _, sp := range spans {
+		if loc[0] >= sp[0] && loc[1] <= sp[1] {
+			return true
+		}
+	}
+	return false
 }
 
 // VerifyRecordedHash は記録ファイルのヘッダにある sha256 と本文が一致するか確かめる。

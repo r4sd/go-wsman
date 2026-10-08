@@ -370,3 +370,146 @@ func TestScrubMACAddress_WithAttributes(t *testing.T) {
 		t.Error("属性付きの要素で MAC の漏れを見逃した")
 	}
 }
+
+// TestVerifyRecordedExemptsOnlyCimClassNames は、検品が **CIM クラス名の中の出現だけ**を
+// 免除し、それ以外の部分一致は漏れとして弾くことを検証する (#191)。
+//
+// 🔴 **スクラブ側と同じ定義にしてはいけない。** スクラブは単語境界に囲まれた出現だけを
+// 置換するが、検品まで同じにすると vm01 に対する vm01os.vhdx のような
+// 兄弟識別子を見逃し、実環境の名前が部分文字列として公開リポジトリに出る。
+func TestVerifyRecordedExemptsOnlyCimClassNames(t *testing.T) {
+	// 免除する: CIM クラス名の中の出現。これが無いと記録そのものが成立しない。
+	for _, c := range []struct{ lit, body string }{
+		{"External", "<probe>Msvm_ExternalEthernetPort</probe>"},
+		{"external", "<probe>Msvm_ExternalEthernetPort</probe>"}, // 大文字小文字違い
+		{"Computer", "<probe>Msvm_ComputerSystem</probe>"},
+	} {
+		if err := verifyRecorded(recordedFile(c.body), []string{c.lit}, ""); err != nil {
+			t.Errorf("%s: クラス名の中の出現を漏れと判定した: %v", c.lit, err)
+		}
+	}
+
+	// 弾く: クラス名の外の出現は、より長い語の一部でも漏れ扱い。
+	for _, c := range []struct {
+		why       string
+		lit, body string
+	}{
+		{"要素の中身", "External", "<probe>External</probe>"},
+		{"クラス名と同居しても外の出現は弾く", "External", "<probe>Msvm_ExternalEthernetPort then External</probe>"},
+		{"別の VM 名が接頭辞として含む", "vm01", "<probe>vm010</probe>"},
+		{"ユーザー命名のディスク名", "vm01", "<probe>vm01os.vhdx</probe>"},
+		{"ホスト名を接頭辞にした VM 名", "hv01", "<probe>hv01vm1</probe>"},
+		{"より長い語の一部", "admin", "<probe>Administrator</probe>"},
+		{"CJK 名 + 数字", "検証機", "<probe>検証機2</probe>"},
+	} {
+		if err := verifyRecorded(recordedFile(c.body), []string{c.lit}, ""); err == nil {
+			t.Errorf("%s (%s): 兄弟識別子の漏れを見逃した", c.why, c.body)
+		}
+	}
+
+	// 生の形とエスケープ後の形の**両方**を見る。
+	if err := verifyRecorded(recordedFile("<probe>R&amp;D-vm</probe>"), []string{"R&D-vm"}, ""); err == nil {
+		t.Error("エスケープ後の形の残留を見逃した")
+	}
+	if err := verifyRecorded(recordedFile("<probe><![CDATA[R&D-vm]]></probe>"), []string{"R&D-vm"}, ""); err == nil {
+		t.Error("生の形 (CDATA 内) の残留を見逃した")
+	}
+}
+
+// TestRecorderCanRecordResponsesWhoseClassNameContainsASwitchName は、
+// スイッチ名が CIM クラス名に含まれる応答を **記録できる** ことを端から端まで確かめる (#191)。
+//
+// これが #191 の実際の再現例。External という名前のスイッチがあるホストでは、
+// Msvm_ExternalEthernetPort の応答がスクラブ後も "External" を含むため、
+// 旧実装では検品が漏れと判定して StopRecording が落ちていた。
+//
+// 実機記録をそのまま流す (この応答の External は全部クラス名の中にある)。
+func TestRecorderCanRecordResponsesWhoseClassNameContainsASwitchName(t *testing.T) {
+	body := loadGolden(t, "recorded_pull_externalethernetport.xml")
+
+	// recordOnce は StopRecording が落ちたら t.Fatalf する。修正前はここで止まる。
+	files := recordOnce(t, body, WithRecorderScrub("External"))
+	raw, err := os.ReadFile(files[0])
+	if err != nil {
+		t.Fatalf("読めない: %v", err)
+	}
+	if got := string(raw); !strings.Contains(got, "Msvm_ExternalEthernetPort") {
+		t.Errorf("CIM クラス名が壊れている:\n%s", got)
+	}
+}
+
+// TestVerifyRejectsSwitchNameOutsideClassName は、同じスイッチ名でも
+// **クラス名の外**に残っていれば弾くことを確かめる (#191)。
+//
+// 上のテストと対。免除をクラス名に限っていることを示す。
+func TestVerifyRejectsSwitchNameOutsideClassName(t *testing.T) {
+	// fixture 先頭のコメントは落とす。derived-from の **ファイル名**に
+	// externalethernetport が入っており、実機の応答には存在しない出現を作ってしまうため。
+	in := strings.ReplaceAll(goldenBody(t, "synthetic/classname_probe.xml"),
+		"__PRIVATE_PATH__", `C:\VMs\External\cfg.xml`)
+	a := newAnonymizer("https://example.invalid/wsman", []string{"External", "hv01"})
+	got := a.scrub(in)
+
+	// スクラブ側はクラス名を壊さず、要素の中身とパスは伏せる (既存の契約)。
+	if !strings.Contains(got, "Msvm_ExternalEthernetPort") {
+		t.Fatalf("CIM クラス名が壊れた:\n%s", got)
+	}
+	// その出力は検品を通る (残っている External はクラス名の中だけ)。
+	if err := verifyRecorded(recordedFile(got), []string{"External", "hv01"}, ""); err != nil {
+		t.Errorf("クラス名の中の出現だけなのに弾いた: %v", err)
+	}
+	// 要素の中身として 1 つ戻すと弾く。
+	leaked := strings.Replace(got, "<p:ElementName>", "<p:ElementName>External", 1)
+	if err := verifyRecorded(recordedFile(leaked), []string{"External", "hv01"}, ""); err == nil {
+		t.Error("クラス名の外に残ったスイッチ名を見逃した")
+	}
+}
+
+// TestScrubLeavesLongerWordsButVerifyRejectsThem は、スクラブと検品の
+// **意図した非対称**をデータで固定する (#191)。
+//
+// スクラブは「より長い語の一部」を置換しない (応答の構造を壊さないため)。
+// 検品はそれを漏れとして弾く (実環境の識別子を出さないため)。
+// 結果としてその応答は記録できないが、**漏らすより弾く**のが正しい。
+func TestScrubLeavesLongerWordsButVerifyRejectsThem(t *testing.T) {
+	in := string(loadGolden(t, "synthetic/scrub_word_boundary_probe.xml"))
+	a := newAnonymizer("https://example.invalid/wsman", []string{"admin", "vm01"})
+	got := a.scrub(in)
+
+	// スクラブ側: 単独で現れた方は伏せる。
+	for _, gone := range []string{"<user>admin</user>", `\admin\`, "vm01_disk"} {
+		if strings.Contains(got, gone) {
+			t.Errorf("%q が伏せられていない:\n%s", gone, got)
+		}
+	}
+	// スクラブ側: より長い語の一部は壊さない。
+	for _, keep := range []string{"Administrator", "vm010"} {
+		if !strings.Contains(got, keep) {
+			t.Errorf("%q を壊した (より長い語の一部は置換しない):\n%s", keep, got)
+		}
+	}
+
+	// 検品側: その残留を漏れとして弾く。
+	err := verifyRecorded(recordedFile(got), []string{"admin", "vm01"}, "")
+	if err == nil {
+		t.Fatal("スクラブが残した兄弟識別子を検品が見逃した")
+	}
+	for _, want := range []string{"admin", "vm01"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("エラーが %q を示していない: %v", want, err)
+		}
+	}
+}
+
+// goldenBody は fixture 先頭のコメントヘッダを落とした本文を返す。
+//
+// 合成 fixture のヘッダには派生元のパスや説明文が入っており、実機の応答には
+// 存在しない語の出現を作る。検品を通す検査ではそれが偽の漏れになる。
+func goldenBody(t *testing.T, name string) string {
+	t.Helper()
+	s := string(loadGolden(t, name))
+	if i := strings.Index(s, "-->"); i >= 0 {
+		s = s[i+len("-->"):]
+	}
+	return strings.TrimLeft(s, "\n")
+}
