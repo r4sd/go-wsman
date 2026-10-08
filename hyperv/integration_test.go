@@ -1131,59 +1131,6 @@ func TestIntegration_ListBootSources(t *testing.T) {
 	}
 }
 
-// discoverScrubNames は記録前に実機から「伏せるべき名前」を集める (#157)。
-//
-// VM の表示名とホストのコンピュータ名は任意のユーザーデータで、GUID のように
-// パターンで拾えない。環境変数で人が渡す形にすると設定し忘れで静かに漏れるので、
-// 記録用とは別の Client で 1 回列挙して自動で集める。
-//
-// 集め損ねた名前があってもここでは落とさない。最終的な安全網は StopRecording の
-// 保存後検証で、そこには集めた名前が渡る。
-func discoverScrubNames(t *testing.T, endpoint string, baseOpts []wsman.ClientOption) []string {
-	t.Helper()
-	// 🔴 **接続ユーザー名は probe の成否に関わらず先に足す (#188)。**
-	// これは実機から集める値ではなく、こちらが渡している値。下の early return の
-	// 位置に置くと、probe が失敗したときに伏せ字にも StopRecording の保存後検証にも
-	// 入らず**無警告で記録に残る** — #188 が潰したかった「静かに漏れる」型そのもの。
-	//
-	// Job 系のクラス (Msvm_StorageJob / Msvm_ConcreteJob) は Owner に
-	// "<ホスト名>\<ユーザー名>" を載せる。ホスト名は下で集めた名前で置換される。
-	names := scrubNamesForUser(os.Getenv("WSMAN_USERNAME"))
-
-	// baseOpts は記録オプションを含まない。この列挙自体は記録に載せない。
-	probe, err := NewClient(endpoint, baseOpts...)
-	if err != nil {
-		t.Logf("⚠️ 実機からの名前収集に失敗 (Client 作成): %v。ユーザー名のみ伏せる", err)
-		return names
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	// ここだけはホストを含む素の列挙を使う。ホストのコンピューター名も伏せる対象で、
-	// ListComputerSystems (ホスト除外済み) を使うと実機の記録に素のホスト名が残る (#139)。
-	systems, err := probe.listComputerSystemsIncludingHost(ctx)
-	if err != nil {
-		t.Logf("⚠️ 実機からの名前収集に失敗 (listComputerSystemsIncludingHost): %v。ユーザー名のみ伏せる", err)
-		return names
-	}
-	for _, cs := range systems {
-		if cs.ElementName != "" {
-			names = append(names, cs.ElementName)
-		}
-	}
-	// 仮想スイッチの表示名も実環境の名前。応答に素で載る。
-	if switches, err := probe.ListVirtualEthernetSwitches(ctx); err != nil {
-		t.Logf("⚠️ スイッチ名の収集に失敗: %v", err)
-	} else {
-		for _, sw := range switches {
-			if sw.ElementName != "" {
-				names = append(names, sw.ElementName)
-			}
-		}
-	}
-	t.Logf("記録時に伏せる名前を %d 件収集した", len(names))
-	return names
-}
-
 // TestIntegration_ListGuestNetworkAdapterConfigurations はゲスト OS 内 NIC 設定の
 // 読み取りを実機で確認する (read-only)。
 //

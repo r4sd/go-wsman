@@ -287,20 +287,33 @@ func TestVhdTestsDoNotReuseConcreteJobGolden(t *testing.T) {
 	if err != nil {
 		t.Fatalf("vhd_test.go を読めない: %v", err)
 	}
-	// ⚠️ **この定数自身が vhd_test.go に現れる**ので、出現回数で見る。
+	// 🔴 **接頭辞で数える。** 以前は `..._completed.xml` だけを数えていたが、
+	// testdata には `_running.xml` / `_exception.xml` もあり、
+	// **running を流用に戻す変異が生き残った** (Fable のレビューで実証)。
+	// ポーリングテスト自身はリクエスト数しか見ていないので、
+	// ConcreteJob の running 応答でも緑になる。
+	//
+	// ⚠️ **この接頭辞自身が vhd_test.go に現れる**ので、出現回数で見る。
 	// ちょうど 1 回 (= ここ) を期待し、
 	//   2 回以上 → どこかのテストが流用に戻した
-	//   0 回     → 定数名が変わってこの検査が空振りになった
+	//   0 回     → 接頭辞が変わってこの検査が空振りになった
 	// のどちらも検出する。
-	const reused = "get_response_concretejob_completed.xml"
+	//
+	// 観測範囲: **vhd_test.go 内のリテラルのみ**。接頭辞を 2 つの文字列の連結で
+	// 書いた場合や、VHD のテストを別ファイルへ移した場合は検出できない。
+	// ソース grep の限界として受け入れる (本当に塞ぐなら golden の読み込みを
+	// 1 箇所に通して実行時に見るしかない)。
+	//
+	// ⚠️ このコメントに接頭辞そのものを書くと検査が自分で落ちる (一度やった)。
+	const reused = "get_response_concretejob_"
 	switch n := strings.Count(string(src), reused); {
 	case n > 1:
-		t.Errorf("vhd_test.go が %s を %d 箇所で参照している (期待 1 = この検査自身)。\n"+
-			"  VHD 系の Job は Msvm_StorageJob なので、実機記録 (%s) を使うこと (#165)。\n"+
+		t.Errorf("vhd_test.go が %s* を %d 箇所で参照している (期待 1 = この検査自身)。\n"+
+			"  VHD 系の Job は Msvm_StorageJob なので、実機記録 (%s / %s) を使うこと (#165)。\n"+
 			"  MOF 突合は「名前と型が合っている」しか言えず、wire format は別問題。",
-			reused, n, storageJobCompletedGolden)
+			reused, n, storageJobCompletedGolden, storageJobRunningGolden)
 	case n == 0:
-		t.Errorf("%s が vhd_test.go に 1 箇所も無い。この検査が空振りしている "+
-			"(定数名が変わったか、検査ごと消えたか)", reused)
+		t.Errorf("%s* が vhd_test.go に 1 箇所も無い。この検査が空振りしている "+
+			"(接頭辞が変わったか、検査ごと消えたか)", reused)
 	}
 }
