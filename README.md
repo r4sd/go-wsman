@@ -53,7 +53,7 @@ hyperv/  ← Hyper-V CIM バインディング層（Msvm_* の型安全ラッパ
 | ネットワーク | `AddNetworkAdapter`, `RemoveNetworkAdapter`, `AddNetworkAdapterVlan`, `ListNetworkAdapters` |
 | 仮想スイッチ | `CreateSwitch`, `DestroySwitch`, `ListVirtualEthernetSwitches` |
 | ファームウェア | `ListBootSources`, `BootSourceRef`(Gen2 のブート順・セキュアブート) |
-| チェックポイント | `CreateVmCheckpoint`, `ApplyVmCheckpoint`, `RenameVmCheckpoint`, `DestroyVmCheckpoint`, `ListVmCheckpoints` |
+| チェックポイント | `CreateVmCheckpoint`, `ApplyVmCheckpoint`, `RenameVmCheckpoint`, `DestroyVmCheckpoint`, `ListVmCheckpoints`, `ResolveCreatedCheckpoint` |
 | 統合サービス | `GetIntegrationServiceEnabled`, `SetIntegrationServiceEnabled`, `ListIntegrationServices` |
 | GPU / ゲスト情報 | `ListGpuAdapters`, `ListGuestNetworkAdapterConfigurations` |
 | 非同期ジョブ | `WaitForJob`, `WaitForJobEPR`(CIM のメソッドは非同期で返ることがある) |

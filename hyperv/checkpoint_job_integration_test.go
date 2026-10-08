@@ -47,8 +47,15 @@ func TestIntegration_ResolveCreatedCheckpoint(t *testing.T) {
 		// canceled になっている。VM が実機に残る (実際に 1 度残した)。
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 120*time.Second)
 		defer cleanupCancel()
-		if _, err := client.DestroySystem(cleanupCtx, vmGUID); err != nil {
+		// JobRef を捨てない。「削除要求が出た」と「実際に消えた」は別
+		// (他の統合テストも WaitForJob まで見ている)。
+		jobRef, err := client.DestroySystem(cleanupCtx, vmGUID)
+		if err != nil {
 			t.Errorf("🔴 DestroySystem cleanup 失敗 (実機に VM が残る %s): %v", vmName, err)
+			return
+		}
+		if err := client.WaitForJob(cleanupCtx, jobRef); err != nil {
+			t.Errorf("🔴 DestroySystem の Job 待ちが失敗 (実機に VM が残る %s): %v", vmName, err)
 		}
 	})
 
@@ -79,12 +86,16 @@ func TestIntegration_ResolveCreatedCheckpoint(t *testing.T) {
 	}
 
 	// 2. Job 完了前は引けない。ただしレースがあるので JobState で場合分けする。
-	stateBefore := jobStateOrZero(client, ctx, res.JobRef)
+	stateBefore, okBefore := jobState(ctx, client, res.JobRef)
 	earlyID, earlyErr := client.ResolveCreatedCheckpoint(ctx, res.JobRef)
-	stateAfter := jobStateOrZero(client, ctx, res.JobRef)
-	stillRunning := stateBefore != JobStateCompleted && stateAfter != JobStateCompleted
+	stateAfter, okAfter := jobState(ctx, client, res.JobRef)
 	switch {
-	case earlyErr == nil && stillRunning:
+	case !okBefore || !okAfter:
+		// JobState が読めなかった時に「実行中」とみなすと偽の失敗を出しうる。
+		// 判定材料が無いので記録だけする。
+		t.Logf("JobState を読めなかった (before ok=%v after ok=%v) ので判定を省略。"+
+			"early: id=%q err=%v", okBefore, okAfter, earlyID, earlyErr)
+	case earlyErr == nil && stateBefore != JobStateCompleted && stateAfter != JobStateCompleted:
 		t.Errorf("Job 実行中 (before=%d after=%d) なのに引けた (%q)。"+
 			"「実行中は Create 行が出ない」という観測が変わっている",
 			stateBefore, stateAfter, earlyID)
@@ -142,12 +153,14 @@ func TestIntegration_ResolveCreatedCheckpoint(t *testing.T) {
 	}
 }
 
-// jobStateOrZero は Job の JobState を返す。取れなければ 0 を返す
-// (判定を壊さないため。0 は JobStateCompleted ではないので「実行中扱い」に倒れる)。
-func jobStateOrZero(c *Client, ctx context.Context, jobRef string) uint16 {
+// jobState は Job の JobState と、読めたかどうかを返す。
+//
+// 読めなかった時に特定の状態へ丸めない。丸めると「読めなかった」が
+// 「実行中だった」に化けて偽の失敗を出す (呼び出し側で判定を省く)。
+func jobState(ctx context.Context, c *Client, jobRef string) (uint16, bool) {
 	job, err := c.getJob(ctx, msvmConcreteJobURI, jobRef)
 	if err != nil {
-		return 0
+		return 0, false
 	}
-	return job.JobState
+	return job.JobState, true
 }

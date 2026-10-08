@@ -2,6 +2,7 @@ package hyperv
 
 import (
 	"context"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -53,6 +54,57 @@ func TestClient_ResolveCreatedCheckpoint_Recorded(t *testing.T) {
 	}
 	if got != recordedCreatedCheckpointID {
 		t.Errorf("= %q, want %q", got, recordedCreatedCheckpointID)
+	}
+
+	// 🔴 **リクエスト側も見る。** 応答だけ assert していると、列挙するクラス URI の
+	// タイポや WQL フィルタの混入が全緑で通る (Fable のレビューで実証済み)。
+	// stub は何を送られても同じ応答を返すので、応答側からは絶対に分からない。
+	if len(bodies) == 0 {
+		t.Fatal("リクエストが 1 本も飛んでいない")
+	}
+	//
+	// 🔴 **突き合わせる相手は定数ではなくリテラル。** 最初は
+	// `strings.Contains(bodies[0], msvmAffectedJobElementURI)` と書いたが、
+	// 定数を書き換える変異では**リクエストも assert も同じ値に動く**ので
+	// 何も守っていなかった (URI を `...ElementX` にタイポさせる変異が生存した)。
+	// Contains だと `...Element` が `...ElementX` の接頭辞なので、
+	// リテラルにしても部分一致では通ってしまう。**完全一致で見る。**
+	const wantURI = "http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_AffectedJobElement"
+	m := resourceURIPattern.FindStringSubmatch(bodies[0])
+	if m == nil {
+		t.Fatalf("リクエストに ResourceURI が無い:\n%s", bodies[0])
+	}
+	if m[1] != wantURI {
+		t.Errorf("Enumerate の ResourceURI = %q, want %q", m[1], wantURI)
+	}
+	// association は REF プロパティで WQL 絞り込みができない。
+	// フィルタを付けると実機が落とすので、付いていないことを固定する。
+	if strings.Contains(bodies[0], "<w:Filter") {
+		t.Errorf("Enumerate に WQL フィルタが付いている:\n%s", bodies[0])
+	}
+}
+
+// TestClient_ResolveCreatedCheckpoint_RejectsNonSnapshotElement は Create 行が
+// スナップショット以外を指していた時に、その値を黙って返さないことを検証する。
+//
+// ⚠️ 実機では観測していない形。チェックポイント作成以外の Job を渡すと起きうる
+// (`Instance.Property` は入れ子 EPR の最後の Selector 値を返すので、
+// Msvm_ComputerSystem を指す Create 行では VM の GUID が取れてしまう)。
+func TestClient_ResolveCreatedCheckpoint_RejectsNonSnapshotElement(t *testing.T) {
+	var bodies []string
+	server := newSequenceServer(t, []string{
+		loadGolden(t, "recorded_affectedjobelement_enumerate.xml"),
+		loadGolden(t, "synthetic/affectedjobelement_pull_created_not_snapshot.xml"), // EndOfSequence
+	}, &bodies)
+	defer server.Close()
+
+	client, _ := NewClient(server.URL)
+	got, err := client.ResolveCreatedCheckpoint(context.Background(), recordedCheckpointJobID)
+	if err == nil {
+		t.Fatalf("スナップショット以外 (%q) を返した。Microsoft: 接頭辞を検証していない", got)
+	}
+	if !strings.Contains(err.Error(), snapshotInstanceIDPrefix) {
+		t.Errorf("エラーが接頭辞に言及していない: %v", err)
 	}
 }
 
@@ -183,3 +235,7 @@ func TestClient_ResolveCreatedCheckpoint_RejectsMultipleCreated(t *testing.T) {
 		t.Errorf("エラーが想定と違う (件数を報告していない): %v", err)
 	}
 }
+
+// resourceURIPattern は SOAP ヘッダの ResourceURI の値を取り出す。
+// 属性 (s:mustUnderstand) が付くので要素名だけでは当たらない。
+var resourceURIPattern = regexp.MustCompile(`<w:ResourceURI[^>]*>([^<]*)</w:ResourceURI>`)
