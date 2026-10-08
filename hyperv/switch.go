@@ -235,11 +235,22 @@ func (c *Client) buildInternalPortAllocation(ctx context.Context, switchName str
 // キーは MOF の 4 つ (CreationClassName / DeviceID / SystemCreationClassName / SystemName)。
 // 以前は CreationClassName + Name を EPR で入れていたが、Name はキーではない (#146)。
 //
-// ⚠️ **End-to-end では実機検証できていない。** 検証環境の物理 NIC は 1 枚で、既存スイッチに
-// 束ねられている (IsBound=true)。束ねられた NIC への再バインドはキーが正しくても
-// ErrorCode=32773 になるため、作成の成否で実装の正しさを判定できない。
-// 根拠は**実機が保存している HostResource の値との一致**であって、作成の成功ではない。
-// 配列化と WMI パス化そのものは #114 / #178 で実機検証済み。
+// # 何が実機で確かめてあるか
+//
+//	✅ ここで組むキーが実機でその NIC を一意に解決する
+//	   (TestIntegration_ExternalAdapterBindingKeysResolve。Get で読むだけなので
+//	    未束縛の NIC が要らない。旧キー CreationClassName + Name は InvalidSelectors で
+//	    失敗することも陰性対照で固定している)
+//	✅ 配列化と WMI パス化 (#114 / #178)
+//	✅ 実機が保存している HostResource の値と一致する
+//
+//	❌ **External スイッチが実際に作成できること・通信できること**
+//	   検証環境の物理 NIC は 1 枚で既存スイッチに束ねられており (IsBound=true)、
+//	   束ねられた NIC への再バインドは**キーが正しくても間違っていても**
+//	   ErrorCode=32773 になる。作成の成否では実装の正しさを判定できない。
+//	   未束縛の使える物理 NIC が要る (#146 に残す)。
+//	   ホストに未束縛のポートは 1 つあるが Microsoft Kernel Debug Network Adapter
+//	   (擬似デバイス・EnabledState=6) なので代替にならない。
 func (c *Client) buildExternalAdapterBinding(ctx context.Context, opts CreateSwitchOptions) (string, error) {
 	ports, err := c.ListExternalEthernetPorts(ctx)
 	if err != nil {
