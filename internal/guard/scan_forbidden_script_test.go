@@ -1,6 +1,7 @@
 package guard_test
 
 import (
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -39,6 +40,32 @@ func asExitError(err error, target **exec.ExitError) bool {
 	return false
 }
 
+// 🔴 **テストの入力は実行時に連結して組む。**
+//
+// 禁止値をソースに literal で書くと、**走査スクリプトが自分のテストファイルを検出する**
+// (実際に CI が落ちた)。除外リストに足して逃げると、その後そのファイルに
+// 本物が混入しても誰も気付かなくなる。連結にすれば
+// ソース上は `"DESKTOP-" + "KAKEF4K"` のようにパターンに当たらない形で済み、
+// **検査対象から外さずに**負のテストが書ける。
+const (
+	bs = `\\` // バックスラッシュ 1 個
+)
+
+// forbiddenHostName / forbiddenVMName は denylist に実在する値。
+// 連結して組むので、このファイル自体はパターンに当たらない。
+func forbiddenHostName() string { return "DESKTOP-" + "KAKEF4K" }
+func forbiddenVMName() string   { return "k8s-worker-" + "01" }
+
+// partiallyScrubbed は「ホスト名側だけ伏せてユーザー名が生で残った」形 (#188 の漏洩)。
+func partiallyScrubbed() string { return "scrubbed-1" + bs + "someuser" }
+
+// bothScrubbed は正しく両側伏せた形。
+func bothScrubbed() string { return "scrubbed-1" + bs + "scrubbed-8" }
+
+// goInterpretedString は Go の interpreted string で書かれた場合
+// (ソース上はバックスラッシュが 2 個になる)。
+func goInterpretedString() string { return "scrubbed-1" + bs + bs + "scrubbed-8" }
+
 // TestScanForbiddenScript_Text は CI の走査スクリプトの**負のテスト**。
 //
 // 🔴 これが無いと「検査がある」だけで「検査が効く」ことは誰も確かめていない (#159)。
@@ -55,37 +82,37 @@ func TestScanForbiddenScript_Text(t *testing.T) {
 	}{
 		{
 			name:     "片側だけ伏せた値 (#188 の漏洩そのもの)",
-			input:    `<p:Owner>scrubbed-1\someuser</p:Owner>`,
+			input:    "<p:Owner>" + partiallyScrubbed() + "</p:Owner>",
 			wantFail: true,
 			why:      "ホスト名側だけ伏せてユーザー名が生で残っている形",
 		},
 		{
 			name:     "両側とも伏せ字",
-			input:    `<p:Owner>scrubbed-1\scrubbed-8</p:Owner>`,
+			input:    "<p:Owner>" + bothScrubbed() + "</p:Owner>",
 			wantFail: false,
 			why:      "正しく伏せられている",
 		},
 		{
 			name:     "Go の interpreted string (バックスラッシュが 2 個)",
-			input:    `want := "scrubbed-1\\scrubbed-8"`,
+			input:    `want := "` + goInterpretedString() + `"`,
 			wantFail: false,
 			why:      "ソース上は \\ が 2 個になる。ここを弾くと正規表現を緩める圧力になる",
 		},
 		{
 			name:     "XML エスケープした伏せ字表記",
-			input:    `scrubbed-1\&lt;user&gt;`,
+			input:    "scrubbed-1" + bs + "&lt;user&gt;",
 			wantFail: false,
 			why:      "伏せ字プレースホルダ",
 		},
 		{
 			name:     "既知の実環境識別子 (ホスト名)",
-			input:    "host is DESKTOP-KAKEF4K here",
+			input:    "host is " + forbiddenHostName() + " here",
 			wantFail: true,
 			why:      "denylist",
 		},
 		{
 			name:     "既知の実環境識別子 (VM 名)",
-			input:    "node k8s-worker-01 failed",
+			input:    "node " + forbiddenVMName() + " failed",
 			wantFail: true,
 			why:      "denylist",
 		},
@@ -96,19 +123,17 @@ func TestScanForbiddenScript_Text(t *testing.T) {
 			why:      "バックスラッシュが無いので候補にならない",
 		},
 		{
-			// 🔴 **これは検出する (保守的)。** `scrubbed-3\file.txt` は
-			// 「伏せ字 + バックスラッシュ + 生の値」と**構造的に区別できない**。
-			// VM 名を伏せたパスの次の要素が実ファイル名である可能性がある
-			// (`...\scrubbed-3\<実 VM 名>.vhdx` 等)。
-			// 人が中身を見て判断する方に倒す。
+			// 🔴 **これは検出する (保守的)。** 「伏せ字 + バックスラッシュ + 生の値」と
+			// **構造的に区別できない**。VM 名を伏せたパスの次の要素が実ファイル名である
+			// 可能性がある。人が中身を見て判断する方に倒す。
 			name:     "伏せ字の直後にバックスラッシュが続くパス",
-			input:    `C:\Users\scrubbed-3\file.txt`,
+			input:    "C:" + bs + "Users" + bs + "scrubbed-3" + bs + "file.txt",
 			wantFail: true,
 			why:      "片側だけ伏せた値と構造的に区別できないので検出する",
 		},
 		{
 			name:     "伏せ字がパスの末尾 (後ろにバックスラッシュが無い)",
-			input:    `C:\Users\scrubbed-3`,
+			input:    "C:" + bs + "Users" + bs + "scrubbed-3",
 			wantFail: false,
 			why:      "候補にならない",
 		},
@@ -130,10 +155,41 @@ func TestScanForbiddenScript_Text(t *testing.T) {
 					code, gotFail, tt.wantFail, tt.why, out)
 			}
 			// 🔴 **検出した値を出力してはいけない** (CI ログでの二次公開)。
-			if gotFail && strings.Contains(out, "someuser") {
+			if gotFail && strings.Contains(out, tt.input) {
 				t.Errorf("検出した値が出力に含まれている (二次公開):\n%s", out)
 			}
 		})
+	}
+}
+
+// TestScanForbiddenScript_TestFileIsNotExcluded はこのテストファイル自身が
+// 走査の対象に入っていることを確かめる。
+//
+// 禁止値を literal で書いて除外リストに足す、という逃げ方をすると、
+// **その後このファイルに本物が混入しても誰も気付かない。**
+// 入力を連結で組むことで除外が不要になっているので、そこを固定する。
+func TestScanForbiddenScript_TestFileIsNotExcluded(t *testing.T) {
+	data, err := os.ReadFile("scan_forbidden_script_test.go")
+	if err != nil {
+		t.Fatalf("自分自身を読めない: %v", err)
+	}
+	text := string(data)
+	// 連結で組んでいるので、ソースには禁止値の literal が無いはず。
+	for _, bad := range []string{forbiddenHostName(), forbiddenVMName(), partiallyScrubbed()} {
+		if strings.Contains(text, bad) {
+			t.Errorf("テストファイルに禁止値が literal で入っている。" +
+				"連結で組むか、走査スクリプトの除外が必要になる")
+			break
+		}
+	}
+	// スクリプト側の除外にこのファイルが入っていないこと。
+	script, err := os.ReadFile(scanForbiddenScript)
+	if err != nil {
+		t.Fatalf("スクリプトを読めない: %v", err)
+	}
+	if strings.Contains(string(script), "scan_forbidden_script_test.go") {
+		t.Error("走査スクリプトがこのテストファイルを除外している。" +
+			"除外すると本物の混入を見逃す")
 	}
 }
 
