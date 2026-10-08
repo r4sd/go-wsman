@@ -349,6 +349,15 @@ var macInElementPattern = regexp.MustCompile(`<(?:[A-Za-z0-9]+:)?(?:PermanentAdd
 // macLiteralPattern はソース中に直接書かれた MAC。区切り付き・無しの両方。
 var macLiteralPattern = regexp.MustCompile(`\b(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}\b|"[0-9A-Fa-f]{12}"`)
 
+// guidPattern は任意の GUID。
+var guidPattern = regexp.MustCompile(`(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b`)
+
+// recordedGUIDPlaceholder は記録器が GUID を置き換えた後の形。
+//
+// wsman/record.go の placeholderFor が `00000000-0000-4000-8000-%012x` を返す。
+// ここを変えたら record.go 側と一緒に直す (片方だけ変えるとこの関所が空振りする)。
+var recordedGUIDPlaceholder = regexp.MustCompile(`(?i)^00000000-0000-4000-8000-[0-9a-f]{12}$`)
+
 // allowedMACPrefixes は書いてよい MAC の接頭辞。
 //
 //   - 00155D: Hyper-V が仮想 NIC に振る OUI。記録器のプレースホルダがこれを使う
@@ -409,4 +418,82 @@ func TestNoRealMACAddresses(t *testing.T) {
 			t.Fatalf("%s の走査に失敗: %v", dir, err)
 		}
 	}
+}
+
+// TestRecordedFixturesOnlyHavePlaceholderGUIDs は記録 fixture と、そこから派生した
+// 合成 fixture の GUID が**すべて記録器のプレースホルダ形**であることを検証する。
+//
+// # なぜ必要か
+//
+// 記録器は実機の GUID をプレースホルダへ置換する。置換が漏れると
+// **実環境の VM / NIC / Job の GUID が公開リポジトリに入る** (#154 / #188 の型)。
+//
+// CI の denylist (`_security-scan.yml`) は**既知の値の再混入しか止められない**。
+// 新しい環境から採った値・新しいクラスの GUID は素通りする。
+// こちらは形で見るので**未知の値でも捕まえる。**
+//
+// # 対象を記録由来のファイルに限る理由
+//
+// 手書き golden は合成 GUID を大量に持っており (`AAAAAAAA-1111-...` 等)、
+// 形で一律に弾くと誤検知だらけになる。**記録由来のファイルだけは
+// 「置換後の形しか入っていない」という強い不変条件が成立する**ので、そこに絞る。
+func TestRecordedFixturesOnlyHavePlaceholderGUIDs(t *testing.T) {
+	scanned, guidsSeen := 0, 0
+
+	for _, dir := range []string{"wsman", "hyperv"} {
+		err := filepath.WalkDir(filepath.Join(repoRoot, dir), func(path string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() || !fixtureExts[filepath.Ext(path)] {
+				return err
+			}
+			content, readErr := os.ReadFile(path) //#nosec G304 -- リポジトリ内の走査
+			if readErr != nil {
+				t.Errorf("%s: 読めない: %v", relPath(path), readErr)
+				return nil
+			}
+			text := string(content)
+			// 記録器が書いたもの、またはそこから派生した合成のみ対象。
+			// 記録の判定は印の文字列ではなく **sha256 の検証**で行う
+			// (印だけ付けたファイルを対象に含めない)。
+			recorded := wsman.VerifyRecordedHash(content) == nil
+			derived := strings.Contains(text, "derived-from:")
+			if !recorded && !derived {
+				return nil
+			}
+			scanned++
+
+			var bad []string
+			for _, g := range guidPattern.FindAllString(text, -1) {
+				guidsSeen++
+				if !recordedGUIDPlaceholder.MatchString(g) {
+					bad = append(bad, g)
+				}
+			}
+			if len(bad) > 0 {
+				kind := "記録"
+				if !recorded {
+					kind = "記録から派生した合成"
+				}
+				t.Errorf("%s (%s) にプレースホルダ形でない GUID がある (%s)。\n"+
+					"  記録器の伏せ字が漏れている可能性がある。録り直すか、"+
+					"合成なら値をプレースホルダ形に直すこと (#154)。",
+					relPath(path), kind, strings.Join(uniq(bad), ", "))
+			}
+			return nil
+		})
+		if err != nil {
+			t.Errorf("%s の走査に失敗: %v", dir, err)
+		}
+	}
+
+	// 🔴 **空振り検出。** パスが変わった・印の文字列が変わった場合、
+	// 対象 0 件でも緑になってしまう。記録 fixture は現に存在するので下限を置く。
+	if scanned < 10 {
+		t.Errorf("走査した記録由来の fixture が %d 件しかない。"+
+			"VerifyRecordedHash / derived-from の判定か走査パスが変わって"+
+			"空振りしている可能性がある", scanned)
+	}
+	if guidsSeen == 0 {
+		t.Errorf("GUID を 1 つも見ていない。guidPattern が壊れている可能性がある")
+	}
+	t.Logf("記録由来 %d 件 / GUID %d 個を検査した", scanned, guidsSeen)
 }

@@ -42,6 +42,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # コミットメッセージを走査するステップが履歴を必要とする。
+          # 既定の浅いクローンだと base..HEAD が解決できない。
+          fetch-depth: 0
 
       - name: Scan tracked files for RFC 1918 addresses
         run: |
@@ -70,6 +74,55 @@ jobs:
             exit 1
           fi
           echo "OK: 既知の実環境識別子なし"
+
+      # 部分的に伏せられた値を構造で捕まえる。
+      #
+      # 記録器は "<ホスト名>\\<ユーザー名>" のうちホスト名側しか伏せていなかった
+      # (#188)。結果 "scrubbed-1\\<実ユーザー名>" という形で公開リポジトリに出た。
+      #
+      # **denylist に実ユーザー名を書くと、この公開ファイル自身が値を公開してしまう。**
+      # そこで値ではなく形で見る: "scrubbed-N\\" の後ろが別の伏せ字でもなく
+      # プレースホルダでもなければ、片側だけ伏せ忘れている。
+      #
+      # 新しい値でも効く (denylist と違って既知の値に依存しない)。
+      - name: Scan tracked files for partially scrubbed values
+        run: |
+          if git grep -hIoE 'scrubbed-[0-9]+\\[^"< ]+' \
+               -- . ':(exclude).github/workflows/_security-scan.yml' \
+             | grep -vE '^scrubbed-[0-9]+\\(scrubbed-[0-9]+|<user>|<host>)'; then
+            echo "::error::片側だけ伏せられた値があります (scrubbed-N\\<生の値>)。両側を伏せてください。"
+            exit 1
+          fi
+          echo "OK: 部分的に伏せられた値なし"
+
+      # 🔴 **git grep は追跡ファイルの内容しか見ない。** コミットメッセージは対象外。
+      #
+      # #188 の漏洩は実際に**コミットメッセージ**で起きた。証拠として貼った実機応答を
+      # そのまま本文に入れたもので、上のどのステップも見ていない領域だった。
+      #
+      # PR の範囲のコミットメッセージに同じ検査をかける。
+      - name: Scan commit messages
+        if: github.event_name == 'pull_request'
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          msgs="$(git log --format='%H%n%B' "$base"..HEAD)"
+          echo "$msgs" | head -0  # 本文は出力しない (漏れていた場合に二次公開しないため)
+
+          fail=0
+          if printf '%s' "$msgs" | grep -nIiE 'DESKTOP-KAKEF4K|k8s-cp-0[0-9]|k8s-worker-0[0-9]|27BBD2D0-EA18|2C709429-A8C3|92617271-7416' >/dev/null; then
+            echo "::error::コミットメッセージに実環境の識別子が含まれています。"
+            fail=1
+          fi
+          if printf '%s' "$msgs" | grep -hoE 'scrubbed-[0-9]+\\[^"< ]+' \
+             | grep -qvE '^scrubbed-[0-9]+\\(scrubbed-[0-9]+|<user>|<host>)'; then
+            echo "::error::コミットメッセージに片側だけ伏せられた値があります (scrubbed-N\\<生の値>)。"
+            fail=1
+          fi
+          if [ "$fail" != 0 ]; then
+            echo "::notice::該当コミットは git log で確認してください (本文はここに出していません)。"
+            exit 1
+          fi
+          echo "OK: コミットメッセージに既知の実環境識別子・部分伏せ字なし"
 
   gosec:
     name: gosec
