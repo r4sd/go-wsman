@@ -14,9 +14,28 @@ import (
 // 等) の WS-Addressing EPR (buildEndpointReference) とは形式が別。両者を混同すると
 // AddResourceSettings が「リソースを追加できませんでした」(ErrorCode=32773) で失敗する。
 //
-// host が空なら \\HOST\ 前置を省いた相対パス。値内の \ は WMI パス引用規則で \\ に、" は \" に
-// エスケープする (前置部 \\HOST\namespace はエスケープ対象外)。キーは名前昇順で安定化。
-func wmiObjectPath(host, resourceURI string, keys map[string]string) string {
+// **前置 \\HOST\ は付けず、常に相対パス** (namespace:Class.Key="value") を返す。
+//
+// 実機が相対パスを受理することの根拠:
+//
+//	#114 (PR #179)  2026-10-05 の対照実験で「\\HOST\ 前置の有無、namespace 区切りの
+//	                / と \ はいずれの組み合わせでも成功」と確認 (Issue コメント)
+//	#96  (4d36687)   wmiObjectPath を導入したコミット。実機で AttachVHD(SCSI) が
+//	                通っており、hostName は**そのコミットの時点から代入が無い**ので
+//	                そこで通ったのは相対パス
+//
+// ⚠️ 実機自身が保存している HostResource の値には前置が付いている (#146 の観測)。
+// **送る側では不要**というだけで、「実機が前置を使わない」わけではない。
+// #146 は作成の成功を確認できていないので、受理の根拠には使わない。
+//
+// 以前は host 引数と Client.hostName フィールドがあったが、**hostName はどこからも
+// 代入されておらず常に空** = 前置分岐は到達不能なデッドコードだった (#198)。
+// もし将来クラスタ環境等で前置が必要になっても、**WinRM のエンドポイントから導いてはいけない**
+// (lanrelay 経由だと 127.0.0.1 になり、実機のコンピュータ名と一致しない)。
+// 明示的な値の入口を用意してから足すこと。
+//
+// 値内の \ は WMI パス引用規則で \\ に、" は \" にエスケープする。キーは名前昇順で安定化。
+func wmiObjectPath(resourceURI string, keys map[string]string) string {
 	// resourceURI ("http://.../wmi/root/virtualization/v2/Msvm_X") から
 	// namespace ("root/virtualization/v2") と class ("Msvm_X") を取り出す。
 	tail := resourceURI
@@ -35,9 +54,6 @@ func wmiObjectPath(host, resourceURI string, keys map[string]string) string {
 	sort.Strings(names)
 
 	var sb strings.Builder
-	if host != "" {
-		fmt.Fprintf(&sb, `\\%s\`, host)
-	}
 	fmt.Fprintf(&sb, "%s:%s", ns, class)
 	for i, k := range names {
 		if i == 0 {

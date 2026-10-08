@@ -422,7 +422,7 @@ func (c *Client) attachStorage(ctx context.Context, vmName string, opts attachOp
 	}
 	controller := controllers[opts.ControllerNumber]
 	// Parent は CIM string プロパティ = WMI オブジェクトパス (WS-Addressing EPR ではない)。
-	controllerPath := wmiObjectPath(c.hostName, msvmResourceAllocationSettingDataURI, map[string]string{
+	controllerPath := wmiObjectPath(msvmResourceAllocationSettingDataURI, map[string]string{
 		"InstanceID": controller.InstanceID,
 	})
 
@@ -459,7 +459,7 @@ func (c *Client) attachStorage(ctx context.Context, vmName string, opts attachOp
 	}
 
 	// 3. ファイル (VHD/ISO) を Drive に紐付け
-	drivePath := wmiObjectPath(c.hostName, msvmResourceAllocationSettingDataURI, map[string]string{
+	drivePath := wmiObjectPath(msvmResourceAllocationSettingDataURI, map[string]string{
 		"InstanceID": result.DriveRef,
 	})
 	// HostResource は CIM 上 string[] (配列) なので、AddResourceSettings では PROPERTY.ARRAY で
