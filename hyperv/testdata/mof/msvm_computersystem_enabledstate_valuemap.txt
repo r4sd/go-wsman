@@ -9,6 +9,10 @@
 #     CimClassProperties["EnabledState"].Qualifiers["ValueMap"|"Values"].Value
 # 取得日: 2026-10-08
 #
+# 傍証: この表は DMTF の CIM_EnabledLogicalElement.EnabledState の
+#   ValueMap / Values と一字一句一致する (Msvm_ComputerSystem は継承しているだけで
+#   Hyper-V 固有の値を ValueMap に足していない)。
+#
 # ⚠️ ここに載っているのは **ジェネリック CIM の意味** であって Hyper-V の意味ではない。
 #   Quiesce            → Hyper-V では Paused (Suspend-VM)
 #   Enabled but Offline → Hyper-V では Saved  (Save-VM)
