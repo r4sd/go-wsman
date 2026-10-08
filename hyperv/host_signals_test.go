@@ -70,6 +70,17 @@ func TestObserveHostSignalDisagreement(t *testing.T) {
 			t.Errorf("%s: 別のインスタンスを食い違いとして返した (Name=%q)", c.why, got[0].Name)
 		}
 	}
+
+	// 🔴 **2 件同時も全部返すこと。** 1 件のケースだけだと
+	// 「最初に見つけた 1 件を返して打ち切る」実装が通ってしまう (実際に変異が生存した)。
+	both := []*Msvm_ComputerSystem{agreeing[0], nameHostDateVM, agreeing[1], nameVMDateHost}
+	got := observeHostSignalDisagreement(both)
+	if len(got) != 2 {
+		t.Fatalf("食い違い 2 件を %d 件しか検出しなかった (打ち切っている)", len(got))
+	}
+	if got[0] != nameHostDateVM || got[1] != nameVMDateHost {
+		t.Errorf("検出したインスタンスか順序が期待と違う (Name=%q, %q)", got[0].Name, got[1].Name)
+	}
 }
 
 // TestHostSignalsAgreeOnRecordedInstances は、**実機記録すべて**で Name 由来の判定と
@@ -98,6 +109,17 @@ func TestHostSignalsAgreeOnRecordedInstances(t *testing.T) {
 	if len(all) != 5 {
 		t.Fatalf("記録から %d 件しか読めていない (want 5 = ホスト 1 + VM 4)", len(all))
 	}
+
+	// 🔴 **観測の出力を内訳チェックより先に出す。** 以前は内訳を t.Fatalf で
+	// 先に見ていたため、食い違いが 1 件のときは必ず内訳が 1/1 からずれて
+	// Fatal が先に発火し、**どのインスタンスがどう食い違ったのかが出なかった**。
+	// この出力が #185 の判断材料そのものなので、順序が逆だと機構として無意味。
+	for _, cs := range observeHostSignalDisagreement(all) {
+		t.Errorf("2 つの材料が食い違う実機インスタンスがある: Name=%q InstallDate=%q "+
+			"(Name 由来=%v / InstallDate 由来=%v)。#185 の判断材料なので記録を残すこと",
+			cs.Name, cs.InstallDate, cs.IsHostComputerSystem(), cs.installDateSuggestsHost())
+	}
+
 	byName, byDate := 0, 0
 	for _, cs := range all {
 		if cs.IsHostComputerSystem() {
@@ -108,15 +130,7 @@ func TestHostSignalsAgreeOnRecordedInstances(t *testing.T) {
 		}
 	}
 	if byName != 1 || byDate != 1 {
-		t.Fatalf("ホストと見るのが Name 由来 %d 件 / InstallDate 由来 %d 件 (want 1 / 1)", byName, byDate)
-	}
-
-	if dis := observeHostSignalDisagreement(all); len(dis) != 0 {
-		for _, cs := range dis {
-			t.Errorf("2 つの材料が食い違う実機インスタンスがある: Name=%q InstallDate=%q "+
-				"(Name 由来=%v / InstallDate 由来=%v)。#185 の判断材料なので記録を残すこと",
-				cs.Name, cs.InstallDate, cs.IsHostComputerSystem(), cs.installDateSuggestsHost())
-		}
+		t.Errorf("ホストと見るのが Name 由来 %d 件 / InstallDate 由来 %d 件 (want 1 / 1)", byName, byDate)
 	}
 }
 
@@ -156,5 +170,57 @@ func TestPickHostComputerSystem_ErrorIncludesSignalHint(t *testing.T) {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("エラーに %q が無い: %v", want, err)
 		}
+	}
+}
+
+// TestOnTimeInMillisecondsCannotDistinguishHost は、第 3 の材料が **使えない**ことを
+// 実機記録で固定する (#185)。
+//
+// MOF は OnTimeInMilliseconds を「管理 OS では Null」と書いており、ロケール非依存な
+// 第 3 の材料に見える。しかし struct が uint64 なので Null が 0 に潰れ、
+// **停止中の VM と区別できない**(実機記録の停止 VM は実値 0)。
+//
+// testdata/mof/msvm_computersystem_host_signals.txt にその旨を書いたが、
+// 文章だけだと陳腐化する。型をポインタに変えるなどして区別できるようになったら
+// ここが落ちて、fixture の記述を直すきっかけになる。
+func TestOnTimeInMillisecondsCannotDistinguishHost(t *testing.T) {
+	var bodies []string
+	server := newSequenceServer(t, recordedComputerSystemSequence(t), &bodies)
+	defer server.Close()
+
+	client, err := NewClient(server.URL)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	all, err := client.listComputerSystemsIncludingHost(context.Background())
+	if err != nil {
+		t.Fatalf("listComputerSystemsIncludingHost: %v", err)
+	}
+
+	var host, offVM *Msvm_ComputerSystem
+	for _, cs := range all {
+		if cs.IsHostComputerSystem() {
+			host = cs
+		}
+		if cs.ElementName == recordedVMNameOff {
+			offVM = cs
+		}
+	}
+	if host == nil || offVM == nil {
+		t.Fatalf("記録からホストと停止 VM を引けない (host=%v offVM=%v)", host != nil, offVM != nil)
+	}
+
+	// ホストは xsi:nil、停止 VM は実値 0。どちらも Go 側では 0 になる。
+	if host.OnTimeInMilliseconds != 0 {
+		t.Errorf("ホストの OnTimeInMilliseconds が %d (記録は xsi:nil なので 0 のはず)",
+			host.OnTimeInMilliseconds)
+	}
+	if offVM.OnTimeInMilliseconds != 0 {
+		t.Errorf("停止 VM の OnTimeInMilliseconds が %d (記録は 0)", offVM.OnTimeInMilliseconds)
+	}
+	if host.OnTimeInMilliseconds != offVM.OnTimeInMilliseconds {
+		t.Errorf("区別できるようになっている (host=%d / 停止 VM=%d)。"+
+			"第 3 の材料が使えるようになったので mof/msvm_computersystem_host_signals.txt を直すこと",
+			host.OnTimeInMilliseconds, offVM.OnTimeInMilliseconds)
 	}
 }

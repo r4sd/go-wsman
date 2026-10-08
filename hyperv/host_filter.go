@@ -40,13 +40,28 @@ import (
 // AND では VM は落ちない。VM の Name は GUID なので第 1 条件 (GUID として解釈できない)
 // を満たさず、InstallDate が何であれホスト扱いにならない。
 //
-//	AND にしたときの失敗 : ホストの InstallDate が非 Null → ホストが VM の一覧に混じる
-//	                      + hostComputerSystem が 0 件でエラー (静かに壊れるのではなく落ちる)
+//	AND にしたときの失敗 : ホストの InstallDate が非 Null → ホストが落ちず一覧に混じる
+//	                      + hostComputerSystem が 0 件でエラー
 //	VM が落ちる失敗      : OR にした場合。InstallDate が Null の VM をホストと見て
-//	                      一覧から除く → provider が state を落として orphan / 重複作成
+//	                      ListComputerSystems の結果から除く
 //
-// つまり**破壊的な方向は OR**で、AND ではない。それでも AND を採らないのは、
-// ホストが一覧に混じると provider が実在しない VM を見ることになるため。
+// つまり VM が消える方向は OR で、AND ではない。
+//
+// 🔴 **ただし「だから provider が壊れる」とは言えない。** この判定を通るのは
+// ListComputerSystems と hostComputerSystem だけで、
+//
+//	ListComputerSystems  : 非テストの呼び出し元が無い (provider も統合テストでしか使わない)
+//	hostComputerSystem   : switch.go の CreateSwitch (Internal) 1 箇所のみ
+//
+// provider の VM の存在確認と Read は **FindComputerSystemByElementName** を使う
+// (25 箇所)。こちらは enumerateFiltered で ElementName 一致を取るだけで
+// **この判定を通らない**。#185 本文は「provider の Read が ListComputerSystems を使う」
+// 前提で書かれていたが、それは成り立たない。
+//
+// ⚠️ 逆に、FindComputerSystemByElementName は**ホストのインスタンスも検索対象に含む**。
+// MOF はホストの ElementName を「管理 OS の NetBIOS 名」と書いているので、
+// VM の表示名がそれと一致すると `2 VMs found; name is ambiguous` になる。
+// 「ホストが結果に混じる」懸念は本判定とは別経路で既に存在する (本 PR の範囲外)。
 //
 // # 第 3 の材料はあるが使えない
 //
