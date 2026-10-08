@@ -1141,11 +1141,20 @@ func TestIntegration_ListBootSources(t *testing.T) {
 // 保存後検証で、そこには集めた名前が渡る。
 func discoverScrubNames(t *testing.T, endpoint string, baseOpts []wsman.ClientOption) []string {
 	t.Helper()
+	// 🔴 **接続ユーザー名は probe の成否に関わらず先に足す (#188)。**
+	// これは実機から集める値ではなく、こちらが渡している値。下の early return の
+	// 位置に置くと、probe が失敗したときに伏せ字にも StopRecording の保存後検証にも
+	// 入らず**無警告で記録に残る** — #188 が潰したかった「静かに漏れる」型そのもの。
+	//
+	// Job 系のクラス (Msvm_StorageJob / Msvm_ConcreteJob) は Owner に
+	// "<ホスト名>\<ユーザー名>" を載せる。ホスト名は下で集めた名前で置換される。
+	names := scrubNamesForUser(os.Getenv("WSMAN_USERNAME"))
+
 	// baseOpts は記録オプションを含まない。この列挙自体は記録に載せない。
 	probe, err := NewClient(endpoint, baseOpts...)
 	if err != nil {
-		t.Logf("⚠️ 伏せる名前の収集に失敗 (Client 作成): %v", err)
-		return nil
+		t.Logf("⚠️ 実機からの名前収集に失敗 (Client 作成): %v。ユーザー名のみ伏せる", err)
+		return names
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -1153,10 +1162,9 @@ func discoverScrubNames(t *testing.T, endpoint string, baseOpts []wsman.ClientOp
 	// ListComputerSystems (ホスト除外済み) を使うと実機の記録に素のホスト名が残る (#139)。
 	systems, err := probe.listComputerSystemsIncludingHost(ctx)
 	if err != nil {
-		t.Logf("⚠️ 伏せる名前の収集に失敗 (listComputerSystemsIncludingHost): %v", err)
-		return nil
+		t.Logf("⚠️ 実機からの名前収集に失敗 (listComputerSystemsIncludingHost): %v。ユーザー名のみ伏せる", err)
+		return names
 	}
-	names := make([]string, 0, len(systems))
 	for _, cs := range systems {
 		if cs.ElementName != "" {
 			names = append(names, cs.ElementName)
@@ -1172,37 +1180,8 @@ func discoverScrubNames(t *testing.T, endpoint string, baseOpts []wsman.ClientOp
 			}
 		}
 	}
-	// 🔴 **接続ユーザー名も伏せる (#188)。** Job 系のクラス (Msvm_StorageJob /
-	// Msvm_ConcreteJob) は Owner に "<ホスト名>\<ユーザー名>" を載せる。
-	// ホスト名は上で集めた名前で置換されるが、ユーザー名はこちらが渡している値なので
-	// 「実機から集める」方針から漏れていた。
-	//
-	// DOMAIN\user 形式で渡される場合もあるので、全体と分割した各要素を対象にする。
-	names = append(names, scrubNamesForUser(os.Getenv("WSMAN_USERNAME"))...)
 	t.Logf("記録時に伏せる名前を %d 件収集した", len(names))
 	return names
-}
-
-// scrubNamesForUser は接続ユーザー名から伏せるべき文字列を列挙する。
-//
-// "DOMAIN\user" なら全体と "DOMAIN" / "user" を返す。Owner には
-// "<ホスト名>\<ユーザー名>" の形で載るので、ユーザー名単体が要る。
-//
-// 1 文字など極端に短い値は**対象にしない**。wsman/record.go の scrub は
-// 部分一致で置換するため、短すぎる文字列は無関係な箇所まで壊す。
-func scrubNamesForUser(user string) []string {
-	if user == "" {
-		return nil
-	}
-	out := []string{}
-	for _, cand := range append([]string{user}, strings.Split(user, `\`)...) {
-		cand = strings.TrimSpace(cand)
-		if len(cand) < 3 {
-			continue
-		}
-		out = append(out, cand)
-	}
-	return out
 }
 
 // TestIntegration_ListGuestNetworkAdapterConfigurations はゲスト OS 内 NIC 設定の

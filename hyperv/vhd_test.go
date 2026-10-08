@@ -5,8 +5,10 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestClient_GetVirtualHardDisk は VHD ファイルパスから設定情報を取得するテスト。
@@ -177,11 +179,14 @@ func TestClient_ResizeVirtualHardDisk_EmptyPath(t *testing.T) {
 //
 // MOF 突合は「名前と型が合っている」しか言えず、wire format が合っているかは別問題だった。
 // 実機記録が入ったので、以降の変更は実応答に対して検証される。
-// VHD 系の Job 待機に使う golden。**名前をここ 1 箇所に集約する。**
+// --- VHD 系の Job 待機に使う golden ---
+
+// storageJobCompletedGolden / storageJobRunningGolden は VHD 系の Job 待機に使う golden。
+// **名前をここ 1 箇所に集約する。**
 //
-// 流用に戻す変更 (Msvm_ConcreteJob の golden に差し替える) をしようとすると、
-// 必ずこの定数を書き換えることになり、下の provenance テストが即座に落ちる。
-// 各テストが個別にファイル名を書いていると、provenance テストだけ素通りしてしまう。
+// 定数を差し替えれば下の provenance テストが落ちる。ただし**各テストが直接
+// ファイル名を書く経路は定数では防げない**(実際にその変異は生き残る)。
+// そこを塞ぐのが TestVhdTestsDoNotReuseConcreteJobGolden。
 const (
 	storageJobCompletedGolden = "get_response_storagejob_completed.xml"
 	storageJobRunningGolden   = "get_response_storagejob_running.xml"
@@ -254,7 +259,7 @@ func TestClient_CreateVirtualHardDisk_StorageJobPolling(t *testing.T) {
 		VirtualDiskFormat: VHDFormatVHDX,
 		VirtualDiskType:   VHDTypeDynamic,
 		MaxInternalSize:   1 << 30,
-	})
+	}, WithPollInterval(time.Millisecond))
 	if err != nil {
 		t.Fatalf("CreateVirtualHardDisk: %v", err)
 	}
@@ -266,5 +271,36 @@ func TestClient_CreateVirtualHardDisk_StorageJobPolling(t *testing.T) {
 	if len(bodies) != 3 {
 		t.Fatalf("リクエストが %d 件 (want 3 = invoke 1 + Job の Get 2)。"+
 			"実行中 (JobState=4) をポーリングしているか", len(bodies))
+	}
+}
+
+// TestVhdTestsDoNotReuseConcreteJobGolden は vhd_test.go が Msvm_ConcreteJob の golden を
+// 参照していないことをソースレベルで検証する (#165)。
+//
+// 🔴 定数への集約だけでは**各テストが直接ファイル名を書く経路**を防げない。
+// 批判的レビューで実際にその変異が生き残った (定数を迂回して流用に戻せる)。
+//
+// 「ConcreteJob の golden を VHD 系の Job 待機に流用しない」が守りたい性質なので、
+// 振る舞いではなくソースで直接禁じる (internal/guard の TestNoRawXMLInSources と同型)。
+func TestVhdTestsDoNotReuseConcreteJobGolden(t *testing.T) {
+	src, err := os.ReadFile("vhd_test.go")
+	if err != nil {
+		t.Fatalf("vhd_test.go を読めない: %v", err)
+	}
+	// ⚠️ **この定数自身が vhd_test.go に現れる**ので、出現回数で見る。
+	// ちょうど 1 回 (= ここ) を期待し、
+	//   2 回以上 → どこかのテストが流用に戻した
+	//   0 回     → 定数名が変わってこの検査が空振りになった
+	// のどちらも検出する。
+	const reused = "get_response_concretejob_completed.xml"
+	switch n := strings.Count(string(src), reused); {
+	case n > 1:
+		t.Errorf("vhd_test.go が %s を %d 箇所で参照している (期待 1 = この検査自身)。\n"+
+			"  VHD 系の Job は Msvm_StorageJob なので、実機記録 (%s) を使うこと (#165)。\n"+
+			"  MOF 突合は「名前と型が合っている」しか言えず、wire format は別問題。",
+			reused, n, storageJobCompletedGolden)
+	case n == 0:
+		t.Errorf("%s が vhd_test.go に 1 箇所も無い。この検査が空振りしている "+
+			"(定数名が変わったか、検査ごと消えたか)", reused)
 	}
 }
