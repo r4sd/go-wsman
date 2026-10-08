@@ -1,0 +1,41 @@
+# Msvm_ComputerSystem — ホスト(管理 OS)と VM を見分けられるプロパティ
+#
+# Source: https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/msvm-computersystem
+# Fetched: 2026-10-09
+#
+# 用途 (#185): IsHostComputerSystem の判定材料の根拠。doc コメントの主張が
+# どこから来たかをファイルとして残す。CIM 準拠テストの突合先ではない。
+#
+# OnTimeInMilliseconds が使えないことは TestOnTimeInMillisecondsCannotDistinguishHost が
+# 実機記録に対して検査している (ここの記述が文章だけで陳腐化しないように)。
+#
+# 形式: <プロパティ> | <ロケール依存か> | MOF の記述(抜粋)
+
+Name | 非依存 | "The label by which the object is known. ... it is always set to \"GUID\"."
+  → 🔴 MOF は常に GUID と書いているが、実機のホストエントリはコンピューター名を返す
+    (2026-09-27 実測)。VM 側は必ず GUID なので、GUID として解釈できるかで切れる。
+
+InstallDate | 非依存 | "The date and time the virtual machine configuration was created
+  for a virtual machine, or Null, for a management operating system."
+  → 第 2 の材料になる。実機記録でもホストだけ xsi:nil、VM 4 台は値を持つ。
+    struct は string なので Null は "" になり、実値と区別できる。
+
+OnTimeInMilliseconds | 非依存 | "For the virtual machine, this property indicates the time
+  ... For the management operating system, this property is set to Null."
+  → 🔴 **材料に見えるが使えない。** struct が uint64 なので Null が 0 に潰れ、
+    停止中の VM (実機記録の pull_vm_off は 0) と区別できない。
+    使うならポインタ型か「nil だったか」を持つ必要がある。
+
+Caption | **依存** | "Virtual Machine" / "Hosting Computer System"
+Description | **依存** | "Microsoft Virtual Computer System" / "Microsoft Hosting Computer System"
+  → クラスに AMENDMENT 修飾子が付くのでロケールで変わる。実機 (日本語ホスト) では
+    Description がホストだけ日本語で VM は英語という非対称があり、
+    VM だけ見て検証すると「英語だから安全」と誤判断する。判定に使わない。
+  → 🔴 **英語側も MOF と一致しない。** MOF は VM を
+    "Microsoft Virtual Computer System" と書いているが、実機記録の VM は
+    "Microsoft Virtual Machine"。ホストは「Microsoft ホスト コンピューター システム」。
+    MOF の文字列をそのまま期待値にすると実機で外れる。
+
+EnabledState | 非依存 | "it is set to 2 (Enabled) for a physical computer or one of the
+  following values for a virtual machine"
+  → 区別に使えない。実行中の VM も 2 になる。
