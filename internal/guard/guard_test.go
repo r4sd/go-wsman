@@ -428,9 +428,22 @@ func TestNoRealMACAddresses(t *testing.T) {
 // 記録器は実機の GUID をプレースホルダへ置換する。置換が漏れると
 // **実環境の VM / NIC / Job の GUID が公開リポジトリに入る** (#154 / #188 の型)。
 //
-// CI の denylist (`_security-scan.yml`) は**既知の値の再混入しか止められない**。
-// 新しい環境から採った値・新しいクラスの GUID は素通りする。
-// こちらは形で見るので**未知の値でも捕まえる。**
+// CI の denylist (`.github/scripts/scan_forbidden.sh`) は**既知の値の再混入しか
+// 止められない**。こちらは形で見るので、denylist に無い値でも捕まえる。
+//
+// ⚠️ **実効範囲は狭い。** 捕まえられるのは
+// 「記録器が認識する形 (ハイフン付き GUID) の値が、記録由来のファイルに入っている」
+// 場合だけ。記録器は該当する GUID を全部置換するので、ここが落ちる経路は実質
+//
+//	a) 記録器が退行してハイフン付き GUID を置換しなくなった
+//	b) 記録ファイルを手で書き換えて sha256 も再計算した
+//
+// の 2 つ。次のものは**素通りする**:
+//
+//	ハイフン無しの 32 hex GUID (記録器の正規表現も同じ盲点)
+//	legacyGoldens (手書き golden は対象外)
+//	testdata/synthetic/ 以外に置いた合成
+//	record.go 側のプレースホルダ形だけを変えた場合 (既存 fixture は古い形のまま緑)
 //
 // # 対象を記録由来のファイルに限る理由
 //
@@ -452,10 +465,13 @@ func TestRecordedFixturesOnlyHavePlaceholderGUIDs(t *testing.T) {
 			}
 			text := string(content)
 			// 記録器が書いたもの、またはそこから派生した合成のみ対象。
-			// 記録の判定は印の文字列ではなく **sha256 の検証**で行う
-			// (印だけ付けたファイルを対象に含めない)。
+			//
+			// ⚠️ 合成の判定に `strings.Contains(text, "derived-from:")` を使ってはいけない。
+			// **記録器のヘッダ定型文にその文字列が入っている**ため、記録ファイル全件に
+			// 真になり、2 つの分岐が区別できなくなる (ラベルが嘘になる)。
+			// パスで判定する (関所は合成を testdata/synthetic/ に置くことを強制している)。
 			recorded := wsman.VerifyRecordedHash(content) == nil
-			derived := strings.Contains(text, "derived-from:")
+			derived := strings.Contains(filepath.ToSlash(path), "/testdata/synthetic/")
 			if !recorded && !derived {
 				return nil
 			}

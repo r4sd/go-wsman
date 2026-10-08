@@ -36,8 +36,13 @@ jobs:
   # 4 オクテット揃っていることを要求する。3 オクテットで妥協すると Windows の
   # バージョン表記 (10.0.26100 等) に誤検知し、実機ダンプの golden file を
   # 「CI を通すために書き換える」圧力が生まれる (それは本末転倒)。
-  no-private-addresses:
-    name: no private addresses
+  forbidden-values:
+    # 名前は実態に合わせてある。**必須チェックには入っていない**
+    # (ruleset の required_status_checks は Lint / Test / Build / gosec の 4 つ)。
+    # 必須にするかは要検討: main.yml の if (github.actor == repository_owner) により
+    # 外部 PR ではジョブ自体がスキップされるので、必須にすると外部 PR が
+    # マージ不能になる。
+    name: forbidden values
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -47,82 +52,39 @@ jobs:
           # 既定の浅いクローンだと base..HEAD が解決できない。
           fetch-depth: 0
 
-      - name: Scan tracked files for RFC 1918 addresses
-        run: |
-          if git grep -nIE '(^|[^0-9.])(10\.[0-9]{1,3}|192\.168|172\.(1[6-9]|2[0-9]|3[01]))\.[0-9]{1,3}\.[0-9]{1,3}([^0-9.]|$)' \
-               -- . ':(exclude).github/workflows/_security-scan.yml'; then
-            echo "::error::プライベート IP アドレスが含まれています。RFC 5737 の例示用アドレスかプレースホルダに置き換えてください。"
-            exit 1
-          fi
-          echo "OK: プライベート IP アドレスなし"
-
-      # 実環境の識別子を名指しで弾く (denylist)。
-      #
-      # GUID を形で一律に弾く方式は採らない。testdata の合成 fixture が大量の
-      # GUID を持っており誤検知だらけになるため。代わりに「実環境に存在すると
-      # 分かっている値」だけを列挙する。新しい実環境を触ったらここに足す。
-      #
-      # ⚠️ **この仕組みは漏洩を防がない。** 既知の値の再混入を止めるだけで、
-      # 未登録の実環境から採った値は素通りする。一次の防御は記録器の伏せ字
-      # (internal/guard + wsman/record.go) 側にある。
-      - name: Scan tracked files for known real-environment identifiers
-        run: |
-          # ホスト名・VM 表示名・VM GUID (2026-09 時点の homelab)
-          if git grep -nIiE 'DESKTOP-KAKEF4K|k8s-cp-0[0-9]|k8s-worker-0[0-9]|27BBD2D0-EA18|2C709429-A8C3|92617271-7416' \
-               -- . ':(exclude).github/workflows/_security-scan.yml'; then
-            echo "::error::実環境の識別子 (ホスト名 / VM 名 / VM GUID) が含まれています。プレースホルダに置き換えてください。"
-            exit 1
-          fi
-          echo "OK: 既知の実環境識別子なし"
-
-      # 部分的に伏せられた値を構造で捕まえる。
-      #
-      # 記録器は "<ホスト名>\\<ユーザー名>" のうちホスト名側しか伏せていなかった
-      # (#188)。結果 "scrubbed-1\\<実ユーザー名>" という形で公開リポジトリに出た。
-      #
-      # **denylist に実ユーザー名を書くと、この公開ファイル自身が値を公開してしまう。**
-      # そこで値ではなく形で見る: "scrubbed-N\\" の後ろが別の伏せ字でもなく
-      # プレースホルダでもなければ、片側だけ伏せ忘れている。
-      #
-      # 新しい値でも効く (denylist と違って既知の値に依存しない)。
-      - name: Scan tracked files for partially scrubbed values
-        run: |
-          if git grep -hIoE 'scrubbed-[0-9]+\\[^"< ]+' \
-               -- . ':(exclude).github/workflows/_security-scan.yml' \
-             | grep -vE '^scrubbed-[0-9]+\\(scrubbed-[0-9]+|<user>|<host>)'; then
-            echo "::error::片側だけ伏せられた値があります (scrubbed-N\\<生の値>)。両側を伏せてください。"
-            exit 1
-          fi
-          echo "OK: 部分的に伏せられた値なし"
+      # 走査の中身は .github/scripts/scan_forbidden.sh に置いてある。
+      # インラインに書くと (a) ローカルで試せない (b) 検査自身のテストが書けない
+      # (c) パターンを YAML のエスケープ越しに書くことになる、の 3 つが効く。
+      # スクリプト自体は internal/guard の TestScanForbiddenScript が負のテストで守る。
+      - name: Scan tracked files
+        run: .github/scripts/scan_forbidden.sh files
 
       # 🔴 **git grep は追跡ファイルの内容しか見ない。** コミットメッセージは対象外。
       #
       # #188 の漏洩は実際に**コミットメッセージ**で起きた。証拠として貼った実機応答を
-      # そのまま本文に入れたもので、上のどのステップも見ていない領域だった。
-      #
-      # PR の範囲のコミットメッセージに同じ検査をかける。
+      # そのまま本文に入れたもので、ファイル走査では見えない領域だった。
       - name: Scan commit messages
         if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          base="${{ github.event.pull_request.base.sha }}"
-          msgs="$(git log --format='%H%n%B' "$base"..HEAD)"
-          echo "$msgs" | head -0  # 本文は出力しない (漏れていた場合に二次公開しないため)
+          git log --format='%B' "$BASE_SHA"..HEAD | .github/scripts/scan_forbidden.sh text
 
-          fail=0
-          if printf '%s' "$msgs" | grep -nIiE 'DESKTOP-KAKEF4K|k8s-cp-0[0-9]|k8s-worker-0[0-9]|27BBD2D0-EA18|2C709429-A8C3|92617271-7416' >/dev/null; then
-            echo "::error::コミットメッセージに実環境の識別子が含まれています。"
-            fail=1
-          fi
-          if printf '%s' "$msgs" | grep -hoE 'scrubbed-[0-9]+\\[^"< ]+' \
-             | grep -qvE '^scrubbed-[0-9]+\\(scrubbed-[0-9]+|<user>|<host>)'; then
-            echo "::error::コミットメッセージに片側だけ伏せられた値があります (scrubbed-N\\<生の値>)。"
-            fail=1
-          fi
-          if [ "$fail" != 0 ]; then
-            echo "::notice::該当コミットは git log で確認してください (本文はここに出していません)。"
-            exit 1
-          fi
-          echo "OK: コミットメッセージに既知の実環境識別子・部分伏せ字なし"
+      # 🔴 **squash merge では PR のタイトルと本文が main のコミットメッセージになる。**
+      # このリポジトリは squash merge のみ許可で、title=PR_TITLE / message=PR_BODY 設定。
+      #
+      # つまり **PR 本文に証拠を貼ると、その文面が main の履歴に入る。**
+      # #188 はまさに「証拠として貼った実機応答」が原因だったので、ここを見ないと
+      # 同じ経路が開いたままになる。
+      #
+      # 式は env 経由で渡す (run に直接埋めるとシェルインジェクションになる)。
+      - name: Scan PR title and body
+        if: github.event_name == 'pull_request'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          printf '%s\n%s\n' "$PR_TITLE" "$PR_BODY" | .github/scripts/scan_forbidden.sh text
 
   gosec:
     name: gosec
