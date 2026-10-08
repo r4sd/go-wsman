@@ -91,20 +91,16 @@ func TestNewPooledClient(t *testing.T) {
 }
 
 // TestClient_ListComputerSystems は Enumerate で全 VM を取得するテスト。
+//
+// 実機記録を使う (#186)。手書き golden は「1 Pull に VM 2 件」という
+// **このクライアントが実機から受け取ることのない形**だった
+// (MaxElements を送らないので WS-Enumeration の既定で 1 件 / Pull)。
+//
+// このテストの担当は **EnabledState を正しく読むこと**。
+// ホスト除外の配線は host_exclusion_wiring_test.go が見る。
 func TestClient_ListComputerSystems(t *testing.T) {
-	enumXML := loadGolden(t, "enumerate_response_computersystem.xml")
-	pullXML := loadGolden(t, "pull_response_computersystem.xml")
-
-	callCount := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		callCount++
-		w.Header().Set("Content-Type", "application/soap+xml; charset=utf-8")
-		if callCount == 1 {
-			_, _ = w.Write([]byte(enumXML))
-		} else {
-			_, _ = w.Write([]byte(pullXML))
-		}
-	}))
+	var bodies []string
+	server := newSequenceServer(t, recordedComputerSystemSequence(t), &bodies)
 	defer server.Close()
 
 	client, err := NewClient(server.URL)
@@ -116,21 +112,70 @@ func TestClient_ListComputerSystems(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListComputerSystems: %v", err)
 	}
+	if len(got) != 4 {
+		t.Fatalf("len = %d, want 4 (記録はホスト 1 + VM 4)", len(got))
+	}
 
-	if len(got) != 2 {
-		t.Fatalf("len: got %d, want 2", len(got))
+	// 🔴 **EnabledState は VM ごとに違う値を期待する。** 記録に 2 と 3 の両方が
+	// 入っているので、「全部同じ値を返す」実装では落ちる。
+	// 順序には依存させない (API は順序を約束していない)。
+	wantStates := map[string]uint16{
+		recordedVMNameRunning: EnabledStateEnabled,  // 2
+		"scrubbed-8":          EnabledStateEnabled,  // 2
+		recordedVMNameOff:     EnabledStateDisabled, // 3
+		"scrubbed-4":          EnabledStateEnabled,  // 2
 	}
-	if got[0].ElementName != "vm-1" {
-		t.Errorf("got[0].ElementName: got %q", got[0].ElementName)
+	gotStates := make(map[string]uint16, len(got))
+	for _, cs := range got {
+		gotStates[cs.ElementName] = cs.EnabledState
 	}
-	if got[1].ElementName != "vm-2" {
-		t.Errorf("got[1].ElementName: got %q", got[1].ElementName)
+	for name, want := range wantStates {
+		state, ok := gotStates[name]
+		if !ok {
+			t.Errorf("VM %q が結果に無い: %v", name, gotStates)
+			continue
+		}
+		if state != want {
+			t.Errorf("%q の EnabledState = %d, want %d", name, state, want)
+		}
 	}
-	if got[0].EnabledState != EnabledStateEnabled {
-		t.Errorf("got[0].EnabledState: got %d", got[0].EnabledState)
+	if len(gotStates) != len(wantStates) {
+		t.Errorf("VM が %d 件 (期待 %d 件): %v", len(gotStates), len(wantStates), gotStates)
 	}
-	if got[1].EnabledState != EnabledStateDisabled {
-		t.Errorf("got[1].EnabledState: got %d", got[1].EnabledState)
+}
+
+// TestClient_ListComputerSystems_ReadsEnabledStateNotDefault は
+// **EnabledState 要素を読んでいる**ことを固定する。
+//
+// 🔴 実機記録だけでは固定できない。このホストでは `EnabledDefault` が常に
+// `EnabledState` と一致する (記録 5 本すべてで一致) ため、cim タグを
+// `EnabledState` → `EnabledDefault` にすり替える変異が **List 経路では生存する**
+// (#186 の批判的レビューで判明)。
+//
+// 両者が食い違う合成 fixture を使って、そこだけを落とす。
+// 合成は実機で観測していない形なのでファイル冒頭に明記してある。
+func TestClient_ListComputerSystems_ReadsEnabledStateNotDefault(t *testing.T) {
+	var bodies []string
+	server := newSequenceServer(t, []string{
+		loadGolden(t, "recorded_computersystem_enumerate.xml"),
+		loadGolden(t, "recorded_computersystem_pull_host.xml"),
+		// EnabledDefault=2 / EnabledState=3 で食い違う (EndOfSequence 付き)。
+		loadGolden(t, "synthetic/computersystem_pull_vm_off_distinct_default.xml"),
+	}, &bodies)
+	defer server.Close()
+
+	client, _ := NewClient(server.URL)
+	got, err := client.ListComputerSystems(context.Background())
+	if err != nil {
+		t.Fatalf("ListComputerSystems: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("len = %d, want 1 (ホスト 1 + VM 1 でホストが落ちる)", len(got))
+	}
+	if got[0].EnabledState != EnabledStateDisabled {
+		t.Errorf("EnabledState = %d, want %d。"+
+			"EnabledDefault (2) を読んでいる可能性がある (cim タグのすり替え)",
+			got[0].EnabledState, EnabledStateDisabled)
 	}
 }
 
@@ -141,22 +186,8 @@ func TestClient_ListComputerSystems(t *testing.T) {
 // 表示名→GUID 解決の入口となる。Hyper-V は WQL フィルタ列挙を拒否する (#80) ため、
 // 無フィルタ列挙 + クライアント側の ElementName 完全一致で絞り込む。
 func TestClient_FindComputerSystemByElementName(t *testing.T) {
-	enumXML := loadGolden(t, "enumerate_response_computersystem.xml")
-	pullXML := loadGolden(t, "pull_response_computersystem.xml")
-
-	var enumBody string
-	callCount := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
-		callCount++
-		w.Header().Set("Content-Type", "application/soap+xml; charset=utf-8")
-		if callCount == 1 {
-			enumBody = string(body)
-			_, _ = w.Write([]byte(enumXML))
-		} else {
-			_, _ = w.Write([]byte(pullXML))
-		}
-	}))
+	var bodies []string
+	server := newSequenceServer(t, recordedComputerSystemSequence(t), &bodies)
 	defer server.Close()
 
 	client, err := NewClient(server.URL)
@@ -164,39 +195,32 @@ func TestClient_FindComputerSystemByElementName(t *testing.T) {
 		t.Fatalf("NewClient: %v", err)
 	}
 
-	// golden は vm-1 / vm-2 を返す。表示名 "vm-2" を正しく選択できること。
-	got, err := client.FindComputerSystemByElementName(context.Background(), "vm-2")
+	// 記録の中の 1 台を表示名で選べること。**先頭でも末尾でもない**ものを選ぶ
+	// (「先頭を返す」「最後を返す」だけの実装を落とすため)。
+	got, err := client.FindComputerSystemByElementName(context.Background(), recordedVMNameOff)
 	if err != nil {
 		t.Fatalf("FindComputerSystemByElementName: %v", err)
 	}
-	if got.ElementName != "vm-2" {
-		t.Errorf("ElementName: got %q, want vm-2", got.ElementName)
+	if got.ElementName != recordedVMNameOff {
+		t.Errorf("ElementName: got %q, want %q", got.ElementName, recordedVMNameOff)
 	}
 	// Hyper-V は WQL フィルタ列挙を拒否するため、Enumerate は無フィルタで送られること
 	// (WQL Filter を含めると実機で CannotProcessFilter Fault になる。#80)。
-	if strings.Contains(enumBody, "Filter") || strings.Contains(enumBody, "SELECT") {
-		t.Errorf("enumerate should be unfiltered (no WQL Filter); body: %s", enumBody)
+	if len(bodies) == 0 {
+		t.Fatal("リクエストが 1 本も飛んでいない")
+	}
+	if strings.Contains(bodies[0], "Filter") || strings.Contains(bodies[0], "SELECT") {
+		t.Errorf("enumerate should be unfiltered (no WQL Filter); body: %s", bodies[0])
 	}
 }
 
 // TestClient_FindComputerSystemByElementName_NotFound は該当 VM が無い場合にエラーを返す。
 //
-// テストサーバーは WQL を解さず golden (vm-1 / vm-2) をそのまま返すため、クライアント側
-// の ElementName 完全一致フィルタが「不在」を正しく検出することを検証する。
+// テストサーバーは WQL を解さず記録をそのまま返すため、クライアント側の
+// ElementName 完全一致フィルタが「不在」を正しく検出することを検証する。
 func TestClient_FindComputerSystemByElementName_NotFound(t *testing.T) {
-	enumXML := loadGolden(t, "enumerate_response_computersystem.xml")
-	pullXML := loadGolden(t, "pull_response_computersystem.xml")
-
-	callCount := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		callCount++
-		w.Header().Set("Content-Type", "application/soap+xml; charset=utf-8")
-		if callCount == 1 {
-			_, _ = w.Write([]byte(enumXML))
-		} else {
-			_, _ = w.Write([]byte(pullXML))
-		}
-	}))
+	var bodies []string
+	server := newSequenceServer(t, recordedComputerSystemSequence(t), &bodies)
 	defer server.Close()
 
 	client, err := NewClient(server.URL)
@@ -217,36 +241,29 @@ func TestClient_FindComputerSystemByElementName_NotFound(t *testing.T) {
 // 区別しないこと (PowerShell Get-VM との parity) を検証する。
 //
 // Hyper-V / PowerShell の VM 名照合は大小文字非依存。ここを case-sensitive にすると、実在する
-// VM "vm-2" を "VM-2" で引いたときに ErrVMNotFound となり、terraform-provider の Read が
+// VM を大文字で引いたときに ErrVMNotFound となり、terraform-provider の Read が
 // 「実在 VM を不在扱い→state 除去→orphan/重複作成」する破壊経路を生む。よって最終照合は
 // case-insensitive とし、大小文字だけ異なる表示名でも同一 VM を解決する。
 func TestClient_FindComputerSystemByElementName_CaseInsensitive(t *testing.T) {
-	enumXML := loadGolden(t, "enumerate_response_computersystem.xml")
-	pullXML := loadGolden(t, "pull_response_computersystem.xml")
-
-	callCount := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		callCount++
-		w.Header().Set("Content-Type", "application/soap+xml; charset=utf-8")
-		if callCount == 1 {
-			_, _ = w.Write([]byte(enumXML))
-		} else {
-			_, _ = w.Write([]byte(pullXML))
-		}
-	}))
+	var bodies []string
+	server := newSequenceServer(t, recordedComputerSystemSequence(t), &bodies)
 	defer server.Close()
 
 	client, err := NewClient(server.URL)
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	// golden は vm-1 / vm-2 を返す。大文字 "VM-2" でも実在 VM "vm-2" を解決できること。
-	got, err := client.FindComputerSystemByElementName(context.Background(), "VM-2")
-	if err != nil {
-		t.Fatalf("case-insensitive 照合で VM-2 は vm-2 に解決される想定、got err %v", err)
+	upper := strings.ToUpper(recordedVMNameOff)
+	if upper == recordedVMNameOff {
+		t.Fatalf("検査名 %q に大文字化される文字が無い。大小文字非依存を確かめられない", recordedVMNameOff)
 	}
-	if got.ElementName != "vm-2" {
-		t.Errorf("ElementName: got %q, want vm-2", got.ElementName)
+	got, err := client.FindComputerSystemByElementName(context.Background(), upper)
+	if err != nil {
+		t.Fatalf("case-insensitive 照合で %q は %q に解決される想定、got err %v",
+			upper, recordedVMNameOff, err)
+	}
+	if got.ElementName != recordedVMNameOff {
+		t.Errorf("ElementName: got %q, want %q", got.ElementName, recordedVMNameOff)
 	}
 }
 

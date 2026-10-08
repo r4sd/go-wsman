@@ -26,8 +26,8 @@ import (
 // 管理 OS は Null。実機でもホストだけ xsi:nil)。
 //
 // **実機の記録が入ったので AND 条件に締められる状態になった** (#185 で追跡)。
-// recorded_computersystem_pull_2.xml (ホスト) は InstallDate が xsi:nil、
-// pull_3/4/5 (VM) は値を持つ。まだ Name 単独で判定しているのは、締めると
+// recorded_computersystem_pull_host.xml (ホスト) は InstallDate が xsi:nil、
+// pull_vm_* (VM) は値を持つ。まだ Name 単独で判定しているのは、締めると
 // 「InstallDate を返さない実機」で全 VM がホスト扱いになる破壊的な失敗をしうるため
 // (実機 1 台の観測で AND に締めるのは早い)。
 func (cs *Msvm_ComputerSystem) IsHostComputerSystem() bool {

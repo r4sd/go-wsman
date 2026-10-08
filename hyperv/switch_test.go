@@ -78,10 +78,13 @@ func TestClient_CreateSwitch_Private(t *testing.T) {
 // 実機記録 (recorded_computersystem_*) を使う (#167)。
 // 手書き golden でホスト行を足すのは関所が意図的に禁じている形。
 //
-// 想定リクエスト順 (6 件):
+// 想定リクエスト順 (7 件):
 //
-//	1-5: listComputerSystemsIncludingHost (enum + pull ×4) — hostComputerSystem 内
-//	6: DefineSystem invoke
+//	1-6: listComputerSystemsIncludingHost (enum + pull ×5) — hostComputerSystem 内
+//	7: DefineSystem invoke
+//
+// Pull が 5 回なのは **1 件 / Pull** で返るため (MaxElements を送らないので
+// WS-Enumeration の既定 1)。記録にはホスト 1 + VM 4 が入っている (#186)。
 func TestClient_CreateSwitch_Internal(t *testing.T) {
 	resp := loadGolden(t, "invoke_response_define_switch.xml")
 
@@ -99,11 +102,11 @@ func TestClient_CreateSwitch_Internal(t *testing.T) {
 		t.Fatalf("CreateSwitch: %v", err)
 	}
 
-	if len(bodies) != 6 {
-		t.Fatalf("expected 6 requests, got %d", len(bodies))
+	if len(bodies) != 7 {
+		t.Fatalf("expected 7 requests, got %d", len(bodies))
 	}
 
-	body := bodies[5]
+	body := bodies[6]
 	if strings.Count(body, "<p:ResourceSettings>") != 1 {
 		t.Errorf("Internal switch body should contain exactly 1 ResourceSettings, body=%s", body)
 	}
@@ -128,11 +131,11 @@ func TestClient_CreateSwitch_Internal(t *testing.T) {
 
 // TestClient_CreateSwitch_External は External Switch 作成を検証する。
 //
-// 想定リクエスト順 (9 件):
+// 想定リクエスト順 (10 件):
 //
 //	1-3: ListExternalEthernetPorts (enum + 実機記録 + 終端の legacy pull)
-//	4-8: listComputerSystemsIncludingHost (enum + pull ×4) — Internal Port 用 (#178)
-//	9: DefineSystem invoke
+//	4-9: listComputerSystemsIncludingHost (enum + pull ×5) — Internal Port 用 (#178)
+//	10: DefineSystem invoke
 //
 // AllowManagementOS=true なら ResourceSettings は 2 個 (External binding + Internal port)。
 //
@@ -177,11 +180,11 @@ func TestClient_CreateSwitch_External(t *testing.T) {
 		t.Fatalf("CreateSwitch: %v", err)
 	}
 
-	if len(bodies) != 9 {
-		t.Fatalf("expected 9 requests, got %d", len(bodies))
+	if len(bodies) != 10 {
+		t.Fatalf("expected 10 requests, got %d", len(bodies))
 	}
 
-	invokeBody := bodies[8]
+	invokeBody := bodies[9]
 	// AllowManagementOS=true → External binding + Internal Port = 2 個
 	if strings.Count(invokeBody, "<p:ResourceSettings>") != 2 {
 		t.Errorf("External switch with AllowManagementOS should have 2 ResourceSettings")

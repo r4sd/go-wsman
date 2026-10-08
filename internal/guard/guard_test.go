@@ -70,7 +70,6 @@ var legacyGoldens = map[string]struct{}{
 	"hyperv/testdata/invoke_response_remove_resource_settings.xml":  {},
 	"hyperv/testdata/invoke_response_request_state_change.xml":      {},
 	"hyperv/testdata/invoke_response_resize_vhd.xml":                {},
-	"hyperv/testdata/pull_response_computersystem.xml":              {},
 	"hyperv/testdata/pull_response_computersystem_dup.xml":          {},
 	"hyperv/testdata/pull_response_diskdrive_mixed.xml":             {},
 	"hyperv/testdata/pull_response_dvddrive_mixed.xml":              {},
