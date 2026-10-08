@@ -1,0 +1,32 @@
+# Msvm_ComputerSystem.EnabledState の ValueMap / Values
+#
+# 形式: <値 または 範囲> <ジェネリック CIM 名>
+#   範囲は "11..32767" の形。予約枠 (DMTF Reserved / Vendor Reserved) も含める。
+#   予約枠を**書かない**と「範囲外」と「予約枠」が区別できなくなるので必ず残す。
+#
+# 取得元: 実機の Get-CimClass (CIM クラス定義そのものが一次資料)
+#   (Get-CimClass -Namespace root/virtualization/v2 -ClassName Msvm_ComputerSystem).
+#     CimClassProperties["EnabledState"].Qualifiers["ValueMap"|"Values"].Value
+# 取得日: 2026-10-08
+#
+# 傍証: この表は DMTF の CIM_EnabledLogicalElement.EnabledState の
+#   ValueMap / Values と一字一句一致する (Msvm_ComputerSystem は継承しているだけで
+#   Hyper-V 固有の値を ValueMap に足していない)。
+#
+# ⚠️ ここに載っているのは **ジェネリック CIM の意味** であって Hyper-V の意味ではない。
+#   Quiesce            → Hyper-V では Paused (Suspend-VM)
+#   Enabled but Offline → Hyper-V では Saved  (Save-VM)
+#   この対応は ValueMap では証明できない。実機の観測が根拠 (hyperv/types.go)。
+0 Unknown
+1 Other
+2 Enabled
+3 Disabled
+4 Shutting Down
+5 Not Applicable
+6 Enabled but Offline
+7 In Test
+8 Deferred
+9 Quiesce
+10 Starting
+11..32767 DMTF Reserved
+32768..65535 Vendor Reserved
