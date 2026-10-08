@@ -20,9 +20,17 @@ import (
 //
 // 記録の内容 (実機の Hyper-V ホスト、VM 3 台):
 //
-//	recorded_computersystem_enumerate.xml  EnumerateResponse
-//	recorded_computersystem_pull_2.xml     ホスト (Name が GUID ではない)
-//	recorded_computersystem_pull_3,4,5.xml VM 3 台 (Name は GUID、5 に EndOfSequence)
+//	recorded_computersystem_enumerate.xml              EnumerateResponse
+//	recorded_computersystem_pull_host.xml              ホスト (Name が GUID ではない)
+//	recorded_computersystem_pull_vm_running_a/b.xml    VM (EnabledState=2)
+//	recorded_computersystem_pull_vm_off.xml            VM (EnabledState=3)
+//	recorded_computersystem_pull_vm_running_c_eos.xml  VM + EndOfSequence
+//
+// 2026-10-09 に採り直した (#186)。**EnabledState が 2 と 3 の両方**入るように、
+// 記録時だけ使い捨ての停止 VM を 1 台立てた。以前の記録は VM 3 台とも
+// EnabledState=2 で、「EnabledState を正しく読む」ことを固定できなかった。
+//
+// ファイル名は番号ではなく役割で付けている (#159 の「番号だけでは中身が分からない」)。
 //
 // recordedHostName は実機記録でホストの Name / ElementName に入っている伏せ字。
 //
@@ -30,7 +38,14 @@ import (
 // literals を長さ降順に走査する)。ホストが 1 なのは今の環境でホスト名が最長だったから。
 // 記録を採り直したときに長い VM 名 / スイッチ名があると番号が変わる。
 // そのときは switch_test.go の期待値も一緒に直す (定数 1 箇所で済むようにしてある)。
-const recordedHostName = "scrubbed-1"
+const (
+	recordedHostName = "scrubbed-1"
+
+	// 記録に入っている VM の表示名。**EnabledState が違うものを 2 つ持っておく。**
+	// 全部同じ値だと「EnabledState を正しく読む」ことを固定できない (#186 で採り直した理由)。
+	recordedVMNameRunning = "scrubbed-3" // EnabledState=2 (Enabled)
+	recordedVMNameOff     = "scrubbed-9" // EnabledState=3 (Disabled)
+)
 
 // 🔴 **ホストを先頭に置かない。** 先頭だと「先頭 1 件を返す」だけの実装でも
 // pickHostComputerSystem のテストが通ってしまう (手書き golden では意図して末尾に
@@ -41,10 +56,11 @@ func recordedComputerSystemSequence(t *testing.T) []string {
 	t.Helper()
 	return []string{
 		loadGolden(t, "recorded_computersystem_enumerate.xml"),
-		loadGolden(t, "recorded_computersystem_pull_3.xml"), // VM
-		loadGolden(t, "recorded_computersystem_pull_4.xml"), // VM
-		loadGolden(t, "recorded_computersystem_pull_2.xml"), // ホスト (先頭に置かない)
-		loadGolden(t, "recorded_computersystem_pull_5.xml"), // VM + EndOfSequence
+		loadGolden(t, "recorded_computersystem_pull_vm_running_a.xml"),     // VM
+		loadGolden(t, "recorded_computersystem_pull_vm_off.xml"),           // VM (停止)
+		loadGolden(t, "recorded_computersystem_pull_host.xml"),             // ホスト (先頭に置かない)
+		loadGolden(t, "recorded_computersystem_pull_vm_running_b.xml"),     // VM
+		loadGolden(t, "recorded_computersystem_pull_vm_running_c_eos.xml"), // VM + EndOfSequence
 	}
 }
 
@@ -53,9 +69,10 @@ func recordedComputerSystemSequence(t *testing.T) []string {
 // 件数と「ホストでないこと」だけ見ると、**別のインスタンスを落として別のを残す**型の
 // 誤りが通る。残った 3 件が期待どおりであることも固定する。
 var recordedVMNames = []string{
-	"00000000-0000-4000-8000-00000000000a",
-	"00000000-0000-4000-8000-00000000000e",
-	"00000000-0000-4000-8000-000000000011",
+	"00000000-0000-4000-8000-00000000000a", // running_a
+	"00000000-0000-4000-8000-00000000000e", // running_b
+	"00000000-0000-4000-8000-000000000012", // off
+	"00000000-0000-4000-8000-000000000015", // running_c_eos
 }
 
 // TestClient_ListComputerSystems_ExcludesHost_Recorded は実機記録に対して
@@ -72,8 +89,8 @@ func TestClient_ListComputerSystems_ExcludesHost_Recorded(t *testing.T) {
 	}
 
 	// 記録には 4 インスタンス (ホスト 1 + VM 3) 入っている。
-	if len(got) != 3 {
-		t.Fatalf("len = %d, want 3 (ホストが落ちる)。実機記録にはホスト 1 + VM 3 が入っている", len(got))
+	if len(got) != 4 {
+		t.Fatalf("len = %d, want 4 (ホストが落ちる)。実機記録にはホスト 1 + VM 4 が入っている", len(got))
 	}
 	for _, cs := range got {
 		if cs.IsHostComputerSystem() {
@@ -107,8 +124,8 @@ func TestClient_listComputerSystemsIncludingHost_Recorded(t *testing.T) {
 		t.Fatalf("listComputerSystemsIncludingHost: %v", err)
 	}
 
-	if len(all) != 4 {
-		t.Fatalf("len = %d, want 4 (ホスト 1 + VM 3。ホストを落としてはいけない)", len(all))
+	if len(all) != 5 {
+		t.Fatalf("len = %d, want 5 (ホスト 1 + VM 4。ホストを落としてはいけない)", len(all))
 	}
 	hosts := filterHostComputerSystems(all)
 	if len(hosts) != 1 {
