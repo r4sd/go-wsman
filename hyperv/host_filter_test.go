@@ -54,6 +54,25 @@ func TestIsHostComputerSystem(t *testing.T) {
 			cs:   Msvm_ComputerSystem{Name: "A1B2C3D4-1111-2222-3333-44445555666"},
 			want: true,
 		},
+		{
+			// 🔴 **判定が Name 単独であることを固定する (#185)。**
+			// InstallDate との AND に変えるとこのケースが VM になる。
+			// AND は実機 1 台の観測で挙動を変えることになるので採っていない。
+			// 変えるなら #185 の判断材料 (食い違う実機の観測) を揃えてから。
+			name: "ホスト: InstallDate に値があっても Name だけで判定する (AND にしていない)",
+			cs: Msvm_ComputerSystem{
+				Name:        "WIN-HYPERVHOST",
+				InstallDate: "2026-10-08T15:15:36.68424Z",
+			},
+			want: true,
+		},
+		{
+			// OR に変えるとこのケースがホストになり、**VM が一覧から消える**
+			// (provider が state を落として orphan / 重複作成に向かう破壊経路)。
+			name: "VM: InstallDate が空でも Name が GUID なら VM (OR にしていない)",
+			cs:   Msvm_ComputerSystem{Name: "C3D4E5F6-1111-2222-3333-444455556668", InstallDate: ""},
+			want: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
