@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  🔴 合成データ。実機から採取したものではなく、**何かの派生でもない**。
+  記録器の匿名化そのものを検査するための最小データ。
+
+  purpose: recorder-self-test
+
+  スクラブ側 (scrubWordBounded) と検品側 (verifyRecorded) で「一致」の定義が
+  揃っているかを見るためのデータ (#191)。スクラブ対象を admin / vm01 として、
+  伏せる出現と伏せない出現を 1 ファイルに並べてある。
+
+  伏せる (両隣が英数字でない):
+    <user>admin</user>       要素の中身として単独で現れる
+    C:\VMs\admin\cfg.xml     パスの区切りが両隣
+    vm01_disk.avhdx          差分ディスクの "_" 区切り (RE2 の \b では伏せられない)
+
+  伏せない (より長い英数字の語の一部):
+    Administrator            admin の右隣が "i"
+    vm010                    vm01 の右隣が "0" (別の VM 名の接頭辞になっている場合)
+
+  クラス名を壊さないことの検査はここではやらない。自己検査用 fixture に
+  CIM クラス名を書くと関所が弾くため (classTokensUnchanged 側の担当)。
+-->
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope">
+  <user>admin</user>
+  <longer>Administrator</longer>
+  <path>C:\VMs\admin\cfg.xml</path>
+  <disk>vm01_disk.avhdx</disk>
+  <prefix>vm010</prefix>
+</s:Envelope>

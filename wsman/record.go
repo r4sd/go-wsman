@@ -151,19 +151,13 @@ func xmlEscapeForScrub(s string) string {
 // 一方でパス (C:\VMs\External\cfg.xml) は区切りが非単語文字なので、境界を要求しても当たる。
 func scrubWordBounded(s, value, replacement string) string {
 	for _, v := range []string{value, xmlEscapeForScrub(value)} {
-		if v == "" {
-			continue
-		}
-		re, err := regexp.Compile("(?i)" + regexp.QuoteMeta(v))
-		if err != nil {
+		locs := findWordBounded(s, v)
+		if len(locs) == 0 {
 			continue
 		}
 		var sb strings.Builder
 		last := 0
-		for _, loc := range re.FindAllStringIndex(s, -1) {
-			if !boundedByNonAlnum(s, loc[0], loc[1]) {
-				continue
-			}
+		for _, loc := range locs {
 			sb.WriteString(s[last:loc[0]])
 			sb.WriteString(replacement)
 			last = loc[1]
@@ -172,6 +166,32 @@ func scrubWordBounded(s, value, replacement string) string {
 		s = sb.String()
 	}
 	return s
+}
+
+// findWordBounded は value が単語境界に囲まれて現れる位置を返す (大文字小文字は無視)。
+//
+// 🔴 **スクラブと検品で「一致」の定義を 1 箇所にするためのもの (#191)。**
+// 片方だけ substring にすると、スクラブが意図的に残した出現 (より長い語の一部)
+// を検品が漏れと判定し、**その応答は記録できなくなる**。漏れるのではなく弾かれるので
+// 安全側ではあるが、実機の記録が取れなくなるので揃える。
+//
+// ホスト名は対象外。こちらはスクラブ側 (scrubVariants) が substring なので、
+// 検品側も substring のままで対称になっている。
+func findWordBounded(s, value string) [][]int {
+	if value == "" {
+		return nil
+	}
+	re, err := regexp.Compile("(?i)" + regexp.QuoteMeta(value))
+	if err != nil {
+		return nil
+	}
+	var out [][]int
+	for _, loc := range re.FindAllStringIndex(s, -1) {
+		if boundedByNonAlnum(s, loc[0], loc[1]) {
+			out = append(out, loc)
+		}
+	}
+	return out
 }
 
 // boundedByNonAlnum は s[start:end] の両隣が英数字でないかを返す。
@@ -452,12 +472,15 @@ func verifyRecorded(content []byte, scrub []string, endpoint string) error {
 			leaks = append(leaks, m[2])
 		}
 	}
+	// 🔴 **スクラブ側と同じ定義で探す (#191)。** strings.Contains で探すと、
+	// scrubWordBounded が意図的に残した出現 (Msvm_ExternalEthernetPort の
+	// External など) を漏れと判定し、その応答は記録できなくなる。
 	for _, lit := range scrub {
 		if lit == "" {
 			continue
 		}
 		for _, v := range []string{lit, xmlEscapeForScrub(lit)} {
-			if strings.Contains(lower, strings.ToLower(v)) {
+			if len(findWordBounded(body, v)) > 0 {
 				leaks = append(leaks, lit)
 			}
 		}

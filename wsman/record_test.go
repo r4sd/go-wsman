@@ -370,3 +370,83 @@ func TestScrubMACAddress_WithAttributes(t *testing.T) {
 		t.Error("属性付きの要素で MAC の漏れを見逃した")
 	}
 }
+
+// TestVerifyRecordedUsesSameBoundaryAsScrub は、検品側の「一致」の定義が
+// スクラブ側と揃っていることを確かめる (#191)。
+//
+// 🔴 **非対称だと記録が成立しない。** scrubWordBounded はスクラブ対象が
+// より長い英数字の語の一部として現れたとき、意図的に置換しない
+// (Msvm_ExternalEthernetPort の External を壊さないため)。検品が
+// strings.Contains だと、その意図的な非置換を漏れと判定して記録を丸ごと弾く。
+// 漏れるのではなく弾かれるので安全側ではあるが、実機の応答が記録できなくなる。
+func TestVerifyRecordedUsesSameBoundaryAsScrub(t *testing.T) {
+	const lit = "admin"
+
+	// 伏せない出現: より長い英数字の語の一部。検品も見逃すのが正。
+	for _, body := range []string{
+		"<probe>Administrator</probe>", // 右隣が英数字
+		"<probe>sysadmin</probe>",      // 左隣が英数字
+		"<probe>xadminx</probe>",       // 両隣が英数字
+	} {
+		if err := verifyRecorded(recordedFile(body), []string{lit}, ""); err != nil {
+			t.Errorf("%s: スクラブが意図的に残した出現を漏れと判定した: %v", body, err)
+		}
+	}
+
+	// 伏せる出現: 両隣が英数字でない。検品は捕まえるのが正。
+	// (ここを緩めると本物の漏れを通すので、両方向を見る)
+	for _, body := range []string{
+		"<probe>admin</probe>",              // 要素の中身
+		`<probe>C:\VMs\admin\x.xml</probe>`, // パスの区切り
+		"<probe>admin_disk.avhdx</probe>",   // "_" 区切り。RE2 の \b では拾えない
+		"<probe>ADMIN</probe>",              // 大文字小文字違い
+		"<probe>admin.example</probe>",      // "." 区切り
+	} {
+		if err := verifyRecorded(recordedFile(body), []string{lit}, ""); err == nil {
+			t.Errorf("%s: 伏せるべき出現の残留を見逃した", body)
+		}
+	}
+
+	// XML エスケープ後の形でも両方向が成り立つこと。
+	if err := verifyRecorded(recordedFile("<probe>R&amp;D-vmX</probe>"), []string{"R&D-vm"}, ""); err != nil {
+		t.Errorf("エスケープ後の形が長い語の一部なのに漏れと判定した: %v", err)
+	}
+	if err := verifyRecorded(recordedFile("<probe>R&amp;D-vm</probe>"), []string{"R&D-vm"}, ""); err == nil {
+		t.Error("エスケープ後の形の残留を見逃した")
+	}
+}
+
+// TestRecorderKeepsLongerWordsContainingScrubLiteral は、スクラブ対象が
+// より長い語の一部として現れる応答が **記録できる** ことを端から端まで確かめる (#191)。
+//
+// verifyRecorded 単体の検査だけだと「検品が通る」までしか言えない。
+// 実際に困るのは StopRecording が落ちて記録が残らないことなので、
+// 記録器を通して確かめる。
+func TestRecorderKeepsLongerWordsContainingScrubLiteral(t *testing.T) {
+	body := loadGolden(t, "synthetic/scrub_word_boundary_probe.xml")
+
+	// recordOnce は StopRecording が落ちたら t.Fatalf する。修正前はここで止まる。
+	files := recordOnce(t, body, WithRecorderScrub("admin", "vm01"))
+	raw, err := os.ReadFile(files[0])
+	if err != nil {
+		t.Fatalf("読めない: %v", err)
+	}
+	got := string(raw)
+
+	// より長い語の一部は残る (壊さない)。
+	for _, keep := range []string{"Administrator", "vm010"} {
+		if !strings.Contains(got, keep) {
+			t.Errorf("%q が壊れている:\n%s", keep, got)
+		}
+	}
+	// 単独で現れた方は伏せられている。
+	if strings.Contains(got, "<user>admin</user>") {
+		t.Errorf("要素の中身の admin が伏せられていない:\n%s", got)
+	}
+	if strings.Contains(got, `\admin\`) {
+		t.Errorf("パス中の admin が伏せられていない:\n%s", got)
+	}
+	if strings.Contains(got, "vm01_disk") {
+		t.Errorf("差分ディスク名の vm01 が伏せられていない:\n%s", got)
+	}
+}
