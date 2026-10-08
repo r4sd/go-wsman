@@ -517,6 +517,24 @@ type Msvm_ConcreteJob struct {
 	PercentComplete  uint16 `cim:"PercentComplete"`
 	ErrorCode        uint16 `cim:"ErrorCode"`
 	ErrorDescription string `cim:"ErrorDescription"`
+
+	// ElementName / Name は Job の表示名。失敗メッセージに「どの操作の Job か」を
+	// 添えるためだけに読む (#189)。
+	//
+	// 🔴 **ロケール依存。** ja-JP ホストでは日本語で返る (実機記録で確認済み)。
+	// 分岐条件に使ってはいけない。両クラスとも CIM_ManagedSystemElement 由来で
+	// 同じ意味なので、共有 struct に置いても経路で食い違わない。
+	ElementName string `cim:"ElementName"`
+	Name        string `cim:"Name"`
+
+	// JobType は操作の種別。
+	//
+	// 🔴 **列挙の中身がクラスごとに別物。** Msvm_StorageJob は VHD 操作
+	// (1=VHD Creation / 5=Merging)、Msvm_ConcreteJob は VM 操作
+	// (1=Define Virtual Machine / 50=Merging VHD Disks) で、**同じ 1 が別の意味**になる。
+	// この struct は両クラスの応答を受けるので、**定数に展開してはいけない**。
+	// 数値のまま、どのクラスの応答かと併記して出す (jobDescription)。
+	JobType uint16 `cim:"JobType"`
 }
 
 // Msvm_GuestNetworkAdapterConfiguration はゲスト OS 内の NIC 設定 (IP アドレス等) を表す。

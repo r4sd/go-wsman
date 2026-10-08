@@ -4,6 +4,8 @@
 # Fetched: 2026-06-19
 # 形式: <CIM プロパティ名> <CIM 型>
 #
+# ElementName / Name / JobType は 2026-10-09 に同じページで確認して追記 (#189)。
+#
 # fixture ポリシー: struct が cim タグで参照するプロパティのみ列挙する。
 
 InstanceID string
@@ -11,3 +13,6 @@ JobState uint16
 PercentComplete uint16
 ErrorCode uint16
 ErrorDescription string
+ElementName string
+Name string
+JobType uint16
