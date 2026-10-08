@@ -1,0 +1,13 @@
+<!--
+  derived-from: hyperv/testdata/recorded_affectedjobelement_pull_created.xml
+
+  ElementEffects を多値 (5 → 0) にした合成。
+
+  ⚠️ **実機で多値の行は観測していない。** ElementEffects は MOF 上 uint16[] なので
+  多値はあり得る形であり、hasElementEffect を Property (最後の値だけ) で実装すると
+  落ちることを固定するためだけに合成した。並び順が 5 → 0 なのは意図的で、
+  Property 実装だと最後の 0 を見て「Create ではない」と判定する。
+
+  実機の記録そのものは recorded_affectedjobelement_pull_created.xml (1 行 1 値)。
+-->
+<s:Envelope xml:lang="ja-JP" xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:n="http://schemas.xmlsoap.org/ws/2004/09/enumeration" xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd"><s:Header><a:Action>http://schemas.xmlsoap.org/ws/2004/09/enumeration/PullResponse</a:Action><a:MessageID>uuid:00000000-0000-4000-8000-000000000081</a:MessageID><a:To>http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</a:To><a:RelatesTo>uuid:00000000-0000-4000-8000-000000000082</a:RelatesTo></s:Header><s:Body><n:PullResponse><n:Items><p:Msvm_AffectedJobElement xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_AffectedJobElement" xmlns:cim="http://schemas.dmtf.org/wbem/wscim/1/common" xsi:type="p:Msvm_AffectedJobElement_Type"><p:AffectedElement xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd"><a:Address>http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</a:Address><a:ReferenceParameters><w:ResourceURI>http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_VirtualSystemSettingData</w:ResourceURI><w:SelectorSet><w:Selector Name="InstanceID">Microsoft:00000000-0000-4000-8000-000000000083</w:Selector></w:SelectorSet></a:ReferenceParameters></p:AffectedElement><p:AffectingElement xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd"><a:Address>http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</a:Address><a:ReferenceParameters><w:ResourceURI>http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_ConcreteJob</w:ResourceURI><w:SelectorSet><w:Selector Name="InstanceID">00000000-0000-4000-8000-000000000066</w:Selector></w:SelectorSet></a:ReferenceParameters></p:AffectingElement><p:ElementEffects>5</p:ElementEffects><p:ElementEffects>0</p:ElementEffects></p:Msvm_AffectedJobElement></n:Items><n:EndOfSequence/></n:PullResponse></s:Body></s:Envelope>

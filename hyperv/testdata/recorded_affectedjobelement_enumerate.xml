@@ -1,0 +1,9 @@
+<!--
+  recorded-by: go-wsman/wsman.WithRecorder
+  recorded-at: 2026-10-08T09:55:26Z
+  sha256: 3d8dc65a6f2c7113bea1ab57764e1f3becb634fc466e65c855cbbab691a4317a
+
+  実機から記録した応答。手で編集しない (sha256 が合わなくなり CI が落ちる)。
+  値を変えたいなら合成として testdata/synthetic/ へ置き derived-from: を書くこと。
+-->
+<s:Envelope xml:lang="ja-JP" xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:n="http://schemas.xmlsoap.org/ws/2004/09/enumeration" xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd"><s:Header><a:Action>http://schemas.xmlsoap.org/ws/2004/09/enumeration/EnumerateResponse</a:Action><a:MessageID>uuid:00000000-0000-4000-8000-000000000074</a:MessageID><a:To>http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</a:To><a:RelatesTo>uuid:00000000-0000-4000-8000-000000000075</a:RelatesTo></s:Header><s:Body><n:EnumerateResponse><n:EnumerationContext>uuid:00000000-0000-4000-8000-000000000076</n:EnumerationContext></n:EnumerateResponse></s:Body></s:Envelope>

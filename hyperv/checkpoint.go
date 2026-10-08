@@ -11,7 +11,23 @@ import (
 
 const (
 	msvmVirtualSystemSnapshotServiceURI = nsVirtV2 + "/Msvm_VirtualSystemSnapshotService"
+	msvmAffectedJobElementURI           = nsVirtV2 + "/Msvm_AffectedJobElement"
 )
+
+// elementEffectsCreate は Msvm_AffectedJobElement.ElementEffects の "Create"。
+// Job が**作成した**要素を指す行をそれ以外から区別するのに使う。
+//
+// 一次資料は実機のクラス定義 (2026-10-08 採取):
+//
+//	(Get-CimClass -Namespace root/virtualization/v2 -ClassName Msvm_AffectedJobElement).
+//	  CimClassProperties["ElementEffects"].Qualifiers["ValueMap"|"Values"].Value
+//	ValueMap: 0|1|2|3|4|5
+//	Values:   Unknown|Other|Exclusive Use|Performance Impact|Element Integrity|Create
+const elementEffectsCreate = "5"
+
+// snapshotInstanceIDPrefix はスナップショットの Msvm_VirtualSystemSettingData.InstanceID の
+// 接頭辞。実機は `Microsoft:<GUID>` の形で返す (ParentSnapshotID も同じ形に依存している)。
+const snapshotInstanceIDPrefix = "Microsoft:"
 
 // CreateSnapshot の SnapshotType 引数 (#57)。
 // 一次資料: https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/createsnapshot-msvm-virtualsystemsnapshotservice
@@ -44,11 +60,14 @@ type CreateVmCheckpointResult struct {
 
 	// SnapshotRef は作成されたチェックポイントの Msvm_VirtualSystemSettingData.InstanceID。
 	//
-	// ⚠️ 非同期 (ReturnValue="4096") のとき実機は空を返す (2026-08-01 確認)。MOF 上
-	// ResultingSnapshot は [in, out] だが、メソッド応答の時点ではスナップショットが
-	// 確定していないため値が乗らない。CreateSnapshot は実運用でほぼ常に 4096 を返すので、
-	// このフィールドを当てにしないこと。作成したチェックポイントを特定するには
-	// ListVmCheckpoints を作成前後で呼んで差分を取る (#125 で恒久策を追跡)。
+	// ⚠️ 非同期 (ReturnValue="4096") のとき値が乗らない (2026-08-01 / 2026-10-08 確認)。
+	// MOF 上 ResultingSnapshot は [in, out] だが、メソッド応答の時点では
+	// スナップショットが確定していないため。CreateSnapshot は実運用でほぼ常に
+	// 4096 を返すので、このフィールドを当てにしないこと。
+	//
+	// **作成したチェックポイントを特定するには ResolveCreatedCheckpoint を使う**
+	// (Job 完了後に呼ぶ)。前後で ListVmCheckpoints を呼んで差分を取る方法でもよいが、
+	// 並行実行時にレースが起きる。
 	SnapshotRef string
 
 	ReturnValue string // "0"=同期成功, "4096"=非同期 Job 開始
@@ -237,4 +256,116 @@ func ParentSnapshotID(parent string) string {
 		return ""
 	}
 	return rest[:j]
+}
+
+// ResolveCreatedCheckpoint は CreateVmCheckpoint が返した Job から、実際に作成された
+// チェックポイントの InstanceID を引く (#125)。
+//
+// # なぜこれが要るか
+//
+// CreateSnapshot は実運用でほぼ常に ReturnValue=4096 (非同期) を返し、その応答の
+// ResultingSnapshot には値が乗らない。メソッド応答の時点ではスナップショットが
+// 確定していないため。
+//
+// ⚠️ 2026-10-08 に実機の生応答を直接見たところ `xsi:nil="true"` だったが、
+// **その応答の記録 fixture はこのリポジトリに無い**(プローブで目視したもの)。
+// go-wsman 側から見えるのは「空文字」までで、統合テストもそこしか確かめていない。
+//
+// # 呼ぶタイミング
+//
+// 🔴 **Job の完了を待ってから呼ぶこと。** Job 実行中は Msvm_AffectedJobElement に
+// ElementEffects=Create の行がまだ現れない (2026-10-08 実機確認)。待たずに呼ぶと
+// **「見つからない」で返ることがある**。
+//
+// 観測したのは「実行中は Create 行が出なかった」まで。
+// 「実行中は AffectedSystem を指す 1 行だけ」と書けるほどの記録は取っていない
+// (この列挙はホスト上の全 Job の行を返すので、他の Job の行も混ざる)。
+//
+// 「必ずそうなる」とは書かない。この呼び出し自体が Enumerate + Pull の数往復なので、
+// その間に Job が完了すれば引けてしまう。**成功しても正しさの保証にはならない**
+// (タイミング依存)。呼び出し側は必ず WaitForJob を挟むこと。
+//
+//	res, err := c.CreateVmCheckpoint(ctx, vmName, hyperv.SnapshotTypeFull)
+//	...
+//	if err := c.WaitForJob(ctx, res.JobRef); err != nil { ... }
+//	id, err := c.ResolveCreatedCheckpoint(ctx, res.JobRef)
+//
+// jobRef は WaitForJob と同じ裸の InstanceID (CreateVmCheckpointResult.JobRef)。
+//
+// # 返す値
+//
+// スナップショットの Msvm_VirtualSystemSettingData.InstanceID (`Microsoft:<GUID>` の形)。
+// RenameVmCheckpoint / DestroyVmCheckpoint にそのまま渡せる。
+func (c *Client) ResolveCreatedCheckpoint(ctx context.Context, jobRef string) (string, error) {
+	if jobRef == "" {
+		return "", fmt.Errorf("ResolveCreatedCheckpoint: jobRef must not be empty")
+	}
+	// jobRef は WaitForJob と同じ形 (CreateVmCheckpointResult.JobRef = 裸の InstanceID)。
+	jobID := strings.TrimSpace(jobRef)
+
+	instances, err := c.wsman.Enumerate(ctx, msvmAffectedJobElementURI)
+	if err != nil {
+		return "", err
+	}
+
+	var found []string
+	for _, inst := range instances {
+		// 大文字小文字は正規化しない。実機では CreateSnapshot が返す Job の
+		// InstanceID と association 側の AffectingElement が**完全一致**した
+		// (2026-10-08、完全一致の実装で統合テストが通ることを確認)。
+		// 差異を観測していないので EqualFold は入れない。
+		//
+		// ⚠️ 同じファイルの matchSnapshotSettingDataForVM は「不一致時の故障が
+		// 黙って 0 件になる」ことを理由に EqualFold を使っている。**ここは
+		// その逆を選んでいる**。違いは比較する 2 つの値の出どころ: あちらは
+		// 利用者が渡す VM 名と記録側の値で出どころが違うが、こちらは同じ Hyper-V が
+		// 同じ WMI 層で返した 2 つの値なので、食い違ったらそれ自体が異常。
+		// 黙って拾うよりエラーにしたい。
+		if inst.Property("AffectingElement") != jobID {
+			continue
+		}
+		if !hasElementEffect(inst, elementEffectsCreate) {
+			continue
+		}
+		if ref := inst.Property("AffectedElement"); ref != "" {
+			found = append(found, ref)
+		}
+	}
+
+	switch len(found) {
+	case 1:
+		// doc で「`Microsoft:<GUID>` の形を返す」と契約しているので実装側で守る。
+		//
+		// この関数は AffectedElement の ResourceURI を見ておらず、
+		// Instance.Property が入れ子 EPR の**最後の Selector 値**を返す挙動に
+		// 乗っている。別の Job (例: DefineSystem) を渡すと Create 行が
+		// Msvm_ComputerSystem を指し、その `Name` (VM の GUID) を
+		// 「チェックポイントの InstanceID」として黙って返してしまう。
+		if !strings.HasPrefix(found[0], snapshotInstanceIDPrefix) {
+			return "", fmt.Errorf("ResolveCreatedCheckpoint: Job %s が作成したのは "+
+				"チェックポイントではない (%q)。スナップショットの InstanceID は %q で始まる。"+
+				"チェックポイント作成以外の Job を渡していないか確認すること",
+				jobID, found[0], snapshotInstanceIDPrefix)
+		}
+		return found[0], nil
+	case 0:
+		return "", fmt.Errorf("ResolveCreatedCheckpoint: Job %s が作成した要素が見つからない "+
+			"(Job 完了前に呼んでいないか確認すること)", jobID)
+	default:
+		return "", fmt.Errorf("ResolveCreatedCheckpoint: Job %s が作成した要素が %d 件ある: %v",
+			jobID, len(found), found)
+	}
+}
+
+// hasElementEffect は Msvm_AffectedJobElement の ElementEffects (uint16[]) に
+// 指定の値が含まれるかを返す。
+//
+// 配列なので Property (最後の値だけ) では判定できない。
+func hasElementEffect(inst *wsman.Instance, want string) bool {
+	for _, v := range inst.PropertiesList()["ElementEffects"] {
+		if v == want {
+			return true
+		}
+	}
+	return false
 }
