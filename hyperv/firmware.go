@@ -46,7 +46,7 @@ func (c *Client) ListBootSources(ctx context.Context, vmGUID string) ([]*Msvm_Bo
 // 読み取り時に検証済み、resolveBootOrders 参照)。この関数はその逆変換で、
 // Msvm_VirtualSystemSettingData.BootSourceOrder[] に書き込む参照文字列を組み立てる。
 func (c *Client) BootSourceRef(deviceInstanceID string) string {
-	return wmiObjectPath(c.hostName, msvmBootSourceSettingDataURI, map[string]string{
+	return wmiObjectPath(msvmBootSourceSettingDataURI, map[string]string{
 		"InstanceID": deviceInstanceID + `\B`,
 	})
 }

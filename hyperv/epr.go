@@ -14,9 +14,18 @@ import (
 // 等) の WS-Addressing EPR (buildEndpointReference) とは形式が別。両者を混同すると
 // AddResourceSettings が「リソースを追加できませんでした」(ErrorCode=32773) で失敗する。
 //
-// host が空なら \\HOST\ 前置を省いた相対パス。値内の \ は WMI パス引用規則で \\ に、" は \" に
-// エスケープする (前置部 \\HOST\namespace はエスケープ対象外)。キーは名前昇順で安定化。
-func wmiObjectPath(host, resourceURI string, keys map[string]string) string {
+// **前置 \\HOST\ は付けず、常に相対パス** (namespace:Class.Key="value") を返す。
+// 実機はこの形を受理する (#114 / #178 / #146 で確認)。実機自身が保存している値には
+// 前置が付いているが、送る側では不要。
+//
+// 以前は host 引数と Client.hostName フィールドがあったが、**hostName はどこからも
+// 代入されておらず常に空** = 前置分岐は到達不能なデッドコードだった (#198)。
+// もし将来クラスタ環境等で前置が必要になっても、**WinRM のエンドポイントから導いてはいけない**
+// (lanrelay 経由だと 127.0.0.1 になり、実機のコンピュータ名と一致しない)。
+// 明示的な値の入口を用意してから足すこと。
+//
+// 値内の \ は WMI パス引用規則で \\ に、" は \" にエスケープする。キーは名前昇順で安定化。
+func wmiObjectPath(resourceURI string, keys map[string]string) string {
 	// resourceURI ("http://.../wmi/root/virtualization/v2/Msvm_X") から
 	// namespace ("root/virtualization/v2") と class ("Msvm_X") を取り出す。
 	tail := resourceURI
@@ -35,9 +44,6 @@ func wmiObjectPath(host, resourceURI string, keys map[string]string) string {
 	sort.Strings(names)
 
 	var sb strings.Builder
-	if host != "" {
-		fmt.Fprintf(&sb, `\\%s\`, host)
-	}
 	fmt.Fprintf(&sb, "%s:%s", ns, class)
 	for i, k := range names {
 		if i == 0 {

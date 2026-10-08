@@ -213,7 +213,7 @@ func (c *Client) buildInternalPortAllocation(ctx context.Context, switchName str
 	if err != nil {
 		return "", fmt.Errorf("lookup host computer system: %w", err)
 	}
-	hostPath := wmiObjectPath(c.hostName, msvmComputerSystemURI, map[string]string{
+	hostPath := wmiObjectPath(msvmComputerSystemURI, map[string]string{
 		"CreationClassName": "Msvm_ComputerSystem",
 		"Name":              host.Name,
 	})
@@ -279,7 +279,7 @@ func (c *Client) buildExternalAdapterBinding(ctx context.Context, opts CreateSwi
 		return "", fmt.Errorf("external adapter %q is missing MOF keys (DeviceID=%q SystemName=%q)",
 			opts.ExternalAdapter, match.DeviceID, match.SystemName)
 	}
-	nicPath := wmiObjectPath(c.hostName, msvmExternalEthernetPortURI, map[string]string{
+	nicPath := wmiObjectPath(msvmExternalEthernetPortURI, map[string]string{
 		"CreationClassName":       "Msvm_ExternalEthernetPort",
 		"DeviceID":                match.DeviceID,
 		"SystemCreationClassName": "Msvm_ComputerSystem",

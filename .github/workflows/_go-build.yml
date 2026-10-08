@@ -21,3 +21,12 @@ jobs:
 
       - name: Build
         run: go build ./...
+
+      # ビルドタグ付きのファイルは、タグを指定しない限り**一度もコンパイルされない**。
+      # 実装側のシグネチャ変更・定数リネーム・struct のフィールド改名があっても、
+      # 統合テストは次に誰かが実機でテストを回すまでエラーに気付かない (#198)。
+      #
+      # vet はコンパイルして解析するだけで実行しないので、**実機は不要**。
+      # go test -tags=integration は実機接続が要るのでここでは使えない。
+      - name: Vet (integration tags)
+        run: go vet -tags=integration ./...

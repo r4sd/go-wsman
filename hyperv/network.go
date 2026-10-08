@@ -204,11 +204,11 @@ func (c *Client) AddNetworkAdapter(ctx context.Context, vmName string, opts Netw
 	//
 	// InstanceID は "Microsoft:<GUID>\\<GUID>" のように \ を含む。WMI パスの引用符内では
 	// \ → \\ のエスケープが必要で、これを欠くと同じ 32773 になる (wmiPathValueEscape が行う)。
-	switchPath := wmiObjectPath(c.hostName, msvmVirtualEthernetSwitchURI, map[string]string{
+	switchPath := wmiObjectPath(msvmVirtualEthernetSwitchURI, map[string]string{
 		"Name":              sw.Name,
 		"CreationClassName": "Msvm_VirtualEthernetSwitch",
 	})
-	portPath := wmiObjectPath(c.hostName, msvmSyntheticEthernetPortSettingDataURI, map[string]string{
+	portPath := wmiObjectPath(msvmSyntheticEthernetPortSettingDataURI, map[string]string{
 		"InstanceID": result.PortRef,
 	})
 
