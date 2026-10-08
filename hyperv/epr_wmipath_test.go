@@ -90,9 +90,12 @@ func TestWmiObjectPath(t *testing.T) {
 
 // TestWmiObjectPathIsDeterministic は map の反復順に依存しないことを明示的に見る。
 //
-// 上のテーブルは 1 回しか呼ばないので、**たまたま昇順で回った**だけでも通ってしまう。
+// 上のテーブルは入力ごとに 1 回しか呼ばないので、**たまたま昇順で回ると通る**。
 // Go の map 反復順はランダム化されているので、同じ入力を繰り返し呼んで
 // 全部一致することを確かめる。
+//
+// 実測 (sort.Strings を除去した状態): テーブル単体は 60 回中 5 回 PASS (約 8%)、
+// このテストは 20 回中 20 回 FAIL。**flaky に頼らず決定的に落とす**ためにこちらが要る。
 func TestWmiObjectPathIsDeterministic(t *testing.T) {
 	keys := map[string]string{
 		"SystemName":              "host-1",
