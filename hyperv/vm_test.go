@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -576,83 +577,106 @@ func stringSlicesEqual(a, b []string) bool {
 	return true
 }
 
-// TestClearReadOnlyForModify は ModifySystemSettings へ送ってはいけない read-only
-// プロパティが全て除去されることを検証する。
+// clearReadOnlyForModify が「クリア対象だけをゼロにし、それ以外には一切触らない」ことを
+// **reflect で全フィールド検証する**。
 //
-// 送ると Job が Exception になる (実機で確認済み)。フィールドを追加したときに
-// ここへ足し忘れると「Get した SettingData を書き戻す」経路が壊れるため、
-// 全項目を明示的に検証する。
+// 🔴 **手書きの一覧では #195 と同型の事故を守れない。** 以前はクリア対象を手で並べて
+// `== ""` を見るだけだったので、Fable のレビューで次の変異がすべて生き残った:
+//
+//	SnapshotDataRoot と SwapFileDataRoot を入れ替える     → 両方非空なので通る
+//	SnapshotDataRoot を別の値で上書きする                 → 非空なので通る
+//	SecureBootTemplateId / BootSourceOrder も消す         → 一覧に無いので誰も見ない
+//
+// 3 つ目が #195 そのもの(**書けるフィールドが名前の類似で巻き込まれる**)。
+// 全フィールドに非ゼロ値を入れてから呼び、クリア対象以外は**値がそのまま**であることを
+// 見る形にすると、フィールドを足した時も分類を迫られる。
 func TestClearReadOnlyForModify(t *testing.T) {
-	sd := &Msvm_VirtualSystemSettingData{
-		// 残すべきもの
-		InstanceID:  "Microsoft:11111111-1111-1111-1111-111111111111",
-		ElementName: "vm-1",
-		Notes:       []string{"keep"},
-		// 🔴 **この 2 つは書き込める** (#195)。実機で 1 プロパティずつ送って確認した
-		// (ModifySystemSettings 受理 + 読み戻しで値が変わる)。
-		// 消すと provider の snapshot_file_location / smart_paging_file_path の
-		// 変更が黙って捨てられる。
-		SnapshotDataRoot: `C:\vms\snap`,
-		SwapFileDataRoot: `C:\vms\swap`,
-		// 除去すべきもの
-		VirtualSystemIdentifier: "11111111-1111-1111-1111-111111111111",
-		VirtualSystemType:       VirtualSystemTypeRealized,
-		VirtualSystemSubType:    VirtualSystemSubTypeGen2,
-		ConfigurationID:         "22222222-2222-2222-2222-222222222222",
-		ConfigurationDataRoot:   `C:\vms`,
-		ConfigurationFile:       `vm.vmcx`,
-		SuspendDataRoot:         `C:\vms\suspend`,
-		LogDataRoot:             `C:\vms\log`,
-		CreationTime:            "2026-09-09T16:20:31.444762Z",
-		// Parent はチェックポイントを持つ VM 本体にも入る (2026-09-10 実機確認)。
-		Parent:      `\\HOST\root\virtualization\v2:Msvm_VirtualSystemSettingData.InstanceID="Microsoft:33333333-3333-3333-3333-333333333333"`,
-		Version:     "12.0",
-		Caption:     "仮想マシンの設定",
-		Description: "アクティブな設定",
+	// クリアされるべきフィールド。ここに無いものは**一切変わってはいけない**。
+	//
+	// SnapshotDataRoot / SwapFileDataRoot は **ModifySystemSettings で書ける**ので
+	// 入っていない (#195。実機で 1 プロパティずつ確認済み)。
+	wantCleared := map[string]bool{
+		"VirtualSystemIdentifier": true,
+		"VirtualSystemType":       true,
+		"VirtualSystemSubType":    true,
+		"ConfigurationID":         true,
+		"ConfigurationDataRoot":   true,
+		"ConfigurationFile":       true,
+		"SuspendDataRoot":         true,
+		"LogDataRoot":             true,
+		"CreationTime":            true,
+		"Parent":                  true,
+		"Version":                 true,
+		"Caption":                 true,
+		"Description":             true,
 	}
 
-	clearReadOnlyForModify(sd)
+	before := &Msvm_VirtualSystemSettingData{}
+	fillNonZero(t, reflect.ValueOf(before).Elem())
+	after := *before // コピー (fillNonZero 後の値を保持)
+	clearReadOnlyForModify(&after)
 
-	cleared := map[string]string{
-		"VirtualSystemIdentifier": sd.VirtualSystemIdentifier,
-		"VirtualSystemType":       sd.VirtualSystemType,
-		"VirtualSystemSubType":    sd.VirtualSystemSubType,
-		"ConfigurationID":         sd.ConfigurationID,
-		"ConfigurationDataRoot":   sd.ConfigurationDataRoot,
-		"ConfigurationFile":       sd.ConfigurationFile,
-		"SuspendDataRoot":         sd.SuspendDataRoot,
-		"LogDataRoot":             sd.LogDataRoot,
-		"CreationTime":            sd.CreationTime,
-		"Parent":                  sd.Parent,
-		"Version":                 sd.Version,
-		"Caption":                 sd.Caption,
-		"Description":             sd.Description,
-	}
-	for name, got := range cleared {
-		if got != "" {
-			t.Errorf("%s が除去されていない: %q", name, got)
+	rt := reflect.TypeOf(after)
+	rvBefore := reflect.ValueOf(*before)
+	rvAfter := reflect.ValueOf(after)
+	seenCleared := 0
+	for i := 0; i < rt.NumField(); i++ {
+		name := rt.Field(i).Name
+		b := rvBefore.Field(i)
+		a := rvAfter.Field(i)
+		if wantCleared[name] {
+			seenCleared++
+			if !a.IsZero() {
+				t.Errorf("%s が除去されていない: %#v", name, a.Interface())
+			}
+			continue
+		}
+		// クリア対象外は値がそのままであること。
+		if !reflect.DeepEqual(b.Interface(), a.Interface()) {
+			t.Errorf("%s を変えてはいけない: before=%#v after=%#v\n"+
+				"  書き込み可能なフィールドを巻き込んでいないか確認すること (#195)",
+				name, b.Interface(), a.Interface())
 		}
 	}
+	// 一覧に書いたのに構造体に無い名前があると検査が空振りする。
+	if seenCleared != len(wantCleared) {
+		t.Errorf("wantCleared の %d 件のうち構造体で見つかったのは %d 件。"+
+			"名前が変わった / フィールドが消えた可能性がある", len(wantCleared), seenCleared)
+	}
+}
 
-	// 送るべきものは残っていること。
-	if sd.InstanceID == "" {
-		t.Error("InstanceID が消えている (ModifySystemSettings のキー)")
-	}
-	// 🔴 書き込めるプロパティを消していないこと (#195)。
-	// 「全部消す」に戻す変異をここで落とす。
-	for name, got := range map[string]string{
-		"SnapshotDataRoot": sd.SnapshotDataRoot,
-		"SwapFileDataRoot": sd.SwapFileDataRoot,
-	} {
-		if got == "" {
-			t.Errorf("%s が消えている。これは ModifySystemSettings で書き込める "+
-				"(実機確認済み #195)。消すと呼び出し側の変更が黙って捨てられる", name)
+// fillNonZero は構造体の全フィールドにゼロ値でない値を入れる。
+//
+// ゼロ値のままだと「クリアされた」と「もともと空だった」が区別できず、
+// クリア対象の検査が空振りする。
+func fillNonZero(t *testing.T, v reflect.Value) {
+	t.Helper()
+	rt := v.Type()
+	for i := 0; i < v.NumField(); i++ {
+		f := v.Field(i)
+		name := rt.Field(i).Name
+		switch f.Kind() {
+		case reflect.String:
+			f.SetString("nonzero-" + name)
+		case reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			f.SetUint(uint64(i + 1)) // フィールドごとに違う値 (取り違えを検出するため)
+		case reflect.Bool:
+			f.SetBool(true)
+		case reflect.Slice:
+			if f.Type().Elem().Kind() != reflect.String {
+				t.Fatalf("%s: 未対応の slice 要素型 %s。fillNonZero を拡張すること",
+					name, f.Type().Elem())
+			}
+			f.Set(reflect.ValueOf([]string{"nonzero-" + name}))
+		case reflect.Pointer:
+			if f.Type().Elem().Kind() != reflect.Bool {
+				t.Fatalf("%s: 未対応のポインタ型 %s。fillNonZero を拡張すること",
+					name, f.Type().Elem())
+			}
+			b := true
+			f.Set(reflect.ValueOf(&b))
+		default:
+			t.Fatalf("%s: 未対応の型 %s。fillNonZero を拡張すること", name, f.Type())
 		}
-	}
-	if sd.ElementName != "vm-1" {
-		t.Errorf("ElementName = %q, want vm-1", sd.ElementName)
-	}
-	if len(sd.Notes) != 1 || sd.Notes[0] != "keep" {
-		t.Errorf("Notes = %v, want [keep]", sd.Notes)
 	}
 }

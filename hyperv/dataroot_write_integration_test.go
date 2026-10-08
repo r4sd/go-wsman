@@ -58,10 +58,10 @@ func TestIntegration_UpdateVmWritesDataRoots(t *testing.T) {
 		t.Fatalf("既定値が検査値と同じ (snap=%q swap=%q)。値を変えること",
 			before.SnapshotDataRoot, before.SwapFileDataRoot)
 	}
-	// 2 つを**別の値**にする。同じ値だと片方しか書いていない実装を区別できない。
-	if wantSnap == wantSwap {
-		t.Fatal("検査値が同一。取り違えを検出できない")
-	}
+	// 🔴 **Hyper-V は指定パスにディレクトリを作る。** go-wsman は CIM 専用で
+	// ファイル削除ができないため、VM を破棄してもこの 2 つは**ホストに残る**。
+	// パスをログに出す (VHD の統合テストと同じ扱い)。
+	t.Logf("🔴 ホストに残るディレクトリ (手動削除要): %s / %s", wantSnap, wantSwap)
 
 	jobRef, err := client.UpdateVm(ctx, &Msvm_VirtualSystemSettingData{
 		InstanceID:       before.InstanceID,

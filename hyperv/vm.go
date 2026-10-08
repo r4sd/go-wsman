@@ -231,18 +231,27 @@ func (c *Client) DestroySystem(ctx context.Context, vmName string) (string, erro
 //
 // 🔴 **SnapshotDataRoot / SwapFileDataRoot はクリアしない** (#195)。
 // 名前が他の *DataRoot と揃っているので一緒にクリアされていたが、**この 2 つは書ける**。
-// 使い捨て VM に `InstanceID + 1 プロパティ`だけを送って 1 つずつ確認した (2026-10-08):
+// 使い捨て VM に `InstanceID + 1 プロパティ`だけを送り、**現在値と違う値**を入れて
+// 1 つずつ確認した (2026-10-08):
 //
 //	SnapshotDataRoot  受理 (RV=0) → 読み戻しで値が変わる
 //	SwapFileDataRoot  受理 (RV=0) → 読み戻しで値が変わる
-//	上記以外の 12 件  受理 (RV=0) されるが値は変わらない (黙って無視される)
+//	上記以外の 13 件  受理 (RV=0) されるが値は変わらない (黙って無視される)
+//
+// 傍証: 値が変わった 2 件は Hyper-V が指定パスにディレクトリを作る。
+// 無視された側 (LogDataRoot / SuspendDataRoot / ConfigurationDataRoot) は作られない。
+//
+// **稼働中 (EnabledState=2) でも同じ**: 現在値と同じ値・別の値のどちらを送っても
+// 受理され、稼働中に値が変わる (2026-10-08 確認)。provider は値が変わっていなくても
+// この 2 つを毎回載せるので、ここが拒否されると稼働中 VM への apply が一律失敗に
+// 変わるが、そうならないことを確かめてある。
 //
 // クリアしていた間、provider の snapshot_file_location / smart_paging_file_path の
 // 変更は ModifySystemSettings に届かず黙って捨てられていた。
 //
-// ⚠️ **観測範囲**: 上記は「1 プロパティだけ送った」結果。この関数の doc が前提にしている
-// 「Get した SettingData をそのまま書き戻すと Exception になる」ケース (フルペイロード) は
-// 検証していないので、残り 12 件のクリアは据え置く。
+// ⚠️ **観測範囲**: 上記は「1 プロパティだけ送った」結果。フルペイロードで
+// Exception になる原因は単離できていない (UpdateVm のコメント参照) ので、
+// 残り 13 件のクリアは据え置く。
 func clearReadOnlyForModify(sd *Msvm_VirtualSystemSettingData) {
 	sd.VirtualSystemIdentifier = ""
 	sd.VirtualSystemType = ""
@@ -270,11 +279,17 @@ func (c *Client) UpdateVm(ctx context.Context, settings *Msvm_VirtualSystemSetti
 		return "", fmt.Errorf("UpdateVm: settings.InstanceID must not be empty (used to identify the VM)")
 	}
 
-	// ModifySystemSettings は「変更箇所 (modified aspects) + InstanceID」だけを受け付ける。
-	// GetSystemSettingData の結果をそのまま渡すと read-only プロパティ
-	// (VirtualSystemType="...:Realized" / CreationTime / Version / Configuration* 等) が
-	// 非ゼロ値で乗り、ジョブが Exception で失敗する (実機 acc test で確認)。コピーを作って
-	// read-only をクリアしてから marshal する (呼び出し側の struct は変更しない)。
+	// ModifySystemSettings は「変更箇所 (modified aspects) + InstanceID」だけを渡すのが前提。
+	// GetSystemSettingData の結果を**そのまま**渡すとジョブが Exception で失敗する
+	// (実機 acc test で確認)。
+	//
+	// ⚠️ **どのプロパティが原因かは単離できていない。** 2026-10-08 に
+	// 「InstanceID + 1 プロパティ」の形で 1 つずつ送って確かめたところ、
+	// クリア対象 13 件はいずれも**受理され (RV=0) 値が無視されるだけ**で、
+	// Exception にはならなかった (CreationTime を datetime で単独送信した場合も RV=0)。
+	// つまり Exception はフルペイロード特有の挙動か、特定の組み合わせによる。
+	// 原因が単離できていないので、クリアは「効果が無いと分かっているもの」を
+	// 落とす安全策として残す。
 	mod := *settings
 	clearReadOnlyForModify(&mod)
 
