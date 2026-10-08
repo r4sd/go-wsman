@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/r4sd/go-wsman/wsman"
 )
 
 // newJobServer は Get リクエストごとに responses を順に返すテストサーバーを作る。
@@ -230,4 +232,127 @@ func TestClient_WaitForJob_ZeroMaxPollErrors(t *testing.T) {
 	if *calls != 1 {
 		t.Errorf("expected exactly 1 poll (no retry), got %d", *calls)
 	}
+}
+
+// TestJobDescription は失敗メッセージに添える「どの操作の Job か」の組み立てを固定する (#189)。
+//
+// 🔴 JobType の列挙は**クラスごとに別物**なので (StorageJob の 1=VHD Creation に対し
+// ConcreteJob の 1=Define Virtual Machine)、名前に展開せず数値とクラス名を併記する。
+// クラス名が落ちると数値の意味が決まらなくなるので、そこを固定しておく。
+func TestJobDescription(t *testing.T) {
+	const storageURI = "http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_StorageJob"
+
+	cases := []struct {
+		name string
+		uri  string
+		job  Msvm_ConcreteJob
+		want string
+	}{
+		{
+			name: "表示名と JobType の両方",
+			uri:  storageURI,
+			job:  Msvm_ConcreteJob{ElementName: "Creating Virtual Hard Disk", JobType: 1},
+			want: " [Creating Virtual Hard Disk, JobType=1 of Msvm_StorageJob]",
+		},
+		{
+			name: "ElementName が空なら Name を使う",
+			uri:  storageURI,
+			job:  Msvm_ConcreteJob{Name: "Merging", JobType: 5},
+			want: " [Merging, JobType=5 of Msvm_StorageJob]",
+		},
+		{
+			name: "表示名が無ければ JobType だけ",
+			uri:  storageURI,
+			job:  Msvm_ConcreteJob{JobType: 3},
+			want: " [JobType=3 of Msvm_StorageJob]",
+		},
+		{
+			name: "JobType=0 (Unknown) は添えない",
+			uri:  storageURI,
+			job:  Msvm_ConcreteJob{ElementName: "Something"},
+			want: " [Something]",
+		},
+		{
+			// 旧 fixture のように表示名も JobType も無い応答では、従来どおり何も足さない。
+			name: "何も無ければ空",
+			uri:  storageURI,
+			job:  Msvm_ConcreteJob{},
+			want: "",
+		},
+		{
+			// クラスが決まらないと JobType の数値は意味を持たない。
+			// それが分かる形 (of <class> が付かない) で出す。
+			name: "ResourceURI からクラスが取れない",
+			uri:  "Msvm_StorageJob",
+			job:  Msvm_ConcreteJob{JobType: 1},
+			want: " [JobType=1]",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := jobDescription(c.uri, &c.job); got != c.want {
+				t.Errorf("jobDescription() = %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+// TestClient_WaitForJobEPR_ExceptionIncludesDisplayName は、失敗した Job の
+// エラーメッセージに表示名と JobType が入ることを端から端まで検証する (#189)。
+//
+// 実機記録からの派生 fixture を使う。表示名はロケール依存なので、値で分岐せず
+// 「fixture にある文字列がメッセージに載るか」だけを見る。
+func TestClient_WaitForJobEPR_ExceptionIncludesDisplayName(t *testing.T) {
+	const storageURI = "http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_StorageJob"
+	server, _ := newJobServer(t, loadGolden(t, "synthetic/get_response_storagejob_exception.xml"))
+	defer server.Close()
+
+	client, err := NewClient(server.URL)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	err = client.WaitForJobEPR(context.Background(), &wsman.EndpointReference{
+		ResourceURI: storageURI,
+		Selectors:   map[string]string{"InstanceID": "00000000-0000-4000-8000-000000000003"},
+	})
+	if err == nil {
+		t.Fatal("JobState=10 (Exception) なのでエラーになるはず")
+	}
+	got := err.Error()
+
+	// fixture の ElementName。ja-JP ホストで録ったものなので日本語。
+	// 値で分岐しないこと自体を示すため、fixture から読んだ文字列と突き合わせる。
+	wantLabel := jobLabelFromGolden(t, "synthetic/get_response_storagejob_exception.xml")
+	if !strings.Contains(got, wantLabel) {
+		t.Errorf("表示名がメッセージに無い。got %q, want に %q を含む", got, wantLabel)
+	}
+	if !strings.Contains(got, "JobType=1 of Msvm_StorageJob") {
+		t.Errorf("JobType とクラスがメッセージに無い: %q", got)
+	}
+	// 既存の情報が落ちていないこと。
+	for _, want := range []string{"JobState=Exception", "ErrorCode=32768", "The operation failed."} {
+		if !strings.Contains(got, want) {
+			t.Errorf("%q がメッセージから落ちている: %q", want, got)
+		}
+	}
+}
+
+// jobLabelFromGolden は fixture の <p:ElementName> の中身を返す。
+//
+// 期待値をテストソースに書き写すと、ロケール依存の文字列を 2 箇所に持つことになる。
+// fixture を一次情報にする。
+func jobLabelFromGolden(t *testing.T, name string) string {
+	t.Helper()
+	s := string(loadGolden(t, name))
+	const open, close = "<p:ElementName>", "</p:ElementName>"
+	i := strings.Index(s, open)
+	j := strings.Index(s, close)
+	if i < 0 || j < i {
+		t.Fatalf("%s に ElementName が無い", name)
+	}
+	v := s[i+len(open) : j]
+	if v == "" {
+		t.Fatalf("%s の ElementName が空。この検査が空振りする", name)
+	}
+	return v
 }

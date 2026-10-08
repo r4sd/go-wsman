@@ -3,6 +3,7 @@ package hyperv
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/r4sd/go-wsman/wsman"
@@ -116,8 +117,9 @@ func (c *Client) WaitForJobEPR(ctx context.Context, epr *wsman.EndpointReference
 		case JobStateCompleted:
 			return nil
 		case JobStateTerminated, JobStateKilled, JobStateException:
-			return fmt.Errorf("WaitForJobEPR %s: job failed (JobState=%s, ErrorCode=%d): %s",
-				instanceID, jobStateName(job.JobState), job.ErrorCode, job.ErrorDescription)
+			return fmt.Errorf("WaitForJobEPR %s%s: job failed (JobState=%s, ErrorCode=%d): %s",
+				instanceID, jobDescription(epr.ResourceURI, job),
+				jobStateName(job.JobState), job.ErrorCode, job.ErrorDescription)
 		}
 		select {
 		case <-ctx.Done():
@@ -180,4 +182,54 @@ func jobStateName(s uint16) string {
 	default:
 		return fmt.Sprintf("Unknown(%d)", s)
 	}
+}
+
+// jobDescription は失敗メッセージに添える「どの操作の Job か」を組み立てる。
+//
+// InstanceID と ErrorCode だけでは、落ちたのが VHD の作成なのかマージなのか
+// スナップショットなのか分からない (#189)。実機の応答は表示名と JobType を
+// 返しているので、それを人が読む形で添える。
+//
+// 戻り値は先頭に区切りを含む (呼び出し側で "%s%s" と連結する前提)。
+// 添える情報が何も無ければ空文字列を返す。
+//
+// 🔴 **表示名はロケール依存**なので、分岐には使わない。
+// 🔴 **JobType の列挙はクラスごとに別物**なので、名前に展開せず
+// 数値とクラス名を併記する。クラス名は ResourceURI の末尾から取る。
+func jobDescription(resourceURI string, job *Msvm_ConcreteJob) string {
+	// ElementName と Name は実機では同じ値だったが、MOF 上は別プロパティ
+	// (ElementName=表示名 / Name=ラベル)。空でない方を使う。
+	label := job.ElementName
+	if label == "" {
+		label = job.Name
+	}
+
+	var parts []string
+	if label != "" {
+		parts = append(parts, label)
+	}
+	if job.JobType != 0 {
+		// クラス名が取れないときは JobType だけでは意味が決まらないので、
+		// その旨が分かるように "JobType=N" のまま出す。
+		if cls := cimClassFromURI(resourceURI); cls != "" {
+			parts = append(parts, fmt.Sprintf("JobType=%d of %s", job.JobType, cls))
+		} else {
+			parts = append(parts, fmt.Sprintf("JobType=%d", job.JobType))
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return " [" + strings.Join(parts, ", ") + "]"
+}
+
+// cimClassFromURI は ResourceURI の末尾のクラス名を返す。取れなければ空文字列。
+//
+// JobType の数値は**クラスが決まらないと意味が決まらない**ので、
+// 数値を出すときは必ずこれを添える。
+func cimClassFromURI(resourceURI string) string {
+	if i := strings.LastIndex(resourceURI, "/"); i >= 0 && i+1 < len(resourceURI) {
+		return resourceURI[i+1:]
+	}
+	return ""
 }
