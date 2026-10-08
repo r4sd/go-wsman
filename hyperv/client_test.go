@@ -214,6 +214,44 @@ func TestClient_FindComputerSystemByElementName(t *testing.T) {
 	}
 }
 
+// TestClient_FindComputerSystemByElementName_ExactMatchOnly は照合が
+// **完全一致であって部分一致でない**ことを固定する (#203)。
+//
+// 🔴 実機記録だけでは固定できない。記録器の伏せ字は `scrubbed-N` と連番で振るので、
+// `scrubbed-1/3/4/8/9` は**互いに部分一致しない**。照合を `EqualFold` から
+// `HasPrefix` / `HasSuffix` / `Contains` に変える変異がすべて素通りしていた。
+//
+// 緩むと「`web` で検索して `web01` が返る」。provider の Read は表示名で VM を引くので、
+// **別の VM を同一視して state を上書きする**経路になる。
+//
+// 合成 fixture で `scrubbed-3` の**接頭辞側と接尾辞側の兄弟**を両方並べる:
+//
+//	scrubbed-3    記録 (探す対象)
+//	scrubbed-3x   合成。前方一致なら当たる
+//	xscrubbed-3   合成。後方一致なら当たる
+//
+// どれかに緩むと 2 件以上に当たり「曖昧」エラーになるので落ちる。
+func TestClient_FindComputerSystemByElementName_ExactMatchOnly(t *testing.T) {
+	var bodies []string
+	server := newSequenceServer(t, []string{
+		loadGolden(t, "recorded_computersystem_enumerate.xml"),
+		loadGolden(t, "recorded_computersystem_pull_vm_running_a.xml"),       // scrubbed-3
+		loadGolden(t, "synthetic/computersystem_pull_vm_prefix_sibling.xml"), // scrubbed-3x
+		loadGolden(t, "synthetic/computersystem_pull_vm_suffix_sibling.xml"), // xscrubbed-3 + EOS
+	}, &bodies)
+	defer server.Close()
+
+	client, _ := NewClient(server.URL)
+	got, err := client.FindComputerSystemByElementName(context.Background(), recordedVMNameRunning)
+	if err != nil {
+		t.Fatalf("完全一致なら 1 件に絞れるはず (部分一致に緩んでいる可能性): %v", err)
+	}
+	if got.ElementName != recordedVMNameRunning {
+		t.Errorf("ElementName = %q, want %q (別の VM を拾っている)",
+			got.ElementName, recordedVMNameRunning)
+	}
+}
+
 // TestClient_FindComputerSystemByElementName_NotFound は該当 VM が無い場合にエラーを返す。
 //
 // テストサーバーは WQL を解さず記録をそのまま返すため、クライアント側の
