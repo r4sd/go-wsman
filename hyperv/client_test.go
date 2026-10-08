@@ -144,6 +144,41 @@ func TestClient_ListComputerSystems(t *testing.T) {
 	}
 }
 
+// TestClient_ListComputerSystems_ReadsEnabledStateNotDefault は
+// **EnabledState 要素を読んでいる**ことを固定する。
+//
+// 🔴 実機記録だけでは固定できない。このホストでは `EnabledDefault` が常に
+// `EnabledState` と一致する (記録 5 本すべてで一致) ため、cim タグを
+// `EnabledState` → `EnabledDefault` にすり替える変異が **List 経路では生存する**
+// (#186 の批判的レビューで判明)。
+//
+// 両者が食い違う合成 fixture を使って、そこだけを落とす。
+// 合成は実機で観測していない形なのでファイル冒頭に明記してある。
+func TestClient_ListComputerSystems_ReadsEnabledStateNotDefault(t *testing.T) {
+	var bodies []string
+	server := newSequenceServer(t, []string{
+		loadGolden(t, "recorded_computersystem_enumerate.xml"),
+		loadGolden(t, "recorded_computersystem_pull_host.xml"),
+		// EnabledDefault=2 / EnabledState=3 で食い違う (EndOfSequence 付き)。
+		loadGolden(t, "synthetic/computersystem_pull_vm_off_distinct_default.xml"),
+	}, &bodies)
+	defer server.Close()
+
+	client, _ := NewClient(server.URL)
+	got, err := client.ListComputerSystems(context.Background())
+	if err != nil {
+		t.Fatalf("ListComputerSystems: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("len = %d, want 1 (ホスト 1 + VM 1 でホストが落ちる)", len(got))
+	}
+	if got[0].EnabledState != EnabledStateDisabled {
+		t.Errorf("EnabledState = %d, want %d。"+
+			"EnabledDefault (2) を読んでいる可能性がある (cim タグのすり替え)",
+			got[0].EnabledState, EnabledStateDisabled)
+	}
+}
+
 // TestClient_FindComputerSystemByElementName は表示名 (ElementName) から VM を引く。
 //
 // provider 側の VM CRUD は表示名で操作するが、CIM の各操作 (GetSystemSettingData /

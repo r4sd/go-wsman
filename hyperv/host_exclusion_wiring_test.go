@@ -18,7 +18,7 @@ import (
 // 2026-10-05、`lanrelay.py` (homelab-infra) 経由で `go test -tags=integration` が
 // 実機に届くようになり記録できた。伏せ字で ホスト名 / VM 名 / GUID / IP は置換済。
 //
-// 記録の内容 (実機の Hyper-V ホスト、VM 3 台):
+// 記録の内容 (実機の Hyper-V ホスト、VM 4 台):
 //
 //	recorded_computersystem_enumerate.xml              EnumerateResponse
 //	recorded_computersystem_pull_host.xml              ホスト (Name が GUID ではない)
@@ -64,10 +64,10 @@ func recordedComputerSystemSequence(t *testing.T) []string {
 	}
 }
 
-// recordedVMNames は記録に入っている VM 3 台の Name (GUID プレースホルダ)。
+// recordedVMNames は記録に入っている VM 4 台の Name (GUID プレースホルダ)。
 //
 // 件数と「ホストでないこと」だけ見ると、**別のインスタンスを落として別のを残す**型の
-// 誤りが通る。残った 3 件が期待どおりであることも固定する。
+// 誤りが通る。残った 4 件が期待どおりであることも固定する。
 var recordedVMNames = []string{
 	"00000000-0000-4000-8000-00000000000a", // running_a
 	"00000000-0000-4000-8000-00000000000e", // running_b
@@ -88,7 +88,7 @@ func TestClient_ListComputerSystems_ExcludesHost_Recorded(t *testing.T) {
 		t.Fatalf("ListComputerSystems: %v", err)
 	}
 
-	// 記録には 4 インスタンス (ホスト 1 + VM 3) 入っている。
+	// 記録には 5 インスタンス (ホスト 1 + VM 4) 入っている。
 	if len(got) != 4 {
 		t.Fatalf("len = %d, want 4 (ホストが落ちる)。実機記録にはホスト 1 + VM 4 が入っている", len(got))
 	}
@@ -97,7 +97,7 @@ func TestClient_ListComputerSystems_ExcludesHost_Recorded(t *testing.T) {
 			t.Errorf("ホストが残っている: Name=%q ElementName=%q", cs.Name, cs.ElementName)
 		}
 	}
-	// 残った 3 件が期待どおりであること (別のインスタンスを落としていないか)。
+	// 残った 4 件が期待どおりであること (別のインスタンスを落としていないか)。
 	gotNames := make(map[string]bool, len(got))
 	for _, cs := range got {
 		gotNames[cs.Name] = true
