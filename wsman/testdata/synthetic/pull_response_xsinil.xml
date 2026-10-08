@@ -18,7 +18,7 @@
 <s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd" xmlns:e="http://schemas.xmlsoap.org/ws/2004/09/enumeration" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wmi/root/virtualization/v2/Msvm_GuestNetworkAdapterConfiguration">
   <s:Header>
     <a:Action>http://schemas.xmlsoap.org/ws/2004/09/enumeration/PullResponse</a:Action>
-    <a:MessageID>uuid:00000000-0000-0000-0000-000000000011</a:MessageID>
+    <a:MessageID>uuid:00000000-0000-4000-8000-000000000011</a:MessageID>
   </s:Header>
   <s:Body>
     <e:PullResponse>
@@ -42,7 +42,7 @@
           <p:DefaultGateways xsi:nil="true"/>
         </p:Msvm_GuestNetworkAdapterConfiguration>
       </e:Items>
-      <e:EnumerationContext>uuid:00000000-0000-0000-0000-000000000012</e:EnumerationContext>
+      <e:EnumerationContext>uuid:00000000-0000-4000-8000-000000000012</e:EnumerationContext>
     </e:PullResponse>
   </s:Body>
 </s:Envelope>
