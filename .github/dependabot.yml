@@ -5,6 +5,13 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    # リリース直後は、侵害があってもまだ発覚していない時間帯。
+    # 取り込みを数日遅らせるだけで踏む確率が下がる。
+    # github-actions は `default-days` のみ対応(semver 別の指定は非対応)。
+    # patch/minor は auto-merge で人の介在が 0 回になるので長めに取る。
+    # セキュリティ更新には cooldown は適用されないため緊急の修正は即日届く。
+    cooldown:
+      default-days: 7
     labels:
       - "dependencies"
       - "github-actions"
@@ -17,6 +24,9 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 5
+      semver-patch-days: 3
     labels:
       - "dependencies"
       - "go"
